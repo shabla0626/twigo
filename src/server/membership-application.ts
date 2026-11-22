@@ -1,4 +1,5 @@
 import "server-only";
+import { grantAcceptedMembership } from "./membership-grant";
 import { Prisma, type ApplicationStatus } from "@prisma/client";
 import { db } from "@/lib/db";
 import { audit } from "@/lib/audit";
@@ -44,6 +45,8 @@ async function ensureDraft(tx: Prisma.TransactionClient, userId: string) {
     applicant = legacy
       ? await tx.applicant.update({ where: { id: legacy.id }, data: { userId } })
       : await tx.applicant.create({ data: { userId, email: user.email, fullName: user.name } });
+    // The earlier application may already have been accepted: then the person gets access now.
+    if (legacy) await grantAcceptedMembership(tx, userId, { reason: "earlier application linked" });
   }
   const latest = await tx.application.findFirst({ where: { applicantId: applicant.id }, orderBy: { createdAt: "desc" } });
   if (latest && latest.status === "DRAFT") return { applicant, app: latest };

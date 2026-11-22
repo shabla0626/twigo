@@ -407,6 +407,9 @@ export async function reactivateUser(actorId: string, userId: string): Promise<R
   // A deactivated account without a password must go through a new invitation.
   const status = target.passwordHash ? "ACTIVE" : "INVITED";
   await db.user.update({ where: { id: userId }, data: { status, suspendedAt: null, suspendedReason: null, deactivatedAt: null } });
+  // Their application may have been accepted while the account was not active: access starts now.
+  const { grantAcceptedMembership } = await import("./membership-grant");
+  await db.$transaction((tx) => grantAcceptedMembership(tx, userId, { byAdminId: actorId, reason: "account reactivated" }));
   const { fillVacantCoordinators } = await import("./community/groups");
   await fillVacantCoordinators(userId);
   await recheckSupport(userId);

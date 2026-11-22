@@ -1,3 +1,4 @@
+import { accessState, grantAcceptedMembership, type AccessState } from "../membership-grant";
 import "server-only";
 import type { ApplicationStatus, Prisma } from "@prisma/client";
 import { db } from "@/lib/db";
@@ -123,6 +124,8 @@ export type StatusChangeResult =
       status: ApplicationStatus;
       /** granted = account now has community access; pending_account = applicant has no confirmed account yet. */
       membership: "granted" | "already" | "pending_account" | "not_applicable";
+      /** The person's real situation after the change (used for what the administrator is told). */
+      access: AccessState;
       email: SendResult | null;
     }
   | { ok: false; error: string };
@@ -152,7 +155,14 @@ export async function updateApplicationStatus(
       },
     });
     if (!app) return { ok: false as const, error: "Application not found." };
-    if (app.status === to && to === "ACCEPTED") return { ok: true as const, from: app.status, membership: "already" as const, app };
+    if (app.status === to && to === "ACCEPTED") {
+      // Approving again: nothing about the application changes, but if the person could not be
+      // given access the first time (account suspended, email unconfirmed...) and now can, they get it.
+      const linked = app.applicant.user;
+      const grantedNow = linked ? await grantAcceptedMembership(tx, linked.id, { byAdminId: adminId, reason: "approved again" }) : false;
+      const now = grantedNow ? await tx.user.findUnique({ where: { id: linked!.id } }) : linked;
+      return { ok: true as const, from: app.status, membership: grantedNow ? ("granted_now" as const) : ("already" as const), access: accessState(now), app };
+    }
     if (!ADMIN_TRANSITIONS[app.status].includes(to))
       return { ok: false as const, error: `An application that is “${app.status.replace(/_/g, " ").toLowerCase()}” cannot be changed to “${to.replace(/_/g, " ").toLowerCase()}”.` };
     // Re-opening a declined application would give the person two open applications.
@@ -168,7 +178,7 @@ export async function updateApplicationStatus(
         ...(to === "INTERVIEW_REQUESTED" && opts.interviewDetails !== undefined ? { interviewDetails: opts.interviewDetails } : {}),
       },
     });
-    let membership: "granted" | "already" | "pending_account" | "not_applicable" = "not_applicable";
+    let membership: "granted" | "granted_now" | "already" | "pending_account" | "not_applicable" = "not_applicable";
     if (to === "ACCEPTED") {
       const participant =
         app.applicant.participant ??
@@ -200,10 +210,11 @@ export async function updateApplicationStatus(
         membership = "pending_account";
       }
     }
-    return { ok: true as const, from: app.status, membership, app };
+    const after = to === "ACCEPTED" && app.applicant.user ? await tx.user.findUnique({ where: { id: app.applicant.user.id } }) : app.applicant.user;
+    return { ok: true as const, from: app.status, membership, access: accessState(after), app };
   });
   if (!outcome.ok) return outcome;
-  const { app, from, membership } = outcome;
+  const { app, from, membership, access } = outcome;
   if (from !== to) await audit(adminId, "application.status_changed", "Application", id, { from, to });
   if (membership === "granted") await audit(adminId, "membership.granted", "User", app.applicant.user!.id, { applicationId: id });
 
@@ -226,7 +237,7 @@ export async function updateApplicationStatus(
     email = res;
     await audit(adminId, "application.notified", "Application", id, { template, emailStatus: res.status });
   }
-  return { ok: true, status: to, membership, email };
+  return { ok: true, status: to, membership: membership === "granted_now" ? "granted" : membership, access, email };
 }
 
 /** For applications made before accounts existed: ask the person to create their account. */

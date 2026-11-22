@@ -196,22 +196,26 @@ export async function joinGroup(userId: string, groupId: string) {
     const g = await tx.researchGroup.findUniqueOrThrow({ where: { id: a.group.id }, select: { status: true, suspendedAt: true } });
     const m = await tx.groupMembership.findUnique({ where: { groupId_userId: { groupId: a.group.id, userId } } });
     if (g.suspendedAt || g.status === "ARCHIVED" || m?.status === "REMOVED") return { ok: false as const };
-    if (m?.status === "ACTIVE") return { ok: true as const, line: null };
+    if (m?.status === "ACTIVE") return { ok: true as const, line: null, succession: null };
     await tx.groupMembership.upsert({
       where: { groupId_userId: { groupId: a.group.id, userId } },
       create: { groupId: a.group.id, userId, role: "MEMBER" },
       update: { status: "ACTIVE", role: "MEMBER", joinedAt: new Date(), leftAt: null },
     });
     await refreshMemberCount(a.group.id, tx);
-    await tx.researchGroup.update({ where: { id: a.group.id }, data: { lastActivityAt: new Date(), adminManaged: false } });
+    await tx.researchGroup.update({ where: { id: a.group.id }, data: { lastActivityAt: new Date() } });
     // Visible to the whole group, and written together with the change itself.
-    return { ok: true as const, line: await writeSystemLine(tx, a.group.id, `${await nameInChat(tx, userId)} joined the group`) };
+    const line = await writeSystemLine(tx, a.group.id, `${await nameInChat(tx, userId)} joined the group`);
+    // A group without a coordinator (for example one that was reopened after everyone had left)
+    // gets one as soon as somebody eligible is in it.
+    return { ok: true as const, line, succession: await ensureCoordinator(tx, a.group.id) };
   });
   if (!joined.ok) return { ok: false as const, error: "This group is not available." };
   if (joined.line) {
     await audit(userId, "group.member_joined", "ResearchGroup", a.group.id);
     await publishLines([joined.line]);
   }
+  if (joined.succession) await announceSuccession(a.group.id, joined.succession, "vacant");
   await publishRealtime(db, { t: "group.updated", groupId: a.group.id, what: "members" });
   return { ok: true as const };
 }
@@ -413,12 +417,24 @@ export async function adminSetGroupState(adminId: string, groupId: string, actio
     action === "archive"
       ? { status: "ARCHIVED", archivedAt: new Date() }
       : action === "reopen"
-        ? { status: g.status === "ARCHIVED" ? "FORMING" : g.status, archivedAt: null, adminManaged: false }
+        ? { status: g.status === "ARCHIVED" ? "FORMING" : g.status, archivedAt: null }
         : action === "suspend"
           ? { suspendedAt: new Date(), suspendedReason: reason?.slice(0, 500) || null }
           : { suspendedAt: null, suspendedReason: null };
   await db.researchGroup.update({ where: { id: groupId }, data });
-  if (action === "reopen") await announceSuccession(groupId, await withGroupLock(groupId, (tx) => ensureCoordinator(tx, groupId)), "vacant");
+  if (action === "reopen") {
+    const outcome = await withGroupLock(groupId, async (tx) => {
+      const members = await tx.groupMembership.count({ where: { groupId, status: "ACTIVE" } });
+      if (members === 0) {
+        // Nobody is in the group: it stays open and marked "looked after by the organization",
+        // so that someone can join. The first eligible person who joins becomes its coordinator.
+        await tx.researchGroup.update({ where: { id: groupId }, data: { adminManaged: true } });
+        return null;
+      }
+      return ensureCoordinator(tx, groupId);
+    });
+    if (outcome) await announceSuccession(groupId, outcome, "vacant");
+  }
   if (action === "suspend") await publishRealtime(db, { t: "group.access_revoked", groupId });
   await audit(adminId, `group.${action}`, "ResearchGroup", groupId, reason ? { reason: reason.slice(0, 200) } : undefined);
   return { ok: true as const };

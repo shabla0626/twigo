@@ -1,5 +1,6 @@
 "use server";
 
+import { APPROVAL_MESSAGE } from "@/server/membership-grant";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { requireAdmin } from "@/lib/auth/guard";
@@ -39,12 +40,8 @@ export async function changeStatusAction(fd: FormData) {
   const res = await updateApplicationStatus(admin.id, id, status, { notify, interviewDetails: status === "INTERVIEW_REQUESTED" ? interviewDetails : undefined, details: details ?? interviewDetails ?? undefined });
   if (!res.ok) back(id, { error: res.error });
   revalidatePath("/admin", "layout");
-  const decision =
-    res.status === "ACCEPTED"
-      ? res.membership === "pending_account"
-        ? "Accepted. This applicant has no confirmed account yet: community access starts automatically when they create an account and confirm this email address."
-        : "Approved. This person can now enter the member community with the email and password they already have."
-      : "Status updated.";
+  // What is said here is the person's real situation, never an assumption.
+  const decision = res.status === "ACCEPTED" ? APPROVAL_MESSAGE[res.access] : "Status updated.";
   const mail = emailOutcome(res.email);
   back(id, { ok: [decision, mail.ok].filter(Boolean).join(" "), error: mail.error });
 }

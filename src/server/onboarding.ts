@@ -7,6 +7,7 @@ import { deliverTemplate, type SendResult } from "@/lib/email";
 import { rateLimit } from "@/lib/rate-limit";
 import { TOKEN_TTL_HOURS } from "@/lib/auth/constants";
 import { hashPassword, passwordPolicyError, simulatePasswordCheck } from "@/lib/auth/password";
+import { grantAcceptedMembership } from "./membership-grant";
 import { revokeUserSessions } from "@/lib/auth/session";
 import { consumeToken, describeTtl, issueToken } from "@/lib/auth/tokens";
 import { PRIVACY_NOTICE_VERSION } from "@/lib/validation/application";
@@ -156,7 +157,9 @@ export async function verifyEmailToken(token: string): Promise<VerifyResult> {
     if (user.status !== "ACTIVE") return { ok: false as const, error: "This account cannot be confirmed. Please contact the organization." };
     if (t.email && t.email === user.email) {
       await tx.user.update({ where: { id: user.id }, data: { emailVerifiedAt: user.emailVerifiedAt ?? new Date() } });
-      const granted = await linkLegacyApplicant(tx, user.id, user.email);
+      const linkedGrant = await linkLegacyApplicant(tx, user.id, user.email);
+      // An application accepted before the address was confirmed gives access now.
+      const granted = linkedGrant || (await grantAcceptedMembership(tx, user.id, { reason: "email confirmed" }));
       return { ok: true as const, kind: "registration" as const, userId: user.id, role: user.role, membershipGranted: granted };
     }
     if (!t.email) return { ok: false as const, error: "This link is not valid." };
@@ -170,6 +173,7 @@ export async function verifyEmailToken(token: string): Promise<VerifyResult> {
     if (clash) return { ok: false as const, error: "That email address is already used by an earlier application. Your address was not changed. Please contact the organization." };
     await tx.user.update({ where: { id: user.id }, data: { email: t.email, emailVerifiedAt: new Date() } });
     await tx.applicant.updateMany({ where: { userId: user.id }, data: { email: t.email } });
+    await grantAcceptedMembership(tx, user.id, { reason: "email confirmed" });
     return { ok: true as const, kind: "change" as const, userId: user.id };
   });
   if (res.ok) await audit(res.userId, res.kind === "registration" ? "account.email_verified" : "account.email_changed", "User", res.userId);
