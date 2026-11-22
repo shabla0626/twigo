@@ -299,6 +299,17 @@ export async function disableTotp(userId: string): Promise<Result> {
 
 // ---------------------------------------------------------------- account status
 
+/**
+ * Who may act on whose account (enforced here, on the server, for every
+ * status and membership action): only the owner may act on an owner or
+ * administrator account. Returns an error message, or null when allowed.
+ */
+async function staffRuleError(actorId: string, target: { role: UserRole }, verb: string): Promise<string | null> {
+  if (target.role === "MEMBER") return null;
+  const actor = await db.user.findUnique({ where: { id: actorId }, select: { role: true } });
+  return actor?.role === "OWNER" ? null : `Only the owner can ${verb} administrators.`;
+}
+
 async function endAccess(userId: string) {
   await revokeUserSessions(userId);
   await publishRealtime(db, { t: "user.revoked", userId });
@@ -329,6 +340,8 @@ export async function setMembership(actorId: string, userId: string, to: Communi
   if (actorId === userId) return { ok: false, error: "You cannot change your own membership." };
   const target = await db.user.findUnique({ where: { id: userId } });
   if (!target) return { ok: false, error: "Account not found." };
+  const refused = await staffRuleError(actorId, target, "change the community access of");
+  if (refused) return { ok: false, error: refused };
   if (!MEMBERSHIP_TRANSITIONS[target.membershipStatus].includes(to)) {
     return { ok: false, error: target.membershipStatus === "NONE" ? "This person is not a member. Membership is granted by approving their application." : "That change is not possible." };
   }
@@ -354,8 +367,8 @@ export async function suspendUser(actorId: string, userId: string, reason: strin
   if (actorId === userId) return { ok: false, error: "You cannot suspend your own account." };
   const target = await db.user.findUnique({ where: { id: userId } });
   if (!target) return { ok: false, error: "Account not found." };
-  const actor = await db.user.findUniqueOrThrow({ where: { id: actorId } });
-  if (target.role !== "MEMBER" && actor.role !== "OWNER") return { ok: false, error: "Only the owner can suspend administrators." };
+  const refused = await staffRuleError(actorId, target, "suspend");
+  if (refused) return { ok: false, error: refused };
   await db.user.update({ where: { id: userId }, data: { status: "SUSPENDED", suspendedAt: new Date(), suspendedReason: reason.slice(0, 500) || null } });
   await endAccess(userId);
   await audit(actorId, "member.suspended", "User", userId);
@@ -363,8 +376,11 @@ export async function suspendUser(actorId: string, userId: string, reason: strin
 }
 
 export async function reactivateUser(actorId: string, userId: string): Promise<Result> {
+  if (actorId === userId) return { ok: false, error: "You cannot reactivate your own account." };
   const target = await db.user.findUnique({ where: { id: userId } });
   if (!target) return { ok: false, error: "Account not found." };
+  const refused = await staffRuleError(actorId, target, "reactivate");
+  if (refused) return { ok: false, error: refused };
   if (target.status !== "SUSPENDED" && target.status !== "DEACTIVATED") return { ok: false, error: "The account is not suspended or deactivated." };
   // A deactivated account without a password must go through a new invitation.
   const status = target.passwordHash ? "ACTIVE" : "INVITED";
@@ -377,6 +393,11 @@ export async function reactivateUser(actorId: string, userId: string): Promise<R
 export async function deactivateUser(actorId: string, userId: string): Promise<Result> {
   const target = await db.user.findUnique({ where: { id: userId } });
   if (!target) return { ok: false, error: "Account not found." };
+  // Closing your own account is allowed (it goes through the account page, with identity confirmation).
+  if (actorId !== userId) {
+    const refused = await staffRuleError(actorId, target, "deactivate");
+    if (refused) return { ok: false, error: refused };
+  }
   if (target.role === "OWNER") {
     const owners = await db.user.count({ where: { role: "OWNER", status: "ACTIVE" } });
     if (owners <= 1) return { ok: false, error: "The last owner account cannot be deactivated." };

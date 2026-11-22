@@ -41,6 +41,8 @@ export async function memberStatusAction(fd: FormData) {
   const admin = await requireAdmin("members.suspend");
   const id = str(fd, "id");
   const action = str(fd, "action");
+  // Your own account is managed from the account page (with identity confirmation), never from here.
+  if (id === admin.id) back(`/admin/members/${id}`, { error: "You cannot change your own account from the admin area." });
   const res =
     action === "suspend"
       ? await suspendUser(admin.id, id, str(fd, "reason"))
@@ -249,13 +251,16 @@ export async function backupNowAction() {
   const owner = await requireAdmin("backups.manage");
   const e = env();
   const run = await db.jobRun.create({ data: { job: "backup" } });
+  // The outcome is decided inside try/catch; the redirect happens after it,
+  // because redirect() works by throwing and would otherwise be caught as a failure.
+  let written: string | null = null;
   try {
     const res = await createBackup({ connectionString: e.DATABASE_URL, dir: path.resolve(e.BACKUP_DIR), encryptionKey: e.BACKUP_ENCRYPTION_KEY || undefined, keep: e.BACKUP_KEEP, label: "manual" });
     await db.jobRun.update({ where: { id: run.id }, data: { finishedAt: new Date(), ok: true, summary: { file: path.basename(res.file), bytes: res.bytes, tables: res.manifest.tables.length } } });
     await audit(owner.id, "backup.manual", "System", run.id);
-    back("/admin/backups", { ok: `Backup written: ${path.basename(res.file)}` });
+    written = path.basename(res.file);
   } catch (err) {
     await db.jobRun.update({ where: { id: run.id }, data: { finishedAt: new Date(), ok: false, error: String(err).slice(0, 1000) } });
-    back("/admin/backups", { error: "Backup failed. See the job history." });
   }
+  back("/admin/backups", written ? { ok: `Backup written: ${written}` } : { error: "Backup failed. See the job history." });
 }
