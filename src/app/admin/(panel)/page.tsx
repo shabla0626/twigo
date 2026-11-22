@@ -126,7 +126,7 @@ export default async function OverviewPage() {
                       {item.pages.map((p, i) => (
                         <span key={p.href}>
                           {i > 0 && ", "}
-                          <Link href={p.href} className="text-accent-700 hover:underline">
+                          <Link href={p.href} className="text-accent-700 underline underline-offset-2">
                             {p.label}
                           </Link>
                         </span>
