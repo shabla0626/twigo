@@ -60,14 +60,36 @@ DATABASE_URL="postgresql://cowork_app:<password>@<host>:5432/cowork?schema=publi
 
 ## 4. Production environment variables
 
-Set them in the host's secret manager (never commit them). The server **refuses to
-start** in production if `ENCRYPTION_KEY` is missing/short, equals `AUTH_SECRET`, or if
-`AUTH_SECRET` still has the development value.
+Set them in the host's secret manager (never commit them).
+
+**The server checks all of this before it starts** (`server.ts`, rules in
+`src/lib/env-schema.ts`). In production it prints a plain list of what is wrong and
+exits without serving anything when:
+
+* `SITE_URL` is missing, points to this computer, or is not `https://`;
+* `ENCRYPTION_KEY` is missing/short or equals `AUTH_SECRET`, or `AUTH_SECRET` still has
+  the development value;
+* `SMTP_HOST`, `EMAIL_FROM` or `ORG_CONTACT_EMAIL` is empty;
+* `BACKUP_ENCRYPTION_KEY` is missing (at least 16 characters);
+* `ADMIN_REQUIRE_2FA` is turned off;
+* `TRUSTED_PROXY_HOPS` is not set explicitly;
+* the database contains an active owner or administrator with a test address
+  (`@example.test`, `@example.com`, `.invalid`, `.localhost`…), or no owner at all.
+
+`GET /api/health` answers 503 when the settings are invalid, so a wrongly configured
+release never looks healthy. **`SITE_URL` must already be set when you run
+`npm run build`**: page addresses for search engines and the allowed live-chat address
+are fixed at build time.
+
+`LOCAL_PRODUCTION_TEST=1` is used only by the browser tests and the performance
+measurement on a development computer. It is honoured only while `SITE_URL` is a local
+address; on a real site the start is refused if it is set.
 
 | Variable | Notes |
 | --- | --- |
 | `DATABASE_URL` | As above |
-| `SITE_URL` | Public HTTPS URL. Also used for the WebSocket origin check and CSP |
+| `SITE_URL` | Public HTTPS URL. Also used for the WebSocket origin check and CSP. Needed at build time too |
+| `TRUSTED_PROXY_HOPS` | `1` behind one reverse proxy (Caddy, nginx), `0` when reached directly. See section 5 |
 | `PORT`, `HOST` | Default 3000 / 0.0.0.0 |
 | `AUTH_SECRET` | ≥ 32 random chars (form tokens, IP hashing) |
 | `ENCRYPTION_KEY` | ≥ 32 random chars, different from `AUTH_SECRET` (encrypts 2FA secrets). **Losing it disables everyone's 2FA**: keep it in your password manager |
@@ -130,15 +152,48 @@ Run **one instance** unless you also move rate limiting (`src/lib/rate-limit.ts`
 limits in `src/realtime/server.ts`) to Redis and add the Socket.IO Redis adapter;
 cross-instance events already work through `LISTEN/NOTIFY`.
 
-## 6. Initialize the owner
+## 6. First production start (clean database, one owner)
+
+Production never starts from a development or demonstration database. It starts empty:
+
+1. Create the production database as UTF-8 (section 3) and set `DATABASE_URL`.
+2. `npm run db:deploy` (creates all tables; no data).
+3. Create the one legitimate owner. The password is typed at a prompt and never shown:
+
+   ```bash
+   npm run admin:create -- --email founder@your-domain --name "Founder"
+   ```
+
+4. `npm start`. The start is refused, with the reason, if any setting from section 4 is
+   missing, if no owner exists, or if an administrator with a test address exists.
+5. Sign in at `/login`; you are sent to `/account/security` to set up two-step
+   verification (authenticator app) and save your recovery codes. Further
+   administrators are invited from `/admin/admins`.
+
+After step 3 the database contains exactly one account and nothing else. Organization
+settings (support threshold, retention periods) use their defaults until changed at
+`/admin/settings`.
+
+**Environments.** Keep them apart and never copy one into another:
+
+| Environment | Database | Purpose |
+| --- | --- | --- |
+| Development | `cowork` on the developer's computer | Working copy; may contain test people and records |
+| Demonstration | `cowork_demo` | Fictional people for showing the site (`npm run demo:seed`) |
+| Automated tests | `cowork_test`, `cowork_e2e` | Emptied and refilled by the tests |
+| Production | created as described above | Real people only |
+
+**Command-line account tools** (need access to the server; every use is audited):
 
 ```bash
-npm run admin:create -- --email founder@your-domain --name "Founder"
+# Reset an administrator's password (the role is kept, all their sessions end)
+npm run admin:create -- --email admin@your-domain
+# An administrator lost the authenticator AND the recovery codes
+npm run admin:create -- --email admin@your-domain --reset-2fa
+# Deliberately give an existing account more power (member -> administrator, role
+# change, or bringing back a suspended/deactivated account): add --promote
+npm run admin:create -- --email member@your-domain --role ADMIN --promote
 ```
-
-Sign in at `/login`; you are sent to `/account/security` to set up two-step
-verification (authenticator app) and save your recovery codes. Further administrators
-are invited from `/admin/admins`.
 
 ## 7. Email
 

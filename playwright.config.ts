@@ -18,6 +18,8 @@ const env = {
   PORT: String(PORT),
   HOST: "127.0.0.1",
   SITE_URL: E2E.baseURL,
+  // Production mode on this computer: skips the checks that need a real site (see src/lib/env-schema.ts).
+  LOCAL_PRODUCTION_TEST: "1",
   DATABASE_URL: "postgresql://postgres:postgres@localhost:5433/cowork_e2e?schema=public",
   AUTH_SECRET: "e2e-auth-secret-that-is-long-enough-0123456789",
   ENCRYPTION_KEY: "e2e-encryption-key-different-from-auth-secret-99",

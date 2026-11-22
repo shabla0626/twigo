@@ -25,7 +25,27 @@ function log(msg: string, meta: object = {}) {
   console.log(JSON.stringify({ level: "info", msg, time: new Date().toISOString(), ...meta }));
 }
 
+/** Stops the start with a readable list of what is wrong. Nothing is served. */
+function refuseToStart(what: string, problems: string[]): never {
+  console.error(`\nThe site was NOT started: ${what}.`);
+  for (const p of problems) console.error(`  - ${p}`);
+  console.error("See docs/DEPLOYMENT.md, section 4.\n");
+  process.exit(1);
+}
+
 async function main() {
+  // Check the settings before anything else: a wrong production configuration
+  // must stop the start, not fail later on the first request.
+  const { loadEnv, startupProblems, isLocalProductionTest } = await import("./src/lib/env-schema");
+  let settings: ReturnType<typeof loadEnv>;
+  try {
+    settings = loadEnv(process.env);
+  } catch (err) {
+    refuseToStart("the settings are not valid", [err instanceof Error ? err.message : String(err)]);
+  }
+  const wrong = startupProblems(process.env, settings);
+  if (wrong.length) refuseToStart("the production settings are incomplete", wrong);
+
   // Create the shared Prisma client before Next.js loads, so app code reuses it.
   const { createPrismaClient } = await import("./src/lib/db-core");
   const g = globalThis as unknown as { prisma?: ReturnType<typeof createPrismaClient> };
@@ -41,6 +61,13 @@ async function main() {
       return null;
     });
     if (mail) log("devmail.ready", { smtp: `127.0.0.1:${mail.smtpPort}`, inbox: mail.uiUrl, state: mail.smtp, note: "test emails are captured locally, not delivered" });
+  }
+
+  // A real production start also checks the database: no leftover test administrators, and an owner exists.
+  if (!dev && !isLocalProductionTest(process.env, settings)) {
+    const { launchProblems } = await import("./src/ops/launch-checks");
+    const found = await launchProblems(db);
+    if (found.length) refuseToStart("the database is not ready for production", found);
   }
 
   const app = next({ dev, hostname, port, webpack: true });

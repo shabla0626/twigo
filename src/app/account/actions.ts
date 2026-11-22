@@ -4,7 +4,6 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import type { NotificationType } from "@prisma/client";
 import type { FormState } from "@/components/forms/action-form";
-import { db } from "@/lib/db";
 import { audit } from "@/lib/audit";
 import { getSession, isRecentlyAuthenticated, requireUser } from "@/lib/auth/guard";
 import { clearSessionCookie, revokeSessionById, revokeUserSessions } from "@/lib/auth/session";

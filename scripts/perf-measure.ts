@@ -16,13 +16,16 @@ import { createPrismaClient } from "../src/lib/db-core";
 import { DEMO } from "./demo-config";
 
 const PORT = 3300;
+// Secrets for this local measurement only (production mode refuses the development values).
+const PERF_AUTH_SECRET = "perf-measure-auth-secret-0123456789-abcdefghij";
+const PERF_ENCRYPTION_KEY = "perf-measure-encryption-key-0123456789-zyxwvu";
 const BASE = `http://127.0.0.1:${PORT}`;
 const RUNS = Number(process.env.PERF_RUNS ?? 7);
 const label = process.argv.slice(2).find((a) => !a.startsWith("--")) ?? "baseline";
 
 function build() {
   return new Promise<void>((resolve, reject) => {
-    const p = spawn("npx next build --webpack", { shell: true, stdio: "inherit", env: { ...process.env, NEXT_DIST_DIR: ".next-perf", NODE_ENV: "production", SKIP_PROD_ENV_CHECK: "1", DATABASE_URL: DEMO.databaseUrl, SITE_URL: BASE } });
+    const p = spawn("npx next build --webpack", { shell: true, stdio: "inherit", env: { ...process.env, NEXT_DIST_DIR: ".next-perf", NODE_ENV: "production", LOCAL_PRODUCTION_TEST: "1", AUTH_SECRET: PERF_AUTH_SECRET, ENCRYPTION_KEY: PERF_ENCRYPTION_KEY, DATABASE_URL: DEMO.databaseUrl, SITE_URL: BASE } });
     p.on("exit", (code) => (code === 0 ? resolve() : reject(new Error(`build failed (${code})`))));
   });
 }
@@ -88,8 +91,9 @@ async function main() {
       JOBS_ENABLED: "false",
       DEV_MAIL_CATCHER: "false",
       SMTP_HOST: "",
-      SKIP_PROD_ENV_CHECK: "1",
-      ENCRYPTION_KEY: process.env.ENCRYPTION_KEY || "perf-measure-encryption-key-0123456789",
+      LOCAL_PRODUCTION_TEST: "1",
+      AUTH_SECRET: PERF_AUTH_SECRET,
+      ENCRYPTION_KEY: PERF_ENCRYPTION_KEY,
     },
     stdio: ["ignore", "pipe", "pipe"],
   });
