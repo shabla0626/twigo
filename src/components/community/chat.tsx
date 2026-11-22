@@ -292,12 +292,24 @@ export function GroupChat({ channelId, groupId, me, members }: { channelId: stri
           {loaded && !messages.length && !pending.length && <p className="py-10 text-center text-sm text-ink-500">No messages yet. Say hello to the group.</p>}
           {messages.map((m) => {
             const mine = m.author?.id === me.id;
+            // A line written by the site itself: someone joined, left, or became coordinator.
+            if (m.kind === "SYSTEM") {
+              return (
+                <p key={m.id} className="py-1 text-center text-xs text-ink-500" data-message-id={m.id} data-system-line>
+                  {m.body} ·{" "}
+                  <time dateTime={m.createdAt} title={new Date(m.createdAt).toLocaleString("en-US")}>
+                    {timeAgo(m.createdAt)}
+                  </time>
+                </p>
+              );
+            }
             return (
               <div key={m.id} className="group flex gap-3" data-message-id={m.id}>
                 <MemberAvatar name={m.author?.name ?? "Former member"} size={32} />
                 <div className="min-w-0 flex-1">
                   <p className="text-sm">
                     <span className="font-semibold text-ink-950">{m.author?.name ?? "Former member"}</span>{" "}
+                    {m.author?.staff && <span className="rounded bg-ink-100 px-1.5 py-0.5 text-[11px] font-medium text-ink-700">Administrator</span>}{" "}
                     <time className="text-xs text-ink-500" dateTime={m.createdAt} title={new Date(m.createdAt).toLocaleString("en-US")}>
                       {timeAgo(m.createdAt)}
                     </time>
@@ -305,7 +317,8 @@ export function GroupChat({ channelId, groupId, me, members }: { channelId: stri
                   </p>
                   {m.replyTo && (
                     <p className="mt-0.5 truncate border-l-2 border-accent-300 pl-2 text-xs text-ink-500">
-                      ↪ {m.replyTo.authorName}: {m.replyTo.excerpt}
+                      ↪ {m.replyTo.authorName ? `${m.replyTo.authorName}: ` : ""}
+                      {m.replyTo.excerpt}
                     </p>
                   )}
                   {m.deleted ? (
@@ -472,7 +485,7 @@ export function GroupChat({ channelId, groupId, me, members }: { channelId: stri
             );
           })}
         </ul>
-        <p className="mt-4 text-xs leading-5 text-ink-500">Chat is visible only to current group members and is saved so you can read it later. Administrators cannot browse it; they only see messages that someone reports.</p>
+        <p className="mt-4 text-xs leading-5 text-ink-500">Chat is visible only to current group members and is saved so you can read it later. Everyone who joins or leaves is shown in the chat. Administrators have no special view: they see a message only if someone reports it, and an administrator who joins as a member sees the chat only from that moment and is labelled “Administrator”.</p>
       </aside>
     </div>
   );

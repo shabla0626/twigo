@@ -21,7 +21,11 @@ const QUESTIONS: [string, string][] = [
     "How do voice and video meetings work?",
     "Meetings run in Google Meet. Anyone in the group can start one by pasting a Google Meet link; the group is notified and members join from the Meetings tab. Mute, camera and leave buttons are at the bottom of the Google Meet window. Meetings are not recorded by this site.",
   ],
-  ["Who can see what I post?", "Ideas, comments and group discussions are visible to all approved members. Group chat, meetings and shared research are visible only to that group’s current members."],
+  ["Who can see what I post?", "Ideas, comments and group discussions are visible to all approved members. Group chat, meetings and shared research are visible only to that group’s current members. Whenever someone joins or leaves a group, a line in its chat says so."],
+  [
+    "Can administrators read our group chat?",
+    "Not behind your back. Administrators have no special access to group chats. They see a chat message only when a member reports it. An administrator may join a group like any member; then the chat shows that they joined, they are labelled “Administrator”, and they can read only what is written from that moment on.",
+  ],
   ["Do I ever have to pay?", "No. Nobody may ask members for fees or investments. Paid work only starts after a written agreement with clear terms. Please report anyone who asks you for money."],
 ];
 

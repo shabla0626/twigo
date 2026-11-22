@@ -33,7 +33,8 @@ export default async function MembersPage({ params, searchParams }: Props) {
                   <Link href={`/community/members/${m.user.id}`} className="font-medium text-ink-950 hover:underline">
                     {name}
                   </Link>{" "}
-                  {m.role === "COORDINATOR" && <Badge tone="success">Coordinator</Badge>} {m.founding && <Badge>Founding member</Badge>}
+                  {m.role === "COORDINATOR" && <Badge tone="success">Coordinator</Badge>} {m.user.role !== "MEMBER" && <Badge>Administrator</Badge>}{" "}
+                  {m.founding && <Badge>Founding member</Badge>}
                   {m.user.profile?.headline && <p className="truncate text-sm text-ink-600">{m.user.profile.headline}</p>}
                   <p className="text-xs text-ink-500">
                     Joined <Time date={m.joinedAt} />

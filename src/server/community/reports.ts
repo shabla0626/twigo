@@ -2,6 +2,7 @@ import "server-only";
 import type { ReportReason, ReportTarget } from "@prisma/client";
 import { db } from "@/lib/db";
 import { audit } from "@/lib/audit";
+import { chatBoundary } from "@/realtime/chat-service";
 import { rateLimit } from "@/lib/rate-limit";
 import { groupAccess } from "./access";
 
@@ -41,9 +42,13 @@ async function snapshot(viewerId: string, type: ReportTarget, id: string): Promi
     }
     case "MESSAGE": {
       const m = await db.chatMessage.findUnique({ where: { id }, include: { channel: { select: { groupId: true } } } });
-      if (!m || m.deletedAt) return null;
+      if (!m || m.deletedAt || m.kind !== "USER") return null;
       const a = await groupAccess(m.channel.groupId, viewerId);
-      return a?.isMember ? { text: m.body, groupId: m.channel.groupId } : null;
+      if (!a?.isMember) return null;
+      const viewer = await db.user.findUnique({ where: { id: viewerId }, select: { role: true } });
+      const from = viewer ? chatBoundary(viewer.role, a.membership!.joinedAt) : null;
+      if (from && m.createdAt < from) return null;
+      return { text: m.body, groupId: m.channel.groupId };
     }
     case "GROUP": {
       const g = await db.researchGroup.findUnique({ where: { id } });
@@ -54,6 +59,22 @@ async function snapshot(viewerId: string, type: ReportTarget, id: string): Promi
       return p ? { text: `${p.displayName}\n${p.headline ?? ""}\n\n${p.intro ?? ""}`, groupId: null } : null;
     }
   }
+}
+
+/**
+ * The only way an administrator ever sees the text of a private chat message
+ * is the copy a group member attached to a report. Looking at such reports is
+ * itself recorded (at most once an hour per administrator, to keep the audit
+ * log readable).
+ */
+export async function recordPrivateReportView(adminId: string, reports: { targetType: ReportTarget }[]) {
+  const count = reports.filter((r) => r.targetType === "MESSAGE").length;
+  if (!count) return;
+  const recent = await db.auditLog.findFirst({
+    where: { actorId: adminId, action: "moderation.private_reports_viewed", createdAt: { gt: new Date(Date.now() - 60 * 60_000) } },
+    select: { id: true },
+  });
+  if (!recent) await audit(adminId, "moderation.private_reports_viewed", "ContentReport", null, { reportedChatMessages: count });
 }
 
 export async function listReports(status: "OPEN" | "ACTIONED" | "DISMISSED" = "OPEN") {

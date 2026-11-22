@@ -9,6 +9,9 @@ generator client {
   // No native query-engine DLL is generated (it crashes on some Windows
   // builds and gets locked by running processes).
   engineType = "client"
+  // Loads related records (user + profile, group + members, ...) in ONE SQL
+  // query with JOINs instead of one query per relation: fewer database round trips.
+  previewFeatures = ["relationJoins"]
 }
 
 datasource db {
@@ -901,8 +904,17 @@ model GroupChannel {
   @@unique([groupId, name])
 }
 
+/// USER: written by a member. SYSTEM: written by the site itself to record a
+/// membership change ("X joined the group"); it has no author and cannot be
+/// edited, deleted, answered or reported.
+enum ChatMessageKind {
+  USER
+  SYSTEM
+}
+
 model ChatMessage {
-  id        String    @id @default(cuid())
+  id        String          @id @default(cuid())
+  kind      ChatMessageKind @default(USER)
   channelId String
   authorId  String?
   // Client-generated id: makes resends after a reconnect idempotent.

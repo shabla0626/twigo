@@ -3,9 +3,12 @@
 import type { Prisma, PrismaClient } from "@prisma/client";
 import { hasCommunityAccess } from "../lib/auth/session-core";
 
-export type ChatAuthor = { id: string; name: string };
+/** `staff`: the author is an owner or administrator (shown as a label, so members always know). */
+export type ChatAuthor = { id: string; name: string; staff: boolean };
 export type ChatMessageDTO = {
   id: string;
+  /** SYSTEM lines record membership changes; they have no author. */
+  kind: "USER" | "SYSTEM";
   channelId: string;
   clientId: string | null;
   body: string;
@@ -17,7 +20,23 @@ export type ChatMessageDTO = {
   attachments: { id: string; name: string; mimeType: string; size: number }[];
 };
 
-export type ChannelAccess = { channelId: string; groupId: string; groupSlug: string; canPost: boolean };
+export type ChannelAccess = {
+  channelId: string;
+  groupId: string;
+  groupSlug: string;
+  canPost: boolean;
+  /**
+   * Owners and administrators take part in groups like any member, but their
+   * role gives them no view into conversations from before they joined: for
+   * them the chat begins at this moment. null = no limit (ordinary members).
+   */
+  historyFrom: Date | null;
+};
+
+/** The earliest message a person may see in a group chat (see ChannelAccess.historyFrom). */
+export function chatBoundary(role: string, joinedAt: Date): Date | null {
+  return role === "OWNER" || role === "ADMIN" ? joinedAt : null;
+}
 
 /** Active org member + active group member + group not suspended. Archived groups are read-only. */
 export async function channelAccess(db: PrismaClient, userId: string, channelId: string): Promise<ChannelAccess | null> {
@@ -27,57 +46,83 @@ export async function channelAccess(db: PrismaClient, userId: string, channelId:
   });
   if (!ch || ch.group.suspendedAt) return null;
   const [m, user] = await Promise.all([
-    db.groupMembership.findUnique({ where: { groupId_userId: { groupId: ch.group.id, userId } }, select: { status: true } }),
+    db.groupMembership.findUnique({ where: { groupId_userId: { groupId: ch.group.id, userId } }, select: { status: true, joinedAt: true } }),
     db.user.findUnique({ where: { id: userId }, select: { status: true, role: true, emailVerifiedAt: true, membershipStatus: true } }),
   ]);
   if (m?.status !== "ACTIVE" || !user || !hasCommunityAccess({ status: user.status, role: user.role, emailVerified: Boolean(user.emailVerifiedAt), membership: user.membershipStatus })) return null;
-  return { channelId: ch.id, groupId: ch.group.id, groupSlug: ch.group.slug, canPost: ch.group.status !== "ARCHIVED" };
+  return { channelId: ch.id, groupId: ch.group.id, groupSlug: ch.group.slug, canPost: ch.group.status !== "ARCHIVED", historyFrom: chatBoundary(user.role, m.joinedAt) };
 }
 
 const include = {
-  author: { select: { id: true, profile: { select: { displayName: true } } } },
-  replyTo: { select: { id: true, body: true, deletedAt: true, author: { select: { profile: { select: { displayName: true } } } } } },
+  author: { select: { id: true, role: true, profile: { select: { displayName: true } } } },
+  replyTo: { select: { id: true, body: true, deletedAt: true, createdAt: true, author: { select: { profile: { select: { displayName: true } } } } } },
   attachments: { where: { deletedAt: null }, select: { id: true, originalName: true, mimeType: true, size: true } },
 } satisfies Prisma.ChatMessageInclude;
 
 type Row = Prisma.ChatMessageGetPayload<{ include: typeof include }>;
 
-export function toDTO(m: Row): ChatMessageDTO {
+/**
+ * `visibleFrom`: the reader's history boundary. A reply quotes the message it
+ * answers; when that message is older than the boundary the quote is withheld.
+ */
+export function toDTO(m: Row, visibleFrom: Date | null = null): ChatMessageDTO {
   const deleted = Boolean(m.deletedAt);
+  const quoteHidden = Boolean(m.replyTo && visibleFrom && m.replyTo.createdAt < visibleFrom);
   return {
     id: m.id,
+    kind: m.kind,
     channelId: m.channelId,
     clientId: m.clientId,
     body: deleted ? "" : m.body,
     deleted,
     editedAt: m.editedAt?.toISOString() ?? null,
     createdAt: m.createdAt.toISOString(),
-    author: m.author ? { id: m.author.id, name: m.author.profile?.displayName ?? "Member" } : null,
+    author: m.author ? { id: m.author.id, name: m.author.profile?.displayName ?? "Member", staff: m.author.role !== "MEMBER" } : null,
     replyTo: m.replyTo
       ? {
           id: m.replyTo.id,
-          authorName: m.replyTo.author?.profile?.displayName ?? "Member",
-          excerpt: m.replyTo.deletedAt ? "(deleted message)" : m.replyTo.body.slice(0, 140),
+          authorName: quoteHidden ? "" : (m.replyTo.author?.profile?.displayName ?? "Member"),
+          excerpt: quoteHidden ? "(a message from before you joined)" : m.replyTo.deletedAt ? "(deleted message)" : m.replyTo.body.slice(0, 140),
         }
       : null,
     attachments: deleted ? [] : m.attachments.map((a) => ({ id: a.id, name: a.originalName, mimeType: a.mimeType, size: a.size })),
   };
 }
 
-export async function history(db: PrismaClient, channelId: string, before?: string | null, take = 50) {
+/** One page of messages, newest last. `from`: nothing older than this is returned (ChannelAccess.historyFrom). */
+export async function history(db: PrismaClient, channelId: string, before?: string | null, take = 50, from: Date | null = null) {
   let cursorDate: Date | undefined;
   if (before) {
     const ref = await db.chatMessage.findUnique({ where: { id: before }, select: { createdAt: true, channelId: true } });
     if (ref && ref.channelId === channelId) cursorDate = ref.createdAt;
   }
   const rows = await db.chatMessage.findMany({
-    where: { channelId, ...(cursorDate ? { createdAt: { lt: cursorDate } } : {}) },
+    where: { channelId, ...(cursorDate || from ? { createdAt: { ...(cursorDate ? { lt: cursorDate } : {}), ...(from ? { gte: from } : {}) } } : {}) },
     orderBy: [{ createdAt: "desc" }, { id: "desc" }],
     take: take + 1,
     include,
   });
   const page = rows.slice(0, take).reverse();
-  return { messages: page.map((r) => toDTO(r)), hasMore: rows.length > take };
+  return { messages: page.map((r) => toDTO(r, from)), hasMore: rows.length > take };
+}
+
+/** One message as a given reader may see it, or null when it lies before their boundary. */
+export async function messageFor(db: PrismaClient, messageId: string, visibleFrom: Date | null): Promise<ChatMessageDTO | null> {
+  const m = await db.chatMessage.findUnique({ where: { id: messageId }, include });
+  if (!m || (visibleFrom && m.createdAt < visibleFrom)) return null;
+  return toDTO(m, visibleFrom);
+}
+
+/**
+ * Writes a SYSTEM line into the group's chat (inside the transaction that makes
+ * the membership change, so the two can never disagree). Returns the message
+ * id; publish { t: "chat.system", messageId } after the transaction commits.
+ */
+export async function writeSystemLine(tx: Prisma.TransactionClient, groupId: string, body: string): Promise<string | null> {
+  const channel = await tx.groupChannel.findFirst({ where: { groupId, isDefault: true }, select: { id: true } });
+  if (!channel) return null;
+  const m = await tx.chatMessage.create({ data: { channelId: channel.id, kind: "SYSTEM", authorId: null, clientId: null, body: body.slice(0, 300) } });
+  return m.id;
 }
 
 export type SendInput = { channelId: string; body: string; clientId: string; replyToId?: string | null; attachmentIds: string[] };
@@ -93,8 +138,9 @@ export async function sendMessage(db: PrismaClient, userId: string, access: Chan
 
   let replyToId: string | null = null;
   if (input.replyToId) {
-    const r = await db.chatMessage.findUnique({ where: { id: input.replyToId }, select: { channelId: true } });
-    if (r?.channelId === access.channelId) replyToId = input.replyToId;
+    const r = await db.chatMessage.findUnique({ where: { id: input.replyToId }, select: { channelId: true, kind: true, createdAt: true } });
+    // Only real messages the sender can see may be answered.
+    if (r?.channelId === access.channelId && r.kind === "USER" && !(access.historyFrom && r.createdAt < access.historyFrom)) replyToId = input.replyToId;
   }
   if (input.attachmentIds.length) {
     const files = await db.storedFile.findMany({
@@ -127,7 +173,7 @@ export async function sendMessage(db: PrismaClient, userId: string, access: Chan
 export async function editMessage(db: PrismaClient, userId: string, access: ChannelAccess, messageId: string, body: string) {
   if (!access.canPost) return { ok: false as const, error: "This group is archived." };
   const m = await db.chatMessage.findUnique({ where: { id: messageId } });
-  if (!m || m.channelId !== access.channelId || m.authorId !== userId || m.deletedAt) return { ok: false as const, error: "You can only edit your own messages." };
+  if (!m || m.kind !== "USER" || m.channelId !== access.channelId || m.authorId !== userId || m.deletedAt) return { ok: false as const, error: "You can only edit your own messages." };
   if (!body) return { ok: false as const, error: "A message cannot be empty." };
   const updated = await db.chatMessage.update({ where: { id: messageId }, data: { body, editedAt: new Date() }, include });
   return { ok: true as const, message: toDTO(updated) };
@@ -136,7 +182,7 @@ export async function editMessage(db: PrismaClient, userId: string, access: Chan
 /** Soft delete. Content is hidden at once and purged after the retention period. */
 export async function deleteMessage(db: PrismaClient, userId: string, access: ChannelAccess, messageId: string) {
   const m = await db.chatMessage.findUnique({ where: { id: messageId } });
-  if (!m || m.channelId !== access.channelId || m.authorId !== userId || m.deletedAt) return { ok: false as const, error: "You can only delete your own messages." };
+  if (!m || m.kind !== "USER" || m.channelId !== access.channelId || m.authorId !== userId || m.deletedAt) return { ok: false as const, error: "You can only delete your own messages." };
   const updated = await db.chatMessage.update({ where: { id: messageId }, data: { deletedAt: new Date() }, include });
   await db.storedFile.updateMany({ where: { messageId }, data: { deletedAt: new Date() } });
   return { ok: true as const, message: toDTO(updated) };

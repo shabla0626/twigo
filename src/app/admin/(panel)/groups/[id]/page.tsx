@@ -25,11 +25,12 @@ export default async function GroupAdminDetail({ params, searchParams }: Props) 
     },
   });
   if (!g) notFound();
-  // Business-proposal review: the PLAN / CONCEPT / REVENUE / RISKS notes are
-  // shown only once the group asked for review (READY_FOR_REVIEW or later).
+  // Business-proposal review: ONLY the PLAN / CONCEPT / REVENUE / RISKS notes, and
+  // only once the group asked for review (READY_FOR_REVIEW or later). The group's
+  // other notes, its chat, meetings and files are never shown here.
   const reviewing = g.status === "READY_FOR_REVIEW" || g.status === "APPROVED_FOR_PROJECT";
   const proposal = reviewing
-    ? await db.researchNote.findMany({ where: { groupId: g.id }, orderBy: [{ section: "asc" }, { updatedAt: "desc" }], select: { id: true, section: true, title: true, body: true, updatedAt: true } })
+    ? await db.researchNote.findMany({ where: { groupId: g.id, section: { in: ["PLAN", "CONCEPT", "REVENUE", "RISKS"] } }, orderBy: [{ section: "asc" }, { updatedAt: "desc" }], select: { id: true, section: true, title: true, body: true, updatedAt: true } })
     : [];
   const active = g.memberships.filter((m) => m.status === "ACTIVE");
   return (

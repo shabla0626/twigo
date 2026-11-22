@@ -4,7 +4,7 @@ import { Badge, buttonClass } from "@/components/ui/primitives";
 import { requireAdmin } from "@/lib/auth/guard";
 import { can } from "@/lib/auth/permissions";
 import { REPORT_REASONS } from "@/lib/validation/community";
-import { listReports } from "@/server/community/reports";
+import { listReports, recordPrivateReportView } from "@/server/community/reports";
 import { moderateAction } from "../../actions/community";
 
 type Props = { searchParams: Promise<Record<string, string | undefined>> };
@@ -16,6 +16,7 @@ export default async function ReportsPage({ searchParams }: Props) {
   const sp = await searchParams;
   const status = sp.status === "ACTIONED" || sp.status === "DISMISSED" ? sp.status : "OPEN";
   const reports = await listReports(status);
+  await recordPrivateReportView(admin.id, reports);
   return (
     <>
       <AdminHeader

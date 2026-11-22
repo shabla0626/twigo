@@ -38,6 +38,6 @@ export const groupUnread = cache(async (groupId: string, userId: string) => {
   if (!channel) return 0;
   const read = await db.channelReadState.findUnique({ where: { channelId_userId: { channelId: channel.id, userId } }, select: { lastReadAt: true } });
   return db.chatMessage.count({
-    where: { channelId: channel.id, deletedAt: null, authorId: { not: userId }, createdAt: { gt: read?.lastReadAt ?? new Date(0) } },
+    where: { channelId: channel.id, kind: "USER", deletedAt: null, authorId: { not: userId }, createdAt: { gt: read?.lastReadAt ?? new Date(0) } },
   });
 });

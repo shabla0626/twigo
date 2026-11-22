@@ -4,6 +4,7 @@ import { db } from "@/lib/db";
 import { ACTIVE_MEMBER } from "@/lib/auth/member-where";
 import { audit } from "@/lib/audit";
 import { publishRealtime } from "@/lib/realtime-events";
+import { writeSystemLine } from "@/realtime/chat-service";
 import { activeMemberIds, groupAccess, requireCoordinator } from "./access";
 import { notify } from "./notifications";
 import { COORDINATOR_STATUSES, GROUP_STATUS_LABELS } from "./group-labels";
@@ -114,7 +115,7 @@ export async function myGroups(userId: string) {
       const ch = m.group.channels[0];
       const unread = ch
         ? await db.chatMessage.count({
-            where: { channelId: ch.id, deletedAt: null, authorId: { not: userId }, createdAt: { gt: readMap.get(ch.id) ?? new Date(0) } },
+            where: { channelId: ch.id, kind: "USER", deletedAt: null, authorId: { not: userId }, createdAt: { gt: readMap.get(ch.id) ?? new Date(0) } },
           })
         : 0;
       return { role: m.role, group: m.group, unread };
@@ -131,12 +132,27 @@ export async function getGroupOverview(slug: string) {
       memberships: {
         where: { status: "ACTIVE" },
         orderBy: [{ role: "asc" }, { joinedAt: "asc" }],
-        select: { role: true, joinedAt: true, founding: true, user: { select: { id: true, profile: { select: { displayName: true, headline: true } } } } },
+        select: { role: true, joinedAt: true, founding: true, user: { select: { id: true, role: true, profile: { select: { displayName: true, headline: true } } } } },
       },
       announcements: { orderBy: { createdAt: "desc" }, take: 5, include: { author: { select: { profile: { select: { displayName: true } } } } } },
       project: { select: { id: true, title: true, status: true } },
     },
   });
+}
+
+/**
+ * How a person is named in a chat line. Owners and administrators are marked,
+ * so members always know when staff enters or leaves their group.
+ */
+async function nameInChat(tx: Prisma.TransactionClient, userId: string): Promise<string> {
+  const u = await tx.user.findUnique({ where: { id: userId }, select: { role: true, profile: { select: { displayName: true } } } });
+  const name = u?.profile?.displayName ?? "A member";
+  return u && u.role !== "MEMBER" ? `${name} (administrator)` : name;
+}
+
+/** Shows chat lines written during a transaction to the people who have the chat open (call after it committed). */
+async function publishLines(ids: (string | null | undefined)[]) {
+  for (const messageId of ids) if (messageId) await publishRealtime(db, { t: "chat.system", messageId });
 }
 
 /** PostgreSQL deadlock (40P01) or serialization failure (40001): the whole transaction can safely run again. */
@@ -173,8 +189,8 @@ export async function joinGroup(userId: string, groupId: string) {
     // Re-read under the lock: the situation may have changed since the checks above.
     const g = await tx.researchGroup.findUniqueOrThrow({ where: { id: a.group.id }, select: { status: true, suspendedAt: true } });
     const m = await tx.groupMembership.findUnique({ where: { groupId_userId: { groupId: a.group.id, userId } } });
-    if (g.suspendedAt || g.status === "ARCHIVED" || m?.status === "REMOVED") return false;
-    if (m?.status === "ACTIVE") return true;
+    if (g.suspendedAt || g.status === "ARCHIVED" || m?.status === "REMOVED") return { ok: false as const };
+    if (m?.status === "ACTIVE") return { ok: true as const, line: null };
     await tx.groupMembership.upsert({
       where: { groupId_userId: { groupId: a.group.id, userId } },
       create: { groupId: a.group.id, userId, role: "MEMBER" },
@@ -182,14 +198,20 @@ export async function joinGroup(userId: string, groupId: string) {
     });
     await refreshMemberCount(a.group.id, tx);
     await tx.researchGroup.update({ where: { id: a.group.id }, data: { lastActivityAt: new Date(), adminManaged: false } });
-    return true;
+    // Visible to the whole group, and written together with the change itself.
+    return { ok: true as const, line: await writeSystemLine(tx, a.group.id, `${await nameInChat(tx, userId)} joined the group`) };
   });
-  if (!joined) return { ok: false as const, error: "This group is not available." };
+  if (!joined.ok) return { ok: false as const, error: "This group is not available." };
+  if (joined.line) {
+    await audit(userId, "group.member_joined", "ResearchGroup", a.group.id);
+    await publishLines([joined.line]);
+  }
   await publishRealtime(db, { t: "group.updated", groupId: a.group.id, what: "members" });
   return { ok: true as const };
 }
 
-type Succession = { promoted: string | null; archived: boolean; flagged: boolean };
+/** `line`: id of the chat line that announces the new coordinator (publish it after the transaction). */
+type Succession = { promoted: string | null; archived: boolean; flagged: boolean; line?: string | null };
 
 /**
  * Coordinator succession (see docs/ARCHITECTURE.md). Must run under the group lock.
@@ -213,7 +235,8 @@ async function ensureCoordinator(tx: Prisma.TransactionClient, groupId: string):
   if (next) {
     await tx.groupMembership.update({ where: { id: next.id }, data: { role: "COORDINATOR" } });
     await tx.researchGroup.update({ where: { id: groupId }, data: { adminManaged: false } });
-    return { promoted: next.userId, archived: false, flagged: false };
+    const line = await writeSystemLine(tx, groupId, `${await nameInChat(tx, next.userId)} is now the coordinator`);
+    return { promoted: next.userId, archived: false, flagged: false, line };
   }
   const remaining = await tx.groupMembership.count({ where: { groupId, status: "ACTIVE" } });
   if (remaining === 0) {
@@ -232,6 +255,7 @@ const SUCCESSION_REASON = {
 
 /** Notifications and audit entries for a succession (after the transaction has committed). */
 async function announceSuccession(groupId: string, outcome: Succession, why: keyof typeof SUCCESSION_REASON) {
+  await publishLines([outcome.line]);
   if (!outcome.promoted && !outcome.archived && !outcome.flagged) return;
   const group = await db.researchGroup.findUniqueOrThrow({ where: { id: groupId }, select: { slug: true, name: true } });
   if (outcome.promoted) {
@@ -256,14 +280,19 @@ async function afterMembershipEnded(groupId: string, userId: string, outcome: Su
 
 /** Voluntary leave. Organization membership is not affected. History stays per retention policy. */
 export async function leaveGroup(userId: string, groupId: string) {
-  const outcome = await withGroupLock(groupId, async (tx) => {
+  const done = await withGroupLock(groupId, async (tx) => {
     const m = await tx.groupMembership.findUnique({ where: { groupId_userId: { groupId, userId } } });
     if (!m || m.status !== "ACTIVE") return null;
     await tx.groupMembership.update({ where: { id: m.id }, data: { status: "LEFT", leftAt: new Date(), role: "MEMBER" } });
     await refreshMemberCount(groupId, tx);
-    return ensureCoordinator(tx, groupId);
+    const line = await writeSystemLine(tx, groupId, `${await nameInChat(tx, userId)} left the group`);
+    return { line, outcome: await ensureCoordinator(tx, groupId) };
   });
-  if (outcome) await afterMembershipEnded(groupId, userId, outcome);
+  if (done) {
+    await audit(userId, "group.member_left", "ResearchGroup", groupId);
+    await publishLines([done.line]);
+    await afterMembershipEnded(groupId, userId, done.outcome);
+  }
   return { ok: true as const };
 }
 
@@ -308,12 +337,13 @@ export async function removeMember(coordinatorId: string, groupId: string, userI
   if (coordinatorId === userId) return { ok: false as const, error: "Use “Leave group” to leave yourself." };
   const removed = await withGroupLock(groupId, async (tx) => {
     const m = await tx.groupMembership.findUnique({ where: { groupId_userId: { groupId, userId } } });
-    if (!m || m.status !== "ACTIVE") return false;
+    if (!m || m.status !== "ACTIVE") return null;
     await tx.groupMembership.update({ where: { id: m.id }, data: { status: "REMOVED", leftAt: new Date(), role: "MEMBER" } });
     await refreshMemberCount(groupId, tx);
-    return true;
+    return { line: await writeSystemLine(tx, groupId, `${await nameInChat(tx, userId)} was removed from the group by the coordinator`) };
   });
   if (!removed) return { ok: false as const, error: "That person is not an active member." };
+  await publishLines([removed.line]);
   await audit(coordinatorId, "group.member_removed", "ResearchGroup", groupId, { userId });
   await afterMembershipEnded(groupId, userId, { promoted: null, archived: false, flagged: false });
   return { ok: true as const };
@@ -325,12 +355,13 @@ export async function transferCoordinator(coordinatorId: string, groupId: string
   const done = await withGroupLock(groupId, async (tx) => {
     const target = await tx.groupMembership.findFirst({ where: { groupId, userId: toUserId, status: "ACTIVE", user: ACTIVE_MEMBER } });
     const mine = await tx.groupMembership.findFirst({ where: { groupId, userId: coordinatorId, status: "ACTIVE", role: "COORDINATOR" } });
-    if (!target || !mine) return false;
+    if (!target || !mine) return null;
     await tx.groupMembership.updateMany({ where: { groupId, role: "COORDINATOR" }, data: { role: "MEMBER" } });
     await tx.groupMembership.update({ where: { id: target.id }, data: { role: "COORDINATOR" } });
-    return true;
+    return { line: await writeSystemLine(tx, groupId, `${await nameInChat(tx, toUserId)} is now the coordinator (handed over by ${await nameInChat(tx, coordinatorId)})`) };
   });
   if (!done) return { ok: false as const, error: "Choose an active member of the group." };
+  await publishLines([done.line]);
   const g = await db.researchGroup.findUniqueOrThrow({ where: { id: groupId }, select: { slug: true, name: true } });
   await notify([toUserId], { type: "COORDINATOR_ASSIGNED", title: `You are now the coordinator of “${g.name}”`, link: `/community/groups/${g.slug}` });
   await audit(coordinatorId, "group.coordinator_transferred", "ResearchGroup", groupId, { to: toUserId });
@@ -392,13 +423,14 @@ export async function adminSetGroupState(adminId: string, groupId: string, actio
 export async function adminAssignCoordinator(adminId: string, groupId: string, userId: string) {
   const done = await withGroupLock(groupId, async (tx) => {
     const m = await tx.groupMembership.findFirst({ where: { groupId, userId, status: "ACTIVE", user: ACTIVE_MEMBER } });
-    if (!m) return false;
+    if (!m) return null;
     await tx.groupMembership.updateMany({ where: { groupId, role: "COORDINATOR" }, data: { role: "MEMBER" } });
     await tx.groupMembership.update({ where: { id: m.id }, data: { role: "COORDINATOR" } });
     await tx.researchGroup.update({ where: { id: groupId }, data: { adminManaged: false } });
-    return true;
+    return { line: await writeSystemLine(tx, groupId, `${await nameInChat(tx, userId)} is now the coordinator (assigned by the organization)`) };
   });
   if (!done) return { ok: false as const, error: "The new coordinator must be an active member of the group who currently has community access." };
+  await publishLines([done.line]);
   const g = await db.researchGroup.findUniqueOrThrow({ where: { id: groupId }, select: { slug: true, name: true } });
   await notify([userId], { type: "COORDINATOR_ASSIGNED", title: `You are now the coordinator of “${g.name}”`, body: "The organization assigned you this role.", link: `/community/groups/${g.slug}` });
   await audit(adminId, "group.coordinator_assigned", "ResearchGroup", groupId, { userId });

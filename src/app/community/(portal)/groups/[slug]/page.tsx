@@ -202,6 +202,7 @@ export default async function GroupOverviewPage({ params, searchParams }: Props)
                     <MemberAvatar name={name} size={30} />
                     <span className="truncate text-ink-900">{name}</span>
                     {m.role === "COORDINATOR" && <Badge tone="success">Coordinator</Badge>}
+                    {m.user.role !== "MEMBER" && <Badge>Administrator</Badge>}
                   </Link>
                 </li>
               );

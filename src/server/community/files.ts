@@ -8,6 +8,7 @@ import { env } from "@/lib/env";
 import { randomToken } from "@/lib/crypto";
 import { rateLimit } from "@/lib/rate-limit";
 import { ALLOWED_DESCRIPTION, safeFileName, sniff } from "@/lib/files/sniff";
+import { chatBoundary } from "@/realtime/chat-service";
 import { groupAccess, requireOpenGroupMember } from "./access";
 
 // Private storage outside /public. Swap this small driver for an
@@ -109,12 +110,31 @@ export async function authorizeDownload(userId: string, fileId: string): Promise
   if (f.scope === "PROFILE_PHOTO" || f.scope === "IDEA_ATTACHMENT") return f;
   if (!f.groupId) return null;
   const a = await groupAccess(f.groupId, userId);
-  return a?.isMember ? f : null;
+  if (!a?.isMember) return null;
+  // Chat attachments belong to the conversation: owners and administrators see
+  // them only from the moment they joined (same rule as the chat itself).
+  if (f.scope === "CHAT_ATTACHMENT") {
+    const from = await chatBoundaryFor(userId, a.membership!.joinedAt);
+    if (from && f.createdAt < from) return null;
+  }
+  return f;
 }
 
-export async function listGroupFiles(groupId: string) {
+/** The chat history boundary of a group member (null for ordinary members). */
+async function chatBoundaryFor(userId: string, joinedAt: Date): Promise<Date | null> {
+  const u = await db.user.findUnique({ where: { id: userId }, select: { role: true } });
+  return u ? chatBoundary(u.role, joinedAt) : joinedAt;
+}
+
+/** Files of a group as `viewerId` may see them (viewer must be an active member; checked by the caller). */
+export async function listGroupFiles(groupId: string, viewerId?: string) {
+  let chatFrom: Date | null = null;
+  if (viewerId) {
+    const m = await db.groupMembership.findUnique({ where: { groupId_userId: { groupId, userId: viewerId } }, select: { joinedAt: true } });
+    chatFrom = m ? await chatBoundaryFor(viewerId, m.joinedAt) : null;
+  }
   return db.storedFile.findMany({
-    where: { groupId, deletedAt: null },
+    where: { groupId, deletedAt: null, ...(chatFrom ? { NOT: { scope: "CHAT_ATTACHMENT", createdAt: { lt: chatFrom } } } : {}) },
     orderBy: { createdAt: "desc" },
     take: 200,
     select: { id: true, originalName: true, mimeType: true, size: true, createdAt: true, scope: true, ownerId: true, owner: { select: { profile: { select: { displayName: true } } } } },

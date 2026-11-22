@@ -20,10 +20,12 @@ import { z } from "zod";
 import { lookupSession, readCookie } from "../lib/auth/session-core";
 import { REALTIME_CHANNEL, type RealtimeEvent } from "../lib/realtime-events";
 import { chatMessageSchema } from "../lib/validation/community";
-import { channelAccess, deleteMessage, editMessage, history, markChannelRead, sendMessage } from "./chat-service";
+import { channelAccess, deleteMessage, editMessage, history, markChannelRead, messageFor, sendMessage, type ChatMessageDTO } from "./chat-service";
 
 type SocketUser = { id: string; name: string };
-type Data = { user: SocketUser; sessionId: string; channels: Map<string, string> /* channelId -> groupId */ };
+/** A joined chat: its group, and the earliest moment this person may see (null = everything; see ChannelAccess.historyFrom). */
+type Joined = { groupId: string; from: Date | null };
+type Data = { user: SocketUser; sessionId: string; channels: Map<string, Joined> };
 
 /** How often an open connection re-checks that its session still exists. */
 const SESSION_RECHECK_MS = 60_000;
@@ -88,6 +90,25 @@ export async function attachRealtime(httpServer: HttpServer, db: PrismaClient, o
     if (!m.size) presence.delete(channelId);
   };
 
+  /**
+   * Sends a message event to everyone in a chat. People with a history boundary
+   * (owners and administrators who joined later) get their own version: a
+   * message from before they joined is not sent at all (for example when it is
+   * edited), and a quote of such a message is withheld.
+   */
+  async function emitToChannel(channelId: string, event: "message:new" | "message:updated", message: ChatMessageDTO) {
+    const created = new Date(message.createdAt);
+    for (const socket of io.sockets.sockets.values()) {
+      const joined = (socket.data as Data).channels?.get(channelId);
+      if (!joined) continue;
+      if (!joined.from) socket.emit(event, message);
+      else if (created >= joined.from) {
+        const own = message.replyTo ? await messageFor(db, message.id, joined.from) : message;
+        if (own) socket.emit(event, own);
+      }
+    }
+  }
+
   function leaveChannel(socket: Socket, channelId: string) {
     const data = socket.data as Data;
     if (!data.channels.has(channelId)) return;
@@ -146,12 +167,12 @@ export async function attachRealtime(httpServer: HttpServer, db: PrismaClient, o
       const access = await channelAccess(db, user.id, p.data.channelId);
       if (!access) return ack({ ok: false, error: "forbidden" });
       if (!data.channels.has(access.channelId)) {
-        data.channels.set(access.channelId, access.groupId);
+        data.channels.set(access.channelId, { groupId: access.groupId, from: access.historyFrom });
         socket.join(`channel:${access.channelId}`);
         socket.join(`group:${access.groupId}`);
         presenceAdd(access.channelId, user.id);
       }
-      const page = await history(db, access.channelId);
+      const page = await history(db, access.channelId, null, 50, access.historyFrom);
       await markChannelRead(db, user.id, access.channelId);
       io.to(`channel:${access.channelId}`).emit("presence", { channelId: access.channelId, userIds: presenceList(access.channelId) });
       ack({ ok: true, canPost: access.canPost, ...page, presence: presenceList(access.channelId) });
@@ -168,7 +189,7 @@ export async function attachRealtime(httpServer: HttpServer, db: PrismaClient, o
       if (!p.success) return ack({ ok: false, error: "invalid" });
       const access = await channelAccess(db, user.id, p.data.channelId);
       if (!access) return ack({ ok: false, error: "forbidden" });
-      ack({ ok: true, ...(await history(db, access.channelId, p.data.before)) });
+      ack({ ok: true, ...(await history(db, access.channelId, p.data.before, 50, access.historyFrom)) });
     });
 
     socket.on("message:send", async (raw: unknown, ackRaw: unknown) => {
@@ -184,7 +205,7 @@ export async function attachRealtime(httpServer: HttpServer, db: PrismaClient, o
       try {
         const res = await sendMessage(db, user.id, access, p.data);
         if (!res.ok) return ack(res);
-        if (!res.duplicate) io.to(`channel:${access.channelId}`).emit("message:new", res.message);
+        if (!res.duplicate) await emitToChannel(access.channelId, "message:new", res.message);
         ack({ ok: true, message: res.message });
       } catch (err) {
         log("realtime.send_failed", { err: String(err) });
@@ -200,7 +221,7 @@ export async function attachRealtime(httpServer: HttpServer, db: PrismaClient, o
       const access = await channelAccess(db, user.id, p.data.channelId);
       if (!access) return ack({ ok: false, error: "forbidden", revoked: true });
       const res = await editMessage(db, user.id, access, p.data.messageId, p.data.body);
-      if (res.ok) io.to(`channel:${access.channelId}`).emit("message:updated", res.message);
+      if (res.ok) await emitToChannel(access.channelId, "message:updated", res.message);
       ack(res);
     });
 
@@ -211,7 +232,7 @@ export async function attachRealtime(httpServer: HttpServer, db: PrismaClient, o
       const access = await channelAccess(db, user.id, p.data.channelId);
       if (!access) return ack({ ok: false, error: "forbidden", revoked: true });
       const res = await deleteMessage(db, user.id, access, p.data.messageId);
-      if (res.ok) io.to(`channel:${access.channelId}`).emit("message:updated", res.message);
+      if (res.ok) await emitToChannel(access.channelId, "message:updated", res.message);
       ack(res);
     });
 
@@ -254,10 +275,16 @@ export async function attachRealtime(httpServer: HttpServer, db: PrismaClient, o
           if (ev.userId && d.user.id !== ev.userId) continue;
           const local = io.sockets.sockets.get(remote.id);
           if (!local) continue;
-          for (const [channelId, groupId] of [...d.channels]) if (groupId === ev.groupId) leaveChannel(local, channelId);
+          for (const [channelId, joined] of [...d.channels]) if (joined.groupId === ev.groupId) leaveChannel(local, channelId);
           local.leave(`group:${ev.groupId}`);
           local.emit("access:revoked", { groupId: ev.groupId });
         }
+        break;
+      }
+      case "chat.system": {
+        // A membership change was written into a chat: show the line to the people who have it open.
+        const m = await messageFor(db, ev.messageId, null);
+        if (m) await emitToChannel(m.channelId, "message:new", m);
         break;
       }
       case "notifications.changed": {

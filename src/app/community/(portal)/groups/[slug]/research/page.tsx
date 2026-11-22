@@ -34,7 +34,7 @@ export default async function ResearchPage({ params }: { params: Promise<{ slug:
   const { slug } = await params;
   const { user, group, isMember, isCoordinator, isOpen } = await loadGroupPage(slug);
   if (!isMember) return <MembersOnly groupId={group.id} what="Shared research" canJoin={isOpen} />;
-  const [ws, memberIds, files] = await Promise.all([getWorkspace(group.id, user.id), activeMemberIds(group.id), listGroupFiles(group.id)]);
+  const [ws, memberIds, files] = await Promise.all([getWorkspace(group.id, user.id), activeMemberIds(group.id), listGroupFiles(group.id, user.id)]);
   const members = await db.memberProfile.findMany({ where: { userId: { in: memberIds } }, select: { userId: true, displayName: true }, orderBy: { displayName: "asc" } });
   const sections = (Object.keys(RESEARCH_SECTIONS) as ResearchSectionKey[]).filter((k) => ws.notes.some((n) => n.section === k));
 
