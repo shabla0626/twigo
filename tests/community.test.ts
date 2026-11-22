@@ -432,7 +432,9 @@ describe("backup and restore", () => {
     expect(r.ok).toBe(true);
     expect(r.tables.find((t) => t.name === "GroupMembership")?.restored).toBe(3);
     rmSync(dir, { recursive: true, force: true });
-  });
+    // Creating a database and applying every migration takes a few seconds on a quiet machine
+    // and much longer on a busy one; the default limit of 30 seconds was reached once under load.
+  }, 180_000);
 });
 
 describe("realtime server", () => {

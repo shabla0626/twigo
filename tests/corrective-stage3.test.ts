@@ -100,8 +100,13 @@ describe("P3-1, P3-2, P3-6 to P3-10: small visible corrections are in place", ()
     expect(source("src/app/community/(portal)/ideas/[id]/page.tsx")).toContain("Every approved member can read and answer them");
   });
 
-  it("the chat file button has a name, and the two admin links are underlined", () => {
-    expect(source("src/components/community/chat.tsx")).toContain('<label htmlFor="chat-file" className="sr-only">');
+  it("the chat offers ONE named control for attaching a file, and the two admin links are underlined", () => {
+    const chat = source("src/components/community/chat.tsx");
+    // The file field itself is hidden from keyboard and screen readers; the named button opens it.
+    expect(chat).toMatch(/id="chat-file" tabIndex=\{-1\} aria-hidden="true"/);
+    expect(chat).toContain('aria-label="Attach a file"');
+    // Nothing else on the page is called "Message", so the message box can be found by its name.
+    expect(chat.match(/[Mm]essage\s*<\/label>/g)).toHaveLength(1);
     expect(source("src/app/admin/(panel)/inquiries/page.tsx")).toMatch(/mailto:\$\{q\.email\}`\} className="text-accent-700 underline/);
     expect(source("src/app/admin/(panel)/privacy/page.tsx")).toMatch(/href="\/admin\/applications" className="text-accent-700 underline/);
   });

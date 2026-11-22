@@ -445,10 +445,9 @@ export function GroupChat({ channelId, groupId, me, members }: { channelId: stri
               </ul>
             )}
             <div className="flex items-end gap-2">
-              <label htmlFor="chat-file" className="sr-only">
-                Attach a file to your message
-              </label>
-              <input ref={fileRef} type="file" className="sr-only" id="chat-file" onChange={(e) => e.target.files?.[0] && void attach(e.target.files[0])} />
+              {/* Not a control of its own: the "Attach a file" button next to it opens it. Hidden from
+                  keyboard and screen readers, so the same action is not offered twice. */}
+              <input ref={fileRef} type="file" className="hidden" id="chat-file" tabIndex={-1} aria-hidden="true" onChange={(e) => e.target.files?.[0] && void attach(e.target.files[0])} />
               <button
                 type="button"
                 onClick={() => fileRef.current?.click()}

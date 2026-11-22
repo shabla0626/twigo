@@ -71,7 +71,11 @@ async function crawlRole(ctxDesk: BrowserContext, ctxPhone: BrowserContext, role
     const t0 = Date.now();
     let status: number | null = null;
     try {
-      const res = await page.goto(`${BASE}${path}`, { waitUntil: "networkidle", timeout: 30000 });
+      // "load", then a short settle. Not "networkidle": on a repeat visit the browser refreshes its
+      // cached copies of the static public pages in the background, and the test tooling never
+      // reports the end of those refreshes, so "networkidle" can wait forever on a finished page.
+      const res = await page.goto(`${BASE}${path}`, { waitUntil: "load", timeout: 30000 });
+      await page.waitForLoadState("networkidle", { timeout: 4000 }).catch(() => {});
       status = res?.status() ?? null;
     } catch (e) {
       errors.push(`navigation: ${(e as Error).message.slice(0, 120)}`);
@@ -95,7 +99,8 @@ async function crawlRole(ctxDesk: BrowserContext, ctxPhone: BrowserContext, role
       const safe = `${role.key}${pattern(final).replace(/[^a-z0-9]+/gi, "_")}`.slice(0, 120);
       await page.screenshot({ path: `${OUT}/desk/${safe}.png`, fullPage: true }).catch(() => {});
       try {
-        await phone.goto(`${BASE}${final}`, { waitUntil: "networkidle", timeout: 30000 });
+        await phone.goto(`${BASE}${final}`, { waitUntil: "load", timeout: 30000 });
+        await phone.waitForLoadState("networkidle", { timeout: 4000 }).catch(() => {});
         overflowPx = await phone.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
         await phone.screenshot({ path: `${OUT}/phone/${safe}.png`, fullPage: true });
       } catch {}

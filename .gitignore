@@ -13,6 +13,7 @@ next-env.d.ts
 /backups/
 /storage/
 test-results/
+test-results-failed-*/
 playwright-report/
 .dev-mail/
 .next-e2e/
