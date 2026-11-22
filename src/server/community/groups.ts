@@ -4,7 +4,7 @@ import { db } from "@/lib/db";
 import { ACTIVE_MEMBER } from "@/lib/auth/member-where";
 import { audit } from "@/lib/audit";
 import { publishRealtime } from "@/lib/realtime-events";
-import { writeSystemLine } from "@/realtime/chat-service";
+import { chatBoundary, writeSystemLine } from "@/realtime/chat-service";
 import { activeMemberIds, groupAccess, requireCoordinator } from "./access";
 import { notify } from "./notifications";
 import { COORDINATOR_STATUSES, GROUP_STATUS_LABELS } from "./group-labels";
@@ -105,17 +105,21 @@ export async function myGroups(userId: string) {
   const memberships = await db.groupMembership.findMany({
     where: { userId, status: "ACTIVE", group: { suspendedAt: null } },
     orderBy: { group: { lastActivityAt: "desc" } },
-    select: { role: true, group: { select: { ...cardSelect, channels: { where: { isDefault: true }, select: { id: true } } } } },
+    select: { role: true, joinedAt: true, group: { select: { ...cardSelect, channels: { where: { isDefault: true }, select: { id: true } } } } },
   });
+  const person = await db.user.findUnique({ where: { id: userId }, select: { role: true } });
   const channelIds = memberships.flatMap((m) => m.group.channels.map((c) => c.id));
   const reads = await db.channelReadState.findMany({ where: { userId, channelId: { in: channelIds } } });
   const readMap = new Map(reads.map((r) => [r.channelId, r.lastReadAt]));
   return Promise.all(
     memberships.map(async (m) => {
       const ch = m.group.channels[0];
+      // Never count messages the person cannot see (owners and administrators: nothing from before they joined).
+      const boundary = person ? chatBoundary(person.role, m.joinedAt) : null;
+      const since = ch ? new Date(Math.max(readMap.get(ch.id)?.getTime() ?? 0, boundary?.getTime() ?? 0)) : new Date(0);
       const unread = ch
         ? await db.chatMessage.count({
-            where: { channelId: ch.id, kind: "USER", deletedAt: null, authorId: { not: userId }, createdAt: { gt: readMap.get(ch.id) ?? new Date(0) } },
+            where: { channelId: ch.id, kind: "USER", deletedAt: null, authorId: { not: userId }, createdAt: { gt: since } },
           })
         : 0;
       return { role: m.role, group: m.group, unread };

@@ -1,3 +1,4 @@
+import { chatBoundary } from "@/realtime/chat-service";
 import "server-only";
 import { cache } from "react";
 import { notFound } from "next/navigation";
@@ -36,8 +37,14 @@ export const groupOverview = cache((slug: string) => getGroupOverview(slug));
 export const groupUnread = cache(async (groupId: string, userId: string) => {
   const channel = await groupChannel(groupId);
   if (!channel) return 0;
-  const read = await db.channelReadState.findUnique({ where: { channelId_userId: { channelId: channel.id, userId } }, select: { lastReadAt: true } });
+  const [read, membership, person] = await Promise.all([
+    db.channelReadState.findUnique({ where: { channelId_userId: { channelId: channel.id, userId } }, select: { lastReadAt: true } }),
+    db.groupMembership.findUnique({ where: { groupId_userId: { groupId, userId } }, select: { joinedAt: true } }),
+    db.user.findUnique({ where: { id: userId }, select: { role: true } }),
+  ]);
+  const boundary = membership && person ? chatBoundary(person.role, membership.joinedAt) : null;
+  const since = new Date(Math.max(read?.lastReadAt.getTime() ?? 0, boundary?.getTime() ?? 0));
   return db.chatMessage.count({
-    where: { channelId: channel.id, kind: "USER", deletedAt: null, authorId: { not: userId }, createdAt: { gt: read?.lastReadAt ?? new Date(0) } },
+    where: { channelId: channel.id, kind: "USER", deletedAt: null, authorId: { not: userId }, createdAt: { gt: since } },
   });
 });

@@ -34,24 +34,32 @@ async function main() {
   const member = await (await browser.newContext({ viewport: { width: 1280, height: 860 } })).newPage();
   const owner = await (await browser.newContext({ viewport: { width: 1280, height: 860 } })).newPage();
 
+  // Start clean: the owner must not be a member yet.
+  await signIn(owner, DEMO.ownerEmail, true);
+  await owner.goto(`${BASE}${GROUP}`);
+  if (!(await owner.getByRole("button", { name: "Join group" }).count())) {
+    await owner.getByRole("button", { name: "Leave group" }).first().click();
+    await owner.getByRole("button", { name: "Yes, leave group" }).click();
+    await owner.waitForURL(/left=1/);
+  }
+
   await signIn(member, "maya@demo.test");
   await member.goto(`${BASE}${GROUP}/chat`);
   await member.getByPlaceholder(/message/i).first().waitFor({ timeout: 20000 });
-  await member.getByPlaceholder(/message/i).first().fill("Private note written before any administrator joined.");
+  const NOTE = `Earlier private note ${new Date().toISOString().slice(11, 19)}`;
+  await member.getByPlaceholder(/message/i).first().fill(NOTE);
   await member.keyboard.press("Enter");
-  await member.getByText("Private note written before any administrator joined.").first().waitFor();
+  await member.getByText(NOTE).first().waitFor();
+  await member.waitForTimeout(1500);
   const before = await chatTexts(member);
   say("member sees the chat before the owner joins (messages)", before.length);
 
-  await signIn(owner, DEMO.ownerEmail, true);
   await owner.goto(`${BASE}${GROUP}`);
-  if (await owner.getByRole("button", { name: "Join group" }).count()) {
-    await owner.getByRole("button", { name: "Join group" }).first().click();
-    await owner.waitForURL(/joined=1/);
-  }
+  await owner.getByRole("button", { name: "Join group" }).first().click();
+  await owner.waitForURL(/joined=1/);
 
   // The member's open chat shows the line without reloading.
-  await member.getByText(/Demo Owner \(administrator\) joined the group/).first().waitFor({ timeout: 10000 });
+  await member.getByText(/Demo Owner \(administrator\) joined the group/).last().waitFor({ timeout: 10000 });
   say("member sees live", (await chatTexts(member)).filter((t) => /joined the group/.test(t)).map((t) => t.replace(/\s+/g, " ").trim()));
   await member.screenshot({ path: `${OUT}/stage1-01-member-sees-administrator-join.png` });
 
@@ -59,7 +67,8 @@ async function main() {
   await owner.getByText(/Demo Owner \(administrator\) joined the group/).first().waitFor({ timeout: 20000 });
   const ownerSees = (await chatTexts(owner)).map((t) => t.replace(/\s+/g, " ").trim());
   say("owner sees in the chat", ownerSees);
-  say("owner sees the earlier private note", ownerSees.some((t) => t.includes("Private note written before")));
+  say("owner sees the earlier private note", ownerSees.some((t) => t.includes(NOTE)));
+  say("member still sees it", (await chatTexts(member)).some((t) => t.includes(NOTE)));
   say("owner is offered 'Load earlier messages'", await owner.getByRole("button", { name: "Load earlier messages" }).count());
   await owner.screenshot({ path: `${OUT}/stage1-02-administrator-sees-chat-only-from-joining.png` });
 

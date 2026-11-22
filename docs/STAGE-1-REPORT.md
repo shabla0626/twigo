@@ -10,21 +10,21 @@ Date: 22 November 2026. Plan: `docs/CORRECTIVE-IMPLEMENTATION-PLAN.md`, section 
 |---|---|
 | Type check | 0 errors |
 | Lint | 0 errors, 0 warnings |
-| Automated tests | **194 passed** (134 existing + 60 new), 12 skipped (the old audit probes, by design) |
-| Browser tests on a production build | **21 passed** |
+| Automated tests | **195 passed** (134 existing + 61 new), 12 skipped (the old audit probes, by design) |
+| Browser tests on a production build | **21 passed** (run twice: after the last finding, and again after the two follow-up fixes in section 4) |
 | Two-browser check of the chat change on the demo site | Passed (section 4) |
 | Spoofed-address sign-in check | Before: 0 of 25 blocked. Now: blocked as soon as the limit of 20 is reached |
 | Three real production starts with wrong settings | All refused with a clear reason |
 | Development database after the two migrations | Identical to the rehearsed copy: 46 tables, 238 rows, 0 differences |
 
-**One irregularity.** In one of four full test runs, the existing test "simultaneous endorsements create exactly one group" failed once. It passed in 9 runs on its own, in the 3 other full runs, and in 40 stress rounds written to catch it. I could not capture its error. It matches the audit's suspected finding P2-12 (a notification clash after simultaneous endorsements), which is scheduled for Stage 2 and will get a permanent stress test there. It is not caused by a file changed in this stage as far as I can tell, but I cannot prove that.
+**One irregularity.** In one of five full test runs, the existing test "simultaneous endorsements create exactly one group" failed once. It passed in 9 runs on its own, in the 4 other full runs, and in 40 stress rounds written to catch it. I could not capture its error. It matches the audit's suspected finding P2-12 (a notification clash after simultaneous endorsements), which is scheduled for Stage 2 and will get a permanent stress test there. It is not caused by a file changed in this stage as far as I can tell, but I cannot prove that.
 
 ## 2. What was corrected
 
 | Finding | Correction | Evidence |
 |---|---|---|
 | **P0-1** Placeholder owner without two-step verification | Production starts from an empty database with one owner; a production start is refused while an active owner or administrator has a test address, or no owner exists. The command-line admin tool no longer changes an existing account silently (`--promote` required). The development database was not touched | 6 tests; a real production start against the development database was refused: "1 administrator account(s) use a test address (owner at @example.test)" |
-| **P1-1** Administrators could read any group chat unseen | Every join, leave, removal and coordinator change is a line in the group chat and (joins, leaves) an audit entry. Staff are labelled "Administrator". For an owner or administrator the chat begins when they joined: no earlier history, no pushes of earlier messages when edited, no quotes of them, no reply to or report of them, no download of their attachments. Looking at reported chat messages is audited. The admin review page shows proposal notes only | 11 tests; two-browser check; screenshots |
+| **P1-1** Administrators could read any group chat unseen | Every join, leave, removal and coordinator change is a line in the group chat and (joins, leaves) an audit entry. Staff are labelled "Administrator". For an owner or administrator the chat begins when they joined: no earlier history, no pushes of earlier messages when edited, no quotes of them, no reply to or report of them, no download of their attachments. Looking at reported chat messages is audited. The admin review page shows proposal notes only | 12 tests; two-browser check; screenshots |
 | **P1-2** Chat kept working after sign-out | Sessions are ended in one place, which tells the chat server; matching connections close and the browser goes to the sign-in page. The session is also re-checked before every chat action and once a minute | 5 tests, including a missed-signal case |
 | **P1-3** Attempt limits could be bypassed or lock everyone out | The server works out each visitor's address itself; headers sent by the visitor are never used. New setting `TRUSTED_PROXY_HOPS` for hosting behind a proxy | 6 tests; browser check |
 | **P1-4** An administrator could deactivate or reactivate the owner | One server-side rule for suspend, reactivate, deactivate and community access: only the owner may act on staff accounts. Nobody can change their own account from the admin area | 4 tests |
@@ -58,7 +58,14 @@ Files in `docs/corrective-screenshots/`:
 | `stage1-03-member-list-labels-administrator.png` | The member list labels the owner "Administrator" |
 | `stage1-04-member-sees-administrator-leave.png` | The member sees "Demo Owner (administrator) left the group" live |
 
-In the first run the owner did not see a private note the member had written just before the owner joined. (In the second run the owner was already a member, so the note written then is rightly visible to them.)
+The check: a member writes a note in the group chat; the owner then joins. Result: the member sees 10 messages, the join line and their note; the owner sees only the join line, and not the note.
+
+**Two things I found while reviewing this evidence, and fixed:**
+
+- The member list beside the chat did not show the "Administrator" label (the overview and members pages did). It does now.
+- The unread badge counted messages from before the administrator joined. It showed a number for messages they cannot open, which revealed that earlier messages exist. It now starts at the joining time (one more test).
+
+My first set of screenshots was also misleading: it came from a second run in which the owner was already a member, so a note written during that run was rightly visible. I changed the check to always start with the owner outside the group and retook all four screenshots.
 
 ## 5. Differences from the plan
 

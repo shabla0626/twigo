@@ -12,7 +12,7 @@ export default async function ChatPage({ params }: { params: Promise<{ slug: str
     db.groupMembership.findMany({
       where: { groupId: group.id, status: "ACTIVE" },
       orderBy: { joinedAt: "asc" },
-      select: { user: { select: { id: true, profile: { select: { displayName: true } } } } },
+      select: { user: { select: { id: true, role: true, profile: { select: { displayName: true } } } } },
     }),
   ]);
   if (!channel) return <p className="text-sm text-ink-600">This group has no chat channel.</p>;
@@ -21,7 +21,7 @@ export default async function ChatPage({ params }: { params: Promise<{ slug: str
       channelId={channel.id}
       groupId={group.id}
       me={{ id: user.id, name: user.displayName }}
-      members={memberships.map((m) => ({ id: m.user.id, name: m.user.profile?.displayName ?? "Member" }))}
+      members={memberships.map((m) => ({ id: m.user.id, name: m.user.profile?.displayName ?? "Member", staff: m.user.role !== "MEMBER" }))}
     />
   );
 }

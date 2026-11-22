@@ -7,7 +7,8 @@ import { IconPaperclip } from "./icons";
 import { getSocket } from "./socket";
 import { MemberAvatar, timeAgo } from "./ui";
 
-type Member = { id: string; name: string };
+/** `staff`: an owner or administrator (labelled, so members always know). */
+type Member = { id: string; name: string; staff?: boolean };
 type Pending = { clientId: string; body: string; replyToId: string | null; attachments: { id: string; name: string }[]; failed?: string };
 type Conn = "connecting" | "online" | "offline";
 
@@ -480,6 +481,7 @@ export function GroupChat({ channelId, groupId, me, members }: { channelId: stri
               <li key={m.id} className="flex items-center gap-2">
                 <span className={cn("h-2 w-2 rounded-full", isOn ? "bg-emerald-500" : "bg-ink-200")} aria-hidden="true" />
                 <span className="truncate text-ink-800">{memberName.get(m.id)}</span>
+                {m.staff && <span className="rounded bg-ink-100 px-1.5 py-0.5 text-[11px] font-medium text-ink-700">Administrator</span>}
                 <span className="sr-only">{isOn ? "online" : "offline"}</span>
               </li>
             );

@@ -10,7 +10,7 @@ import { db } from "@/lib/db";
 import { SESSION_COOKIE } from "@/lib/auth/constants";
 import { createSession } from "@/lib/auth/session";
 import { createIdea, endorseIdea } from "@/server/community/ideas";
-import { adminAssignCoordinator, joinGroup, leaveGroup, removeMember, transferCoordinator } from "@/server/community/groups";
+import { adminAssignCoordinator, joinGroup, leaveGroup, myGroups, removeMember, transferCoordinator } from "@/server/community/groups";
 import { authorizeDownload, listGroupFiles } from "@/server/community/files";
 import { fileReport, recordPrivateReportView } from "@/server/community/reports";
 import { suspendUser } from "@/server/accounts";
@@ -244,6 +244,18 @@ describe("P1-1: no view into conversations from before an administrator joined",
     // Ordinary members are unaffected.
     expect((await authorizeDownload(a.id, earlierAttachment.id))?.id).toBe(earlierAttachment.id);
     expect(await listGroupFiles(g.id, a.id)).toHaveLength(3);
+  });
+
+  it("the unread badge never counts messages from before the administrator joined", async () => {
+    const { a, owner, g, channelId } = await setup();
+    await say(a.id, channelId, "earlier one");
+    await say(a.id, channelId, "earlier two");
+    await pause(30);
+    await joinGroup(owner.id, g.id);
+    expect(await groupUnread(g.id, owner.id)).toBe(0);
+    expect((await myGroups(owner.id))[0]!.unread).toBe(0);
+    await say(a.id, channelId, "after the join");
+    expect((await myGroups(owner.id))[0]!.unread).toBe(1);
   });
 
   it("an administrator who helped found the group sees it from its creation", async () => {
