@@ -13,7 +13,8 @@ export function getSocket(): Socket {
     // another device). Go to the sign-in page instead of silently showing "offline".
     socket.on("session:ended", () => {
       socket?.close();
-      window.location.assign("/login?signedout=1");
+      // A full reload on purpose: the server then sends the browser to the sign-in page.
+      window.location.reload();
     });
   }
   return socket;

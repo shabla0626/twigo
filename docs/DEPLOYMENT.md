@@ -90,7 +90,15 @@ npm start              # tsx server.ts --production
 ```
 
 Reverse proxy: forward `Upgrade`/`Connection` headers for `/socket.io` and set
-`X-Forwarded-For`. Minimal Caddyfile:
+`X-Forwarded-For`. **Set `TRUSTED_PROXY_HOPS` to the number of proxies in front of the
+app** (1 for a single Caddy or nginx; 0 only when the app is reached directly). The app
+counts sign-in and form attempts per visitor address and takes that address from the
+position in `X-Forwarded-For` written by your own proxy, never from what a visitor
+sends. The startup log line `server.ready` states which source is in use. To check a
+new deployment: sign in from two different networks and confirm in **Admin → Audit
+log** that the two sign-ins are not blocked together after one of them makes repeated
+wrong attempts. With nginx use `proxy_set_header X-Forwarded-For
+$proxy_add_x_forwarded_for;`. Minimal Caddyfile:
 
 ```
 your-domain.example {

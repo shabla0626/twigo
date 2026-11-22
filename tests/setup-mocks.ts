@@ -12,7 +12,8 @@ vi.mock("next/headers", () => {
       set: (name: string, value: string) => void j.set(name, value),
       delete: (name: string) => void j.delete(name),
     }),
-    headers: async () => new Headers({ "x-forwarded-for": "203.0.113.7" }),
+    // Same header that server.ts sets for every real request (see src/lib/client-address.ts).
+    headers: async () => new Headers({ "x-internal-client-address": "203.0.113.7", "x-forwarded-for": "198.51.100.99" }),
   };
 });
 

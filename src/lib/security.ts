@@ -1,6 +1,7 @@
 import "server-only";
 import { createHmac, timingSafeEqual } from "node:crypto";
 import { headers } from "next/headers";
+import { CLIENT_ADDRESS_HEADER } from "./client-address";
 import { env } from "./env";
 
 /** Salted one-way hash of the client IP for abuse tracking (raw IPs are never stored). */
@@ -8,11 +9,13 @@ export function hashIp(ip: string): string {
   return createHmac("sha256", env().AUTH_SECRET).update(`ip:${ip}`).digest("hex").slice(0, 32);
 }
 
+/**
+ * The address a request came from, for counting attempts. It is worked out by
+ * server.ts (see lib/client-address.ts) and never taken from a header the
+ * visitor can set, such as X-Forwarded-For.
+ */
 export async function clientIp(): Promise<string> {
-  const h = await headers();
-  const fwd = h.get("x-forwarded-for");
-  if (fwd) return fwd.split(",")[0]!.trim();
-  return h.get("x-real-ip") ?? "unknown";
+  return (await headers()).get(CLIENT_ADDRESS_HEADER) ?? "unknown";
 }
 
 // ---- Form timing token (spam protection) -------------------------------

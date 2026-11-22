@@ -11,6 +11,7 @@ import { createServer } from "node:http";
 import path from "node:path";
 import next from "next";
 import { loadDotEnv } from "./scripts/load-env";
+import { CLIENT_ADDRESS_HEADER, resolveClientAddress } from "./src/lib/client-address";
 
 if (process.argv.includes("--production")) (process.env as Record<string, string>).NODE_ENV = "production";
 loadDotEnv();
@@ -47,7 +48,11 @@ async function main() {
   await app.prepare();
   const upgrade = app.getUpgradeHandler();
 
+  // The address each request really came from (used to count sign-in and form attempts).
+  // Always overwritten here, so a value sent by a visitor is never used.
+  const trustedHops = Math.max(0, Math.trunc(Number(process.env.TRUSTED_PROXY_HOPS || 0)) || 0);
   const httpServer = createServer((req, res) => {
+    req.headers[CLIENT_ADDRESS_HEADER] = resolveClientAddress(req.socket.remoteAddress, req.headers["x-forwarded-for"], trustedHops);
     void handle(req, res);
   });
 
@@ -77,7 +82,13 @@ async function main() {
     });
   }
 
-  httpServer.listen(port, hostname, () => log("server.ready", { url: `http://${hostname}:${port}`, dev }));
+  httpServer.listen(port, hostname, () =>
+    log("server.ready", {
+      url: `http://${hostname}:${port}`,
+      dev,
+      clientAddress: trustedHops ? `X-Forwarded-For, ${trustedHops} trusted proxy hop(s)` : "network connection (no proxy trusted)",
+    }),
+  );
 
   const shutdown = async (signal: string) => {
     log("server.shutdown", { signal });

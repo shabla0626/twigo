@@ -13,6 +13,8 @@ const schema = z.object({
   SESSION_TTL_HOURS: z.coerce.number().int().min(1).max(72).default(8),
   MEMBER_SESSION_TTL_HOURS: z.coerce.number().int().min(1).max(24 * 60).default(24 * 14),
   ADMIN_REQUIRE_2FA: bool("true"),
+  // Number of reverse proxies in front of the app that append to X-Forwarded-For (0 = none; Caddy/nginx = 1).
+  TRUSTED_PROXY_HOPS: z.coerce.number().int().min(0).max(5).default(0),
   STORAGE_DIR: z.string().default("storage"),
   MAX_UPLOAD_MB: z.coerce.number().int().min(1).max(100).default(10),
   JOBS_ENABLED: bool("true"),
