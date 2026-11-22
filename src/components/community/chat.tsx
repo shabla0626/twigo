@@ -266,7 +266,9 @@ export function GroupChat({ channelId, groupId, me, members }: { channelId: stri
     <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_16rem]">
       <section className="flex h-[calc(100dvh-25rem)] min-h-[19rem] flex-col overflow-hidden rounded-2xl border border-ink-100 bg-white lg:h-[calc(100dvh-17rem)] lg:min-h-[26rem]" aria-label="Group chat">
         <div className="flex items-center justify-between border-b border-ink-100 px-4 py-2.5 text-sm">
-          <span className="font-semibold text-ink-950">Group chat</span>
+          <span className="font-semibold text-ink-950">
+            Group chat <span className="font-normal text-ink-500">· live, members of this group only</span>
+          </span>
           <span className={cn("inline-flex items-center gap-1.5", conn === "online" ? "text-emerald-700" : "text-amber-700")} role="status" data-testid="chat-status">
             <span className={cn("h-2 w-2 rounded-full", conn === "online" ? "bg-emerald-500" : "bg-amber-500")} />
             {conn === "online" ? "Connected" : conn === "connecting" ? "Connecting…" : "Reconnecting… messages will be sent when you are back online"}
@@ -443,6 +445,9 @@ export function GroupChat({ channelId, groupId, me, members }: { channelId: stri
               </ul>
             )}
             <div className="flex items-end gap-2">
+              <label htmlFor="chat-file" className="sr-only">
+                Attach a file to your message
+              </label>
               <input ref={fileRef} type="file" className="sr-only" id="chat-file" onChange={(e) => e.target.files?.[0] && void attach(e.target.files[0])} />
               <button
                 type="button"

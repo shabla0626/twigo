@@ -22,10 +22,15 @@ export default async function DiscussionsPage({ params }: { params: Promise<{ sl
   ]);
   return (
     <div className="max-w-4xl space-y-6">
+      <p className="rounded-xl bg-ink-50 px-4 py-3 text-sm leading-6 text-ink-700">
+        <strong>Who can read this page:</strong> every approved member of the community, not only this group. For talk that only the group should
+        see, use the group’s <strong>Chat</strong>.
+      </p>
       <section aria-labelledby="ann-h" className="space-y-3">
         <h2 id="ann-h" className="text-lg font-semibold text-ink-950">
           Announcements
         </h2>
+        <p className="text-sm text-ink-600">Important updates from the coordinator. Group members are notified.</p>
         {announcements.length ? (
           <ul className="space-y-3">
             {announcements.map((a) => (

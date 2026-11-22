@@ -231,6 +231,7 @@ export default async function IdeaPage({ params, searchParams }: Props) {
 
       <div id="discussion" className="min-w-0 scroll-mt-24 xl:col-start-1">
         <Panel title={`Discussion (${idea.commentCount})`}>
+          <p className="mb-4 text-sm text-ink-600">Questions and comments about this idea. Every approved member can read and answer them.</p>
           <CommentThread comments={comments} viewerId={user.id} target={{ ideaId: idea.id, path: `/community/ideas/${idea.id}` }} />
         </Panel>
       </div>

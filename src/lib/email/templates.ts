@@ -144,7 +144,7 @@ export const TEMPLATES: Record<TemplateKey, TemplateDef> = {
   },
   application_declined: {
     label: "Application declined",
-    description: "A respectful decline. Sent only by an administrator after preview.",
+    description: "A respectful decline.",
     audience: "applicant",
     automatic: false,
     variables: ["name", "orgName", "details", "statusLink"],

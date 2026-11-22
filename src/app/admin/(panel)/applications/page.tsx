@@ -1,5 +1,6 @@
 import Link from "next/link";
-import { AdminHeader, Empty, Flash, Table, fmtDate, membershipTone, smallInput, smallLabel, statusTone } from "@/components/admin/ui";
+import { AdminHeader, Empty, Flash, Pager, Table, fmtDate, membershipTone, smallInput, smallLabel, statusTone } from "@/components/admin/ui";
+import { MoreFilters } from "@/components/admin/more-filters";
 import { Badge, buttonClass } from "@/components/ui/primitives";
 import { requireAdmin } from "@/lib/auth/guard";
 import { APPLICATION_STATUSES, EXPERIENCE_LEVELS, HOURS_OPTIONS, MEMBERSHIP_LABELS, WORK_CATEGORIES } from "@/lib/labels";
@@ -50,6 +51,7 @@ export default async function ApplicationsPage({ searchParams }: { searchParams:
           </label>
           <input id="q" name="q" defaultValue={filters.q} className={smallInput} />
         </div>
+        <MoreFilters inUse={Boolean(filters.status || filters.experience || filters.category || filters.minHours || filters.skill)}>
         <div>
           <label htmlFor="status" className={smallLabel}>
             Status
@@ -110,6 +112,7 @@ export default async function ApplicationsPage({ searchParams }: { searchParams:
           </label>
           <input id="skill" name="skill" defaultValue={filters.skill} className={smallInput} />
         </div>
+        </MoreFilters>
         <div className="flex items-end gap-2 lg:col-span-4">
           <button type="submit" className={buttonClass("primary", "sm")}>
             Apply filters
@@ -153,25 +156,7 @@ export default async function ApplicationsPage({ searchParams }: { searchParams:
         </Table>
       </div>
 
-      {pages > 1 && (
-        <nav aria-label="Pagination" className="mt-4 flex items-center justify-between text-sm">
-          <span className="text-ink-600">
-            Page {page} of {pages}
-          </span>
-          <span className="flex gap-2">
-            {page > 1 && (
-              <Link className={buttonClass("secondary", "sm")} href={pageHref(page - 1)}>
-                Previous
-              </Link>
-            )}
-            {page < pages && (
-              <Link className={buttonClass("secondary", "sm")} href={pageHref(page + 1)}>
-                Next
-              </Link>
-            )}
-          </span>
-        </nav>
-      )}
+      <Pager page={page} pages={pages} total={total} href={pageHref} />
     </>
   );
 }

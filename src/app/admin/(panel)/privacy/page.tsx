@@ -66,7 +66,7 @@ export default async function PrivacyAdminPage({ searchParams }: Props) {
       <Panel title="Other privacy tools" className="mt-6">
         <ul className="list-disc space-y-1 pl-5 text-sm text-ink-700">
           <li>
-            <Link href="/admin/applications" className="text-accent-700 hover:underline">
+            <Link href="/admin/applications" className="text-accent-700 underline underline-offset-2">
               Applications
             </Link>
             : CSV export, per-person JSON export (owner) and erasure.

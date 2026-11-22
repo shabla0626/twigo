@@ -53,7 +53,7 @@ export default async function GroupsPage({ searchParams }: Props) {
           </>
         }
       />
-      <form role="search" action="/community/groups" className="mb-5 grid gap-2 sm:grid-cols-2 lg:grid-cols-[minmax(0,2fr)_minmax(0,1fr)_minmax(0,1fr)_minmax(0,1fr)_auto]">
+      <form role="search" action="/community/groups" className="mb-5 grid gap-2 sm:grid-cols-2 lg:grid-cols-[minmax(10rem,1fr)_max-content_max-content_max-content_auto]">
         <label htmlFor="q" className="sr-only">
           Search groups
         </label>

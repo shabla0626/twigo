@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { ActionForm } from "@/components/forms/action-form";
-import { AdminHeader, Empty, Flash, Panel, Table, fmtDate } from "@/components/admin/ui";
+import { AdminHeader, Empty, Flash, Pager, Panel, Table, fmtDate } from "@/components/admin/ui";
 import { Badge, Button } from "@/components/ui/primitives";
 import { db } from "@/lib/db";
 import { env } from "@/lib/env";
@@ -9,6 +9,7 @@ import { can } from "@/lib/auth/permissions";
 import { emailConfigProblem, localInboxUrl, smtpSettings } from "@/lib/email";
 import { EMAIL_STATUS_INFO, RETRYABLE } from "@/lib/email/status";
 import { TEMPLATES, TEMPLATE_KEYS } from "@/lib/email/templates";
+import { pageHref, pageNumber, pageWindow } from "@/lib/paging";
 import { checkEmailConnectionAction, retryEmailAction, sendTestToMeAction } from "../../actions/community";
 
 type Props = { searchParams: Promise<Record<string, string | undefined>> };
@@ -17,12 +18,16 @@ export default async function EmailAdminPage({ searchParams }: Props) {
   const admin = await requireAdmin("email.send");
   const sp = await searchParams;
   const onlyProblems = sp.filter === "problems";
+  const where = onlyProblems ? { status: { in: RETRYABLE } } : undefined;
+  const total = await db.emailDelivery.count({ where });
+  const { page, pages, skip, take } = pageWindow(pageNumber(sp.page), total);
   const [custom, deliveries, retried] = await Promise.all([
     db.emailTemplate.findMany({ select: { key: true, updatedAt: true } }),
     db.emailDelivery.findMany({
-      where: onlyProblems ? { status: { in: RETRYABLE } } : undefined,
-      orderBy: { createdAt: "desc" },
-      take: 100,
+      where,
+      orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+      skip,
+      take,
       include: { sentBy: { select: { name: true } } },
     }),
     db.emailDelivery.findMany({ where: { retryOfId: { not: null } }, select: { retryOfId: true, status: true } }),
@@ -76,33 +81,10 @@ export default async function EmailAdminPage({ searchParams }: Props) {
         </div>
       </Panel>
 
-      <Panel title="Templates" className="mt-6">
-        <ul className="divide-y divide-ink-100">
-          {TEMPLATE_KEYS.map((k) => (
-            <li key={k} className="flex flex-wrap items-center justify-between gap-3 py-3">
-              <div>
-                <p className="font-medium text-ink-950">{TEMPLATES[k].label}</p>
-                <p className="text-xs text-ink-600">
-                  {TEMPLATES[k].description} {TEMPLATES[k].automatic ? "Sent automatically." : "Sent only by an administrator, after preview."}
-                </p>
-              </div>
-              <div className="flex items-center gap-2">
-                {customized.has(k) ? <Badge tone="accent">Customized {fmtDate(customized.get(k))}</Badge> : <Badge>Default</Badge>}
-                {can(admin.role, "email.templates") && (
-                  <Link href={`/admin/email/${k}`} className="text-sm font-medium text-accent-700 hover:underline">
-                    Edit
-                  </Link>
-                )}
-              </div>
-            </li>
-          ))}
-        </ul>
-        {!can(admin.role, "email.templates") && <p className="mt-3 text-xs text-ink-500">Only the owner can edit template wording.</p>}
-      </Panel>
 
       <div className="mt-8 flex flex-wrap items-end justify-between gap-3">
         <div>
-          <h2 className="text-lg font-semibold">Delivery log (latest 100)</h2>
+          <h2 className="text-lg font-semibold">Delivery log</h2>
           <p className="text-sm text-ink-600">Every attempt is kept. A retry is added as a new row; the original row is not changed.</p>
         </div>
         <Link href={onlyProblems ? "/admin/email" : "/admin/email?filter=problems"} className="text-sm font-medium text-accent-700 hover:underline">
@@ -157,6 +139,34 @@ export default async function EmailAdminPage({ searchParams }: Props) {
           })}
         </Table>
       </div>
+      <Pager page={page} pages={pages} total={total} href={(p) => pageHref("/admin/email", { filter: onlyProblems ? "problems" : undefined }, p)} />
+
+      <details className="mt-8">
+        <summary className="cursor-pointer text-lg font-semibold">Email templates ({TEMPLATE_KEYS.length})</summary>
+      <Panel title="Wording of each email" className="mt-3">
+        <ul className="divide-y divide-ink-100">
+          {TEMPLATE_KEYS.map((k) => (
+            <li key={k} className="flex flex-wrap items-center justify-between gap-3 py-3">
+              <div>
+                <p className="font-medium text-ink-950">{TEMPLATES[k].label}</p>
+                <p className="text-xs text-ink-600">
+                  {TEMPLATES[k].description} {TEMPLATES[k].automatic ? "Sent automatically." : "Sent only by an administrator, after preview."}
+                </p>
+              </div>
+              <div className="flex items-center gap-2">
+                {customized.has(k) ? <Badge tone="accent">Customized {fmtDate(customized.get(k))}</Badge> : <Badge>Default</Badge>}
+                {can(admin.role, "email.templates") && (
+                  <Link href={`/admin/email/${k}`} className="text-sm font-medium text-accent-700 hover:underline">
+                    Edit
+                  </Link>
+                )}
+              </div>
+            </li>
+          ))}
+        </ul>
+        {!can(admin.role, "email.templates") && <p className="mt-3 text-xs text-ink-500">Only the owner can edit template wording.</p>}
+      </Panel>
+      </details>
     </>
   );
 }

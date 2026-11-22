@@ -69,6 +69,15 @@
 }
 
 /* ---------------------------------------------------------------- motion */
+/* Loading placeholders appear only after a short delay (see loading.tsx). */
+@keyframes fadein {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
 @keyframes float {
   0%,
   100% {

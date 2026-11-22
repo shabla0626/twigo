@@ -4,7 +4,7 @@ import { db } from "@/lib/db";
 import { ACTIVE_MEMBER } from "@/lib/auth/member-where";
 import { audit } from "@/lib/audit";
 import { publishRealtime } from "@/lib/realtime-events";
-import { chatBoundary, writeSystemLine } from "@/realtime/chat-service";
+import { writeSystemLine } from "@/realtime/chat-service";
 import { activeMemberIds, groupAccess, requireCoordinator } from "./access";
 import { notify } from "./notifications";
 import { COORDINATOR_STATUSES, GROUP_STATUS_LABELS } from "./group-labels";
@@ -109,24 +109,30 @@ export async function myGroups(userId: string) {
     orderBy: { group: { lastActivityAt: "desc" } },
     select: { role: true, joinedAt: true, group: { select: { ...cardSelect, channels: { where: { isDefault: true }, select: { id: true } } } } },
   });
-  const person = await db.user.findUnique({ where: { id: userId }, select: { role: true } });
   const channelIds = memberships.flatMap((m) => m.group.channels.map((c) => c.id));
   const reads = await db.channelReadState.findMany({ where: { userId, channelId: { in: channelIds } } });
   const readMap = new Map(reads.map((r) => [r.channelId, r.lastReadAt]));
-  return Promise.all(
-    memberships.map(async (m) => {
-      const ch = m.group.channels[0];
-      // Never count messages the person cannot see (owners and administrators: nothing from before they joined).
-      const boundary = person ? chatBoundary(person.role, m.joinedAt) : null;
-      const since = ch ? new Date(Math.max(readMap.get(ch.id)?.getTime() ?? 0, boundary?.getTime() ?? 0)) : new Date(0);
-      const unread = ch
-        ? await db.chatMessage.count({
-            where: { channelId: ch.id, kind: "USER", deletedAt: null, authorId: { not: userId }, createdAt: { gt: since } },
-          })
-        : 0;
-      return { role: m.role, group: m.group, unread };
-    }),
-  );
+  // "Unread" starts when the person joined: older messages can be read (by ordinary members),
+  // but they are not new to anyone, so they are never counted.
+  const windows = memberships.flatMap((m) => {
+    const ch = m.group.channels[0];
+    return ch ? [{ channelId: ch.id, createdAt: { gt: unreadSince(readMap.get(ch.id), m.joinedAt) } }] : [];
+  });
+  // One question to the database for all groups together.
+  const counts = windows.length
+    ? await db.chatMessage.groupBy({
+        by: ["channelId"],
+        where: { kind: "USER", deletedAt: null, authorId: { not: userId }, OR: windows },
+        _count: { _all: true },
+      })
+    : [];
+  const unreadMap = new Map(counts.map((c) => [c.channelId, c._count._all]));
+  return memberships.map((m) => ({ role: m.role, group: m.group, unread: unreadMap.get(m.group.channels[0]?.id ?? "") ?? 0 }));
+}
+
+/** The moment from which chat messages count as unread: the later of "last read" and "joined". */
+export function unreadSince(lastReadAt: Date | null | undefined, joinedAt: Date): Date {
+  return new Date(Math.max(lastReadAt?.getTime() ?? 0, joinedAt.getTime()));
 }
 
 /** Community-visible group information (no chat, files or research). */

@@ -1,5 +1,5 @@
 import "server-only";
-import type { NotificationType, Prisma } from "@prisma/client";
+import { Prisma, type NotificationType } from "@prisma/client";
 import { db } from "@/lib/db";
 import { siteUrl } from "@/lib/env";
 import { deliverTemplate } from "@/lib/email";
@@ -118,11 +118,20 @@ export async function listNotifications(userId: string, opts: { cursor?: string;
   return { items: rows.slice(0, take), nextCursor: rows.length > take ? rows[take - 1]!.id : null };
 }
 
+/**
+ * Marks notifications as read WITHOUT changing their place in the list.
+ *
+ * The list is ordered by `updatedAt`, which is the time of the latest event (a repeated event
+ * moves its notification back to the top). Reading is not an event, so it must not touch that
+ * time: plain SQL is used because the ORM would refresh `updatedAt` on every update.
+ */
 export async function markRead(userId: string, ids: string[] | "all") {
-  await db.notification.updateMany({
-    where: { userId, readAt: null, ...(ids === "all" ? {} : { id: { in: ids } }) },
-    data: { readAt: new Date() },
-  });
+  const now = new Date();
+  if (ids === "all") {
+    await db.$executeRaw`UPDATE "Notification" SET "readAt" = ${now} WHERE "userId" = ${userId} AND "readAt" IS NULL`;
+  } else if (ids.length) {
+    await db.$executeRaw`UPDATE "Notification" SET "readAt" = ${now} WHERE "userId" = ${userId} AND "readAt" IS NULL AND "id" IN (${Prisma.join(ids)})`;
+  }
   await publishRealtime(db, { t: "notifications.changed", userId });
 }
 

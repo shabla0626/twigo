@@ -99,6 +99,31 @@ export function Table({ head, children, empty }: { head: ReactNode[]; children: 
   );
 }
 
+/** "Newer / Older" links under a long list. Shown only when there is more than one page. */
+export function Pager({ page, pages, total, href }: { page: number; pages: number; total: number; href: (page: number) => string }) {
+  if (pages <= 1) return null;
+  const link = "inline-flex min-h-9 items-center rounded-lg border border-ink-300 bg-white px-3 text-sm font-medium text-ink-900 hover:bg-ink-50";
+  return (
+    <nav aria-label="Pages of this list" className="mt-4 flex flex-wrap items-center justify-between gap-3 text-sm">
+      <span className="text-ink-600">
+        Page {page} of {pages} · {total} in total
+      </span>
+      <span className="flex gap-2">
+        {page > 1 && (
+          <Link className={link} href={href(page - 1)}>
+            ← Newer
+          </Link>
+        )}
+        {page < pages && (
+          <Link className={link} href={href(page + 1)}>
+            Older →
+          </Link>
+        )}
+      </span>
+    </nav>
+  );
+}
+
 export function Empty({ children }: { children: ReactNode }) {
   return <p className="px-4 py-10 text-center text-sm text-ink-500">{children}</p>;
 }

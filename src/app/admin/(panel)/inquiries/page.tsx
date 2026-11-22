@@ -1,20 +1,43 @@
-import { AdminHeader, Empty, fmtDate, smallInput } from "@/components/admin/ui";
+import Link from "next/link";
+import { AdminHeader, Empty, Pager, fmtDate, smallInput } from "@/components/admin/ui";
 import { Badge, buttonClass } from "@/components/ui/primitives";
 import { requireAdmin } from "@/lib/auth/guard";
 import { db } from "@/lib/db";
 import { INQUIRY_CATEGORIES, INQUIRY_STATUSES } from "@/lib/labels";
+import { pageHref, pageNumber, pageWindow } from "@/lib/paging";
 import { inquiryStatusAction } from "../../actions/content";
 
-export default async function InquiriesPage() {
+type Props = { searchParams: Promise<Record<string, string | string[] | undefined>> };
+type Status = keyof typeof INQUIRY_STATUSES;
+
+export default async function InquiriesPage({ searchParams }: Props) {
   await requireAdmin("inquiries.manage");
-  const inquiries = await db.contactInquiry.findMany({ orderBy: { createdAt: "desc" }, take: 200 });
+  const sp = await searchParams;
+  const asked = Array.isArray(sp.status) ? sp.status[0] : sp.status;
+  const status = asked && asked in INQUIRY_STATUSES ? (asked as Status) : undefined;
+  const where = status ? { status } : undefined;
+  const total = await db.contactInquiry.count({ where });
+  const { page, pages, skip, take } = pageWindow(pageNumber(sp.page), total);
+  const inquiries = await db.contactInquiry.findMany({ where, orderBy: [{ createdAt: "desc" }, { id: "desc" }], skip, take });
+  const tab = (active: boolean) =>
+    active ? "rounded-full bg-ink-900 px-3 py-1 text-sm font-medium text-white" : "rounded-full border border-ink-300 bg-white px-3 py-1 text-sm font-medium text-ink-800 hover:bg-ink-50";
   return (
     <>
-      <AdminHeader title="Contact inquiries" description="Messages from the public contact form (latest 200)." />
-      <div className="mt-6 space-y-4">
+      <AdminHeader title="Contact inquiries" description="Messages from the public contact form, newest first." />
+      <nav aria-label="Filter by status" className="mt-6 flex flex-wrap gap-2">
+        <Link href="/admin/inquiries" aria-current={!status ? "page" : undefined} className={tab(!status)}>
+          All
+        </Link>
+        {(Object.keys(INQUIRY_STATUSES) as Status[]).map((s) => (
+          <Link key={s} href={`/admin/inquiries?status=${s}`} aria-current={status === s ? "page" : undefined} className={tab(status === s)}>
+            {INQUIRY_STATUSES[s]}
+          </Link>
+        ))}
+      </nav>
+      <div className="mt-4 space-y-4">
         {inquiries.length === 0 && (
           <div className="rounded-lg border border-ink-200 bg-white">
-            <Empty>No inquiries yet.</Empty>
+            <Empty>{status ? "No inquiries with this status." : "No inquiries yet."}</Empty>
           </div>
         )}
         {inquiries.map((q) => (
@@ -24,7 +47,7 @@ export default async function InquiriesPage() {
                 <h2 className="font-semibold">{q.subject}</h2>
                 <p className="text-sm text-ink-600">
                   {q.name} ·{" "}
-                  <a href={`mailto:${q.email}`} className="text-accent-700 hover:underline">
+                  <a href={`mailto:${q.email}`} className="text-accent-700 underline underline-offset-2">
                     {q.email}
                   </a>{" "}
                   · {fmtDate(q.createdAt, true)}
@@ -59,6 +82,7 @@ export default async function InquiriesPage() {
           </article>
         ))}
       </div>
+      <Pager page={page} pages={pages} total={total} href={(p) => pageHref("/admin/inquiries", { status }, p)} />
     </>
   );
 }
