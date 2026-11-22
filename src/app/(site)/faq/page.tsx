@@ -1,4 +1,4 @@
-import { CtaBand, FaqList } from "@/components/site/blocks";
+import { FaqList } from "@/components/site/blocks";
 import { PageHeader, Section } from "@/components/ui/primitives";
 import { getSiteContent } from "@/lib/content";
 import { pageMetadata } from "@/lib/seo";
@@ -40,7 +40,6 @@ export default async function FaqPage() {
           <FaqList items={c.faq.items} />
         </div>
       </Section>
-      <CtaBand />
       <script
         type="application/ld+json"
         // JSON.stringify output with "<" escaped cannot break out of the script tag.

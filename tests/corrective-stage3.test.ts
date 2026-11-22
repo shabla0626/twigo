@@ -126,6 +126,42 @@ describe("P3-1, P3-2, P3-6 to P3-10: small visible corrections are in place", ()
   });
 });
 
+describe("P3-3: the repeated blocks the founder approved are gone, and the facts remain elsewhere", () => {
+  const page = (p: string) => source(`src/app/(site)/${p}page.tsx`);
+
+  it("1. Home no longer repeats three FAQ questions; the FAQ page has them all and stays in the menu", () => {
+    expect(page("")).not.toContain("Common questions");
+    expect(page("")).not.toContain("FaqList");
+    expect(page("faq/")).toContain("<FaqList items={c.faq.items} />");
+    expect(source("src/components/site/nav.ts")).toContain('{ href: "/faq", label: "FAQ" }');
+  });
+
+  it("2. About no longer has 'The value of cooperation'; its point stays in 'Why we exist' and on Home", () => {
+    expect(page("about/")).not.toContain("The value of cooperation");
+    expect(page("about/")).toContain("People can accomplish together what is difficult for them to accomplish individually.");
+    expect(page("")).toContain("Accomplish together what is hard to accomplish alone.");
+  });
+
+  it("3. Founding Contributors no longer has 'People we welcome'; the same points stay in its own list", () => {
+    const s = page("founding-contributors/");
+    expect(s).not.toContain("People we welcome");
+    for (const kept of ["Fully remote participation", "Flexible availability", "different levels of professional experience", "No joining fees"]) expect(s).toContain(kept);
+  });
+
+  it("7. the closing banner stays on Home, How It Works and Founding Contributors only", () => {
+    const withBanner = ["", "how-it-works/", "founding-contributors/"];
+    const without = ["about/", "compensation/", "participation/", "faq/"];
+    for (const p of withBanner) expect(page(p), p || "home").toContain("<CtaBand");
+    for (const p of without) expect(page(p), p).not.toContain("CtaBand");
+  });
+
+  it("the photos of the removed sections keep their files, so nothing has to be found again", () => {
+    for (const f of ["about/cooperation-side-by-side.jpg", "founding-contributors/portrait-remote-worker-1.jpg", "founding-contributors/portrait-remote-worker-2.jpg", "founding-contributors/portrait-remote-worker-3.jpg"]) {
+      expect(existsSync(`public/images/people/${f}`), f).toBe(true);
+    }
+  });
+});
+
 describe("P3-11: every record of a long admin list can be reached", () => {
   it("page numbers from the address are safe", () => {
     expect(pageNumber(undefined)).toBe(1);

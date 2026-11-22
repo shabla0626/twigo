@@ -7,6 +7,12 @@ Shutterstock). Nobody else downloads images from the internet for this site.
 Generated from `src/content/photos.ts` (the photo manifest). If you change a slot
 there, update this file too; `npm test` checks that every slot is listed here.
 
+**Not shown at the moment (since 22 November 2026).** The founder approved removing
+the sections that used four slots, because they repeated other pages: `about-cooperation`
+("The value of cooperation" on About) and `founding-person-1` to `founding-person-3`
+("People we welcome" on Founding Contributors). The slots and their files are kept at
+the same paths, so a section can be brought back without new photos.
+
 ## General guidance
 
 **Show ordinary people from different walks of life:** different ages, backgrounds,

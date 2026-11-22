@@ -1,8 +1,6 @@
 import { Photo } from "@/components/photos/photo";
-import { SplitSection } from "@/components/photos/layouts";
-import { CtaBand } from "@/components/site/blocks";
 import { Card, PageHeader, Section, SectionHeading } from "@/components/ui/primitives";
-import { AbilitiesVisual, RemoteTeamVisual } from "@/components/visuals/illustrations";
+import { AbilitiesVisual } from "@/components/visuals/illustrations";
 import { getSiteContent } from "@/lib/content";
 import { pageMetadata } from "@/lib/seo";
 
@@ -89,31 +87,6 @@ export default async function AboutPage() {
         </div>
       </Section>
 
-      {/* The value of cooperation */}
-      <SplitSection
-        id="cooperation"
-        tone="blue"
-        eyebrow="The value of cooperation"
-        title="Different abilities, combined, create real capacity."
-        mediaSide="left"
-        media={
-          <Photo
-            id="about-cooperation"
-            sizes="(min-width: 1024px) 45vw, 100vw"
-            fallback={<RemoteTeamVisual className="w-full max-w-sm" />}
-          />
-        }
-      >
-        <p>
-          A developer, a careful researcher, someone good with customers and someone who keeps things organized can, together,
-          deliver work that none of them could deliver alone.
-        </p>
-        <p>
-          Cooperation also lets people learn from one another. Someone starting with simple, well-defined tasks can grow into
-          more responsibility by working alongside more experienced contributors.
-        </p>
-      </SplitSection>
-
       {/* Where we are today */}
       <Section labelledBy="today-heading">
         <div className="grid gap-12 lg:grid-cols-[1fr_1.3fr] lg:gap-16">
@@ -161,7 +134,6 @@ export default async function AboutPage() {
         </div>
       </Section>
 
-      <CtaBand />
     </>
   );
 }

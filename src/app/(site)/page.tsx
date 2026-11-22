@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { Photo } from "@/components/photos/photo";
 import { SplitSection } from "@/components/photos/layouts";
-import { CheckList, CtaBand, FaqList } from "@/components/site/blocks";
+import { CheckList, CtaBand } from "@/components/site/blocks";
 import { JourneySteps } from "@/components/site/community-model";
 import { IconArrow, IconCheck, IconDoc } from "@/components/ui/icons";
 import { ButtonLink, Container, Section, SectionHeading } from "@/components/ui/primitives";
@@ -212,19 +212,6 @@ export default async function HomePage() {
           </ButtonLink>
         </div>
       </SplitSection>
-
-      {/* FAQ preview */}
-      <Section labelledBy="faq-heading">
-        <div className="grid gap-10 lg:grid-cols-[1fr_2fr]">
-          <div>
-            <SectionHeading id="faq-heading" eyebrow="FAQ" title="Common questions" />
-            <Link href="/faq" className="mt-6 inline-flex items-center gap-1.5 font-semibold text-accent-700 hover:text-accent-800">
-              All questions <IconArrow className="h-4 w-4" />
-            </Link>
-          </div>
-          <FaqList items={c.faq.items.slice(0, 3)} />
-        </div>
-      </Section>
 
       {/* 7. Final recruitment call to action */}
       <CtaBand />

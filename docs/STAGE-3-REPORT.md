@@ -2,9 +2,8 @@
 
 Date: 22 November 2026. Plan: `docs/CORRECTIVE-IMPLEMENTATION-PLAN.md`, section 7.
 
-**Result: 19 of the 23 low findings are corrected and verified, together with the six housekeeping items. The observation left open in Stage 2 is explained.** The other four, stated plainly:
+**Result: 20 of the 23 low findings are corrected and verified, together with the six housekeeping items. The observation left open in Stage 2 is explained.** P3-3 was completed after your approval of the cut list (section 6). The other three, stated plainly:
 
-- **P3-3** (repeated blocks on public pages): nothing removed; the cut list in section 6 waits for your approval.
 - **P3-20** (advisories in build tooling): reviewed; no fixed release exists yet (section 4).
 - **P3-22** (a browser test that failed once): investigated; the last 15 runs in a row passed, but two earlier failures are unexplained (section 3, point 5).
 - **P3-23** (overview of compensation agreements): stays deferred, as planned.
@@ -17,7 +16,7 @@ Stage 4 has not started.
 |---|---|
 | Type check | 0 errors |
 | Lint | 0 errors, 0 warnings |
-| Automated tests | **328 passed** (274 from before + 54 new), 12 skipped (old audit probes, by design) |
+| Automated tests | **333 passed** (274 from before + 59 new), 12 skipped (old audit probes, by design) |
 | Browser tests on a production build | **21 passed.** For P3-22 the whole suite was then run 19 more times (section 3, point 5) |
 | Page crawl as five kinds of user (desktop and phone) | 142 pages loaded, 0 error pages, 0 console errors, 0 serious accessibility issues, 0 pages with sideways overflow, 0 timeouts (there were 2 in Stage 2) |
 | Click-through in a real browser (new dialogs opened and cancelled, banners, icon) | 15 of 15 checks passed (`scripts/audit/stage3-check.ts`; changes no data) |
@@ -47,6 +46,7 @@ Stage 4 has not started.
 | **P3-19** Small sign-in gaps | One email rule for every form and tool; password-change attempts limited to 5 per 15 minutes; an owner or administrator who does nothing for 60 minutes must sign in again | 6 |
 | **P3-20** Advisories in build tooling | Reviewed, no change possible yet (section 4) | — |
 | **P3-21** Documentation out of date | Corrected: password hashing, the removed invitation step, the administrator idle sign-out, the staging checklist | — |
+| **P3-3** Public pages repeat each other | Your approved cut list applied: blocks 1, 2, 3 and 7 removed (section 6) | 5 + browser tests |
 | **Observation from Stage 2** Background requests that "never finish" | Cause established: not a defect of the site (section 3, point 6). The crawl no longer waits on them | — |
 | **P3-22** One browser test failed once under load | Investigated; the original failure did not come back, but the suite is not yet proven fully steady (section 3, point 5) | — |
 
@@ -97,9 +97,9 @@ Recommendation: leave as is for launch; plan the move to the next stable major v
 | P3-19 | The idle limit is fixed at 60 minutes, not a setting | One less setting to get wrong. A background connection (open chat) does not count as activity, so an administrator who only reads a chat for an hour signs in again at the next click |
 | Commits | Four grouped commits | Same reason as in Stage 2: the findings share files |
 
-## 6. P3-3: repeated blocks on the public pages (needs your approval)
+## 6. P3-3: repeated blocks on the public pages
 
-Nothing was removed. These are the blocks that say what another page already says. Each line names where the same fact remains.
+**Your decision: remove 1, 2, 3 and 7. Done.** 4, 5 and 6 were kept, as were the transparency note on Home. The list as it was presented: these are the blocks that say what another page already says. Each line names where the same fact remains.
 
 | # | Page | Block | Why it is a repeat | Where the fact stays |
 |---|---|---|---|---|
@@ -112,6 +112,14 @@ Nothing was removed. These are the blocks that say what another page already say
 | 7 | About, Pay & Fairness, Participation, FAQ | The closing banner ("Help build something worthwhile…") | The same banner closes all seven pages, and every page has "Join" in its header | It stays on Home, How It Works and Founding Contributors |
 
 My recommendation: 1, 2, 3 and 7. They remove the most length with no loss of information. I would keep 4 and 5 (they are trust statements at the point where a reader needs them) and leave 6 as it is (small gain). The transparency note at the bottom of Home also repeats "Honestly, today" on About; I recommend keeping it.
+
+**What was done**
+
+- Only the four approved blocks were removed (109 lines, no text rewritten). On Founding Contributors, the next section took over the light blue background of the removed one, so the page keeps its alternating rhythm.
+- The four photographs used only by the removed sections (`about-cooperation`, `founding-person-1` to `-3`) are **no longer shown, but their files stay at the same paths**, so a section can come back without new photos. Both photo documents say so.
+- Every fact of the removed blocks is still on the site; a test checks the places where it stays.
+- Height of the pages now (desktop / phone): Home 5,403 / 9,432 px (the audit measured about 5,800 / 10,000); About 3,565 / 6,381; Founding Contributors 2,660 / 5,041; FAQ 2,044 / 2,765. These are measurements after the change; I did not measure the exact "before" heights of the other pages, so I give no percentage.
+- Checked afterwards: the public pages pass the accessibility check and have no sideways scrolling on a phone (browser tests, 21 of 21); the crawl again found 142 pages with 0 issues.
 
 ## 7. Old databases (nothing removed)
 

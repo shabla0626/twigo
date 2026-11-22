@@ -1,11 +1,8 @@
-import { Photo, photoAvailable } from "@/components/photos/photo";
+import { Photo } from "@/components/photos/photo";
 import { CheckList, CtaBand } from "@/components/site/blocks";
-import { IconArrow, IconCheck } from "@/components/ui/icons";
+import { IconArrow } from "@/components/ui/icons";
 import { ButtonLink, Card, PageHeader, Section, SectionHeading } from "@/components/ui/primitives";
-import { Avatar } from "@/components/visuals/glyphs";
 import { FoundationVisual } from "@/components/visuals/illustrations";
-import { Reveal } from "@/components/visuals/reveal";
-import type { PhotoId } from "@/content/photos";
 import { getSiteContent } from "@/lib/content";
 import { pageMetadata } from "@/lib/seo";
 
@@ -14,21 +11,6 @@ export const metadata = pageMetadata(
   "Founding Contributors",
   "We are recruiting founding contributors to help establish a fully remote, collaborative working environment. No fees, flexible hours.",
 );
-
-const PORTRAITS: { id: PhotoId; skin: string; shirt: string; bg: string }[] = [
-  { id: "founding-person-1", skin: "#e0ac83", shirt: "#5fb7c2", bg: "#e0f2fe" },
-  { id: "founding-person-2", skin: "#5a3a28", shirt: "#f3d08a", bg: "#fef3c7" },
-  { id: "founding-person-3", skin: "#f6d8bd", shirt: "#c3b4ee", bg: "#ede9fe" },
-];
-
-const EMPHASIS = [
-  ["Remote participation", "Work from wherever you are. No office required."],
-  ["Flexible availability", "Fit your contribution around your current job."],
-  ["Different backgrounds", "Professionals and general contributors are both welcome."],
-  ["Responsibility & commitment", "Reliable, honest participation matters most."],
-  ["Shared business development", "Help shape processes, standards and first projects."],
-  ["No fees, ever", "No membership fees or initial capital contributions."],
-] as const;
 
 export default async function FoundingContributorsPage() {
   const c = await getSiteContent();
@@ -94,58 +76,8 @@ export default async function FoundingContributorsPage() {
         </div>
       </Section>
 
-      {/* People we welcome */}
-      <Section tone="blue" labelledBy="welcome-heading">
-        <div className="grid items-center gap-12 lg:grid-cols-[1.1fr_1fr] lg:gap-16">
-          <div>
-            <div className="grid grid-cols-3 gap-3 sm:gap-4">
-              {PORTRAITS.map((p, i) => (
-                <Reveal key={p.id} delay={i * 120} className={i === 1 ? "translate-y-6" : undefined}>
-                  <Photo
-                    id={p.id}
-                    sizes="(min-width: 1024px) 18vw, 33vw"
-                    className="shadow-soft"
-                    fallback={
-                      <svg viewBox="-40 -40 80 80" className="w-3/4" aria-hidden="true">
-                        <Avatar skin={p.skin} shirt={p.shirt} bg={p.bg} r={36} />
-                      </svg>
-                    }
-                  />
-                </Reveal>
-              ))}
-            </div>
-            {PORTRAITS.some((p) => photoAvailable(p.id)) && (
-              <p className="mt-10 text-sm text-ink-600">
-                Illustrative photographs showing the kinds of people we welcome. They are not members of the organization.
-              </p>
-            )}
-          </div>
-          <div>
-            <SectionHeading
-              id="welcome-heading"
-              eyebrow="People we welcome"
-              title="Ordinary people with different abilities."
-              intro="Whatever your age, background or level of experience, there may be a useful role for you."
-            />
-            <ul className="mt-8 grid gap-4 sm:grid-cols-2">
-              {EMPHASIS.map(([t, b]) => (
-                <li key={t} className="flex gap-3">
-                  <span className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-accent-100 text-accent-800">
-                    <IconCheck className="h-4 w-4" />
-                  </span>
-                  <span>
-                    <span className="block font-semibold text-ink-950">{t}</span>
-                    <span className="block text-sm leading-6 text-ink-600">{b}</span>
-                  </span>
-                </li>
-              ))}
-            </ul>
-          </div>
-        </div>
-      </Section>
-
       {/* Who we are looking for */}
-      <Section labelledBy="looking-heading">
+      <Section tone="blue" labelledBy="looking-heading">
         <SectionHeading
           id="looking-heading"
           eyebrow="Who we are looking for"

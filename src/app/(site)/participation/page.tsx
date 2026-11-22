@@ -1,5 +1,5 @@
 import { Photo } from "@/components/photos/photo";
-import { CheckList, CtaBand } from "@/components/site/blocks";
+import { CheckList } from "@/components/site/blocks";
 import { Badge, Card, cn, Notice, PageHeader, Section, SectionHeading } from "@/components/ui/primitives";
 import { CATEGORY_GLYPHS, GlyphIcon } from "@/components/visuals/glyphs";
 import { OrbitVisual } from "@/components/visuals/illustrations";
@@ -155,7 +155,6 @@ export default async function ParticipationPage() {
           )}
         </div>
       </Section>
-      <CtaBand />
     </>
   );
 }

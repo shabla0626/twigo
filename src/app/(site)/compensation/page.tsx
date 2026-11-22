@@ -1,5 +1,5 @@
 import { Photo } from "@/components/photos/photo";
-import { CheckList, CtaBand } from "@/components/site/blocks";
+import { CheckList } from "@/components/site/blocks";
 import { Card, Notice, PageHeader, Section, SectionHeading } from "@/components/ui/primitives";
 import { BalanceVisual } from "@/components/visuals/illustrations";
 import { RevenueFlow } from "@/components/visuals/revenue-flow";
@@ -132,7 +132,6 @@ export default function CompensationPage() {
           </div>
         </div>
       </Section>
-      <CtaBand />
     </>
   );
 }
