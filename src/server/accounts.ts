@@ -351,6 +351,12 @@ export async function setMembership(actorId: string, userId: string, to: Communi
   });
   if (res.count !== 1) return { ok: false, error: "The membership changed meanwhile. Please reload the page." };
   if (to !== "ACTIVE") await publishRealtime(db, { t: "user.revoked", userId });
+  // Groups: paused = keeps the place, but groups they coordinate get a new coordinator;
+  // removed = group memberships end; restored = returns as an ordinary member.
+  const groups = await import("./community/groups");
+  if (to === "SUSPENDED") await groups.reassignCoordinatorsOf(userId);
+  else if (to === "REVOKED") await groups.leaveAllGroups(userId);
+  else await groups.fillVacantCoordinators(userId);
   await audit(actorId, `membership.${to.toLowerCase()}`, "User", userId, { from: target.membershipStatus });
   if (opts.notify) {
     await deliverTemplate(
@@ -371,6 +377,9 @@ export async function suspendUser(actorId: string, userId: string, reason: strin
   if (refused) return { ok: false, error: refused };
   await db.user.update({ where: { id: userId }, data: { status: "SUSPENDED", suspendedAt: new Date(), suspendedReason: reason.slice(0, 500) || null } });
   await endAccess(userId);
+  // A suspended person cannot act as coordinator: their groups get a new one now.
+  const { reassignCoordinatorsOf } = await import("./community/groups");
+  await reassignCoordinatorsOf(userId);
   await audit(actorId, "member.suspended", "User", userId);
   return { ok: true };
 }
@@ -385,6 +394,8 @@ export async function reactivateUser(actorId: string, userId: string): Promise<R
   // A deactivated account without a password must go through a new invitation.
   const status = target.passwordHash ? "ACTIVE" : "INVITED";
   await db.user.update({ where: { id: userId }, data: { status, suspendedAt: null, suspendedReason: null, deactivatedAt: null } });
+  const { fillVacantCoordinators } = await import("./community/groups");
+  await fillVacantCoordinators(userId);
   await audit(actorId, "member.reactivated", "User", userId);
   return { ok: true };
 }

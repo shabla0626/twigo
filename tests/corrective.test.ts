@@ -10,6 +10,8 @@ import { db } from "@/lib/db";
 import { resetEnvCache } from "@/lib/env";
 import { deactivateUser, reactivateUser, setMembership, suspendUser } from "@/server/accounts";
 import { backupNowAction, memberStatusAction } from "@/app/admin/actions/community";
+import { createIdea, endorseIdea } from "@/server/community/ideas";
+import { leaveGroup } from "@/server/community/groups";
 import { cookieJar, createMember, createUser, resetDb, signIn } from "./helpers";
 
 beforeEach(async () => {
@@ -25,6 +27,35 @@ const form = (data: Record<string, string>) => {
   for (const [k, v] of Object.entries(data)) fd.set(k, v);
   return fd;
 };
+const ideaInput = (title = "Neighborhood bookkeeping service") => ({
+  title,
+  summary: "Small local shops need simple, affordable monthly bookkeeping help.",
+  category: "ONLINE_SERVICES" as const,
+  description: null, problem: null, proposal: null, customers: null, revenueModel: null, skillsNeeded: null, timeEstimate: null,
+  links: [],
+});
+
+/** A group formed from an idea: Alice is the author and coordinator; Bob and Cara supported it. */
+async function groupOfThree() {
+  const [a, b, c] = [await createMember("Alice"), await createMember("Bob"), await createMember("Cara")];
+  const res = await createIdea(a.id, ideaInput());
+  if (!res.ok) throw new Error(res.error);
+  await endorseIdea(b.id, res.id);
+  await endorseIdea(c.id, res.id);
+  const g = await db.researchGroup.findUniqueOrThrow({ where: { ideaId: res.id }, include: { channels: true } });
+  return { a, b, c, g, ideaId: res.id, channelId: g.channels[0]!.id };
+}
+
+/** "Name:ROLE:membership status" for every membership row, plus the group's own state. */
+async function groupState(groupId: string) {
+  const g = await db.researchGroup.findUniqueOrThrow({
+    where: { id: groupId },
+    include: { memberships: { include: { user: { select: { name: true } } } } },
+  });
+  const rows = g.memberships.map((m) => `${m.user.name}:${m.role}:${m.status}`).sort();
+  return { status: g.status, adminManaged: g.adminManaged, memberCount: g.memberCount, rows, coordinators: rows.filter((r) => r.includes(":COORDINATOR:ACTIVE")) };
+}
+
 /** Server actions end with redirect(), which the test stand-in turns into an error carrying the address. */
 const redirectOf = async (p: Promise<unknown>) => decodeURIComponent(await p.then(() => "returned").catch((e: Error) => e.message));
 
@@ -117,5 +148,87 @@ describe("P1-4: only the owner may act on owner and administrator accounts", () 
     const shown = await redirectOf(memberStatusAction(form({ id: owner.id, action: "deactivate" })));
     expect(shown).toContain("error=You cannot change your own account");
     expect(await status(owner.id)).toBe("ACTIVE");
+  });
+});
+
+describe("P2-5: simultaneous membership changes of one group never collide", () => {
+  it("the last two members can leave at the same moment; the group ends up empty and archived", async () => {
+    for (let round = 0; round < 8; round++) {
+      await resetDb();
+      const { a, b, c, g } = await groupOfThree();
+      await leaveGroup(c.id, g.id);
+      const results = await Promise.allSettled([leaveGroup(a.id, g.id), leaveGroup(b.id, g.id)]);
+      expect(results.map((r) => r.status)).toEqual(["fulfilled", "fulfilled"]);
+      expect(await groupState(g.id)).toMatchObject({ status: "ARCHIVED", adminManaged: true, memberCount: 0, coordinators: [] });
+    }
+  }, 120_000);
+
+  it("the coordinator and a member can leave at the same moment; exactly one coordinator remains", async () => {
+    for (let round = 0; round < 8; round++) {
+      await resetDb();
+      const { a, b, g } = await groupOfThree();
+      const results = await Promise.allSettled([leaveGroup(a.id, g.id), leaveGroup(b.id, g.id)]);
+      expect(results.map((r) => r.status)).toEqual(["fulfilled", "fulfilled"]);
+      expect(await groupState(g.id)).toMatchObject({ status: "FORMING", memberCount: 1, coordinators: ["Cara:COORDINATOR:ACTIVE"] });
+    }
+  }, 120_000);
+});
+
+describe("P1-9: a coordinator who loses access is replaced at once", () => {
+  it("suspending the coordinator account promotes the longest-standing eligible member and notifies them", async () => {
+    const owner = await createUser({ totp: true });
+    const { a, b, g } = await groupOfThree();
+    expect((await suspendUser(owner.id, a.id, "test")).ok).toBe(true);
+    const after = await groupState(g.id);
+    expect(after.coordinators).toEqual(["Bob:COORDINATOR:ACTIVE"]);
+    expect(after.rows).toContain("Alice:MEMBER:ACTIVE"); // keeps her place, not her role
+    expect(after.adminManaged).toBe(false);
+    expect(await db.notification.count({ where: { userId: b.id, type: "COORDINATOR_ASSIGNED" } })).toBe(1);
+    expect(await db.auditLog.count({ where: { action: "group.coordinator_succession" } })).toBe(1);
+
+    // Reinstated: an ordinary member again. Never two coordinators.
+    expect((await reactivateUser(owner.id, a.id)).ok).toBe(true);
+    expect((await groupState(g.id)).coordinators).toEqual(["Bob:COORDINATOR:ACTIVE"]);
+  });
+
+  it("pausing the community access of the coordinator does the same", async () => {
+    const owner = await createUser({ totp: true });
+    const { a, g } = await groupOfThree();
+    expect((await setMembership(owner.id, a.id, "SUSPENDED")).ok).toBe(true);
+    expect((await groupState(g.id)).coordinators).toEqual(["Bob:COORDINATOR:ACTIVE"]);
+    expect((await setMembership(owner.id, a.id, "ACTIVE")).ok).toBe(true);
+    const after = await groupState(g.id);
+    expect(after.coordinators).toEqual(["Bob:COORDINATOR:ACTIVE"]);
+    expect(after.rows).toContain("Alice:MEMBER:ACTIVE");
+  });
+
+  it("removing the community access of the coordinator ends their group memberships and promotes a successor", async () => {
+    const owner = await createUser({ totp: true });
+    const { a, g } = await groupOfThree();
+    expect((await setMembership(owner.id, a.id, "REVOKED")).ok).toBe(true);
+    const after = await groupState(g.id);
+    expect(after.rows).toContain("Alice:MEMBER:LEFT");
+    expect(after.coordinators).toEqual(["Bob:COORDINATOR:ACTIVE"]);
+    expect(after.memberCount).toBe(2);
+  });
+
+  it("with nobody eligible the group is flagged for administrators (not archived) and recovers when someone returns", async () => {
+    const owner = await createUser({ totp: true });
+    const { a, b, c, g } = await groupOfThree();
+    await suspendUser(owner.id, b.id, "test");
+    await suspendUser(owner.id, c.id, "test");
+    await suspendUser(owner.id, a.id, "test");
+    expect(await groupState(g.id)).toMatchObject({ status: "FORMING", adminManaged: true, coordinators: [] });
+    await reactivateUser(owner.id, c.id);
+    expect(await groupState(g.id)).toMatchObject({ adminManaged: false, coordinators: ["Cara:COORDINATOR:ACTIVE"] });
+  });
+
+  it("a later leave never creates a second coordinator", async () => {
+    const owner = await createUser({ totp: true });
+    const { a, b, g } = await groupOfThree();
+    await setMembership(owner.id, a.id, "SUSPENDED");
+    await leaveGroup(b.id, g.id);
+    await setMembership(owner.id, a.id, "ACTIVE");
+    expect((await groupState(g.id)).coordinators).toEqual(["Cara:COORDINATOR:ACTIVE"]);
   });
 });

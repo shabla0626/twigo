@@ -139,13 +139,42 @@ export async function getGroupOverview(slug: string) {
   });
 }
 
+/** PostgreSQL deadlock (40P01) or serialization failure (40001): the whole transaction can safely run again. */
+function isRetryable(err: unknown): boolean {
+  return /40P01|40001|deadlock detected/.test(`${(err as { code?: string })?.code ?? ""} ${String(err)}`);
+}
+
+/**
+ * Runs `fn` in a transaction that first locks the group's row. Every change to
+ * a group's memberships goes through here, so two changes to the same group
+ * (two people leaving at the same moment, a leave during a succession) run one
+ * after the other instead of colliding.
+ */
+export async function withGroupLock<T>(groupId: string, fn: (tx: Prisma.TransactionClient) => Promise<T>): Promise<T> {
+  for (let attempt = 0; ; attempt++) {
+    try {
+      return await db.$transaction(async (tx) => {
+        await tx.$queryRaw`SELECT id FROM "ResearchGroup" WHERE id = ${groupId} FOR UPDATE`;
+        return fn(tx);
+      });
+    } catch (err) {
+      if (attempt >= 2 || !isRetryable(err)) throw err;
+    }
+  }
+}
+
 export async function joinGroup(userId: string, groupId: string) {
   const a = await groupAccess(groupId, userId);
   if (!a || a.group.suspendedAt) return { ok: false as const, error: "This group is not available." };
   if (a.group.status === "ARCHIVED") return { ok: false as const, error: "Archived groups cannot be joined." };
   if (a.isMember) return { ok: true as const };
   if (a.membership?.status === "REMOVED") return { ok: false as const, error: "You were removed from this group by its coordinator. Contact the organization if you think this was a mistake." };
-  await db.$transaction(async (tx) => {
+  const joined = await withGroupLock(a.group.id, async (tx) => {
+    // Re-read under the lock: the situation may have changed since the checks above.
+    const g = await tx.researchGroup.findUniqueOrThrow({ where: { id: a.group.id }, select: { status: true, suspendedAt: true } });
+    const m = await tx.groupMembership.findUnique({ where: { groupId_userId: { groupId: a.group.id, userId } } });
+    if (g.suspendedAt || g.status === "ARCHIVED" || m?.status === "REMOVED") return false;
+    if (m?.status === "ACTIVE") return true;
     await tx.groupMembership.upsert({
       where: { groupId_userId: { groupId: a.group.id, userId } },
       create: { groupId: a.group.id, userId, role: "MEMBER" },
@@ -153,55 +182,88 @@ export async function joinGroup(userId: string, groupId: string) {
     });
     await refreshMemberCount(a.group.id, tx);
     await tx.researchGroup.update({ where: { id: a.group.id }, data: { lastActivityAt: new Date(), adminManaged: false } });
+    return true;
   });
+  if (!joined) return { ok: false as const, error: "This group is not available." };
   await publishRealtime(db, { t: "group.updated", groupId: a.group.id, what: "members" });
   return { ok: true as const };
 }
 
+type Succession = { promoted: string | null; archived: boolean; flagged: boolean };
+
 /**
- * Coordinator succession (documented in docs/COMMUNITY.md):
- * 1. If another active coordinator exists, nothing changes.
- * 2. Otherwise the longest-standing active member becomes coordinator.
- * 3. If no active member remains, the group is archived and flagged for administrators.
+ * Coordinator succession (see docs/ARCHITECTURE.md). Must run under the group lock.
+ * "Eligible" means an active group member who currently has community access.
+ * 1. The longest-standing eligible coordinator stays. Any other coordinator row
+ *    (for example of someone who was suspended) becomes an ordinary member, so a
+ *    group can never have two coordinators.
+ * 2. With no eligible coordinator, the longest-standing eligible member is promoted.
+ * 3. With no eligible member: if nobody is left at all, the group is archived and
+ *    flagged for administrators; if members remain but none is eligible right now,
+ *    the group is only flagged.
  */
-async function ensureCoordinator(tx: Prisma.TransactionClient, groupId: string): Promise<{ promoted: string | null; archived: boolean }> {
-  const coord = await tx.groupMembership.findFirst({ where: { groupId, status: "ACTIVE", role: "COORDINATOR", user: ACTIVE_MEMBER } });
-  if (coord) return { promoted: null, archived: false };
-  const next = await tx.groupMembership.findFirst({ where: { groupId, status: "ACTIVE", user: ACTIVE_MEMBER }, orderBy: { joinedAt: "asc" } });
+async function ensureCoordinator(tx: Prisma.TransactionClient, groupId: string): Promise<Succession> {
+  const eligible = { groupId, status: "ACTIVE", user: ACTIVE_MEMBER } satisfies Prisma.GroupMembershipWhereInput;
+  // Founding members share one joining time; the id (which grows with creation order) breaks the tie.
+  const oldestFirst = [{ joinedAt: "asc" }, { id: "asc" }] satisfies Prisma.GroupMembershipOrderByWithRelationInput[];
+  const keep = await tx.groupMembership.findFirst({ where: { ...eligible, role: "COORDINATOR" }, orderBy: oldestFirst, select: { id: true } });
+  await tx.groupMembership.updateMany({ where: { groupId, role: "COORDINATOR", ...(keep ? { id: { not: keep.id } } : {}) }, data: { role: "MEMBER" } });
+  if (keep) return { promoted: null, archived: false, flagged: false };
+  const next = await tx.groupMembership.findFirst({ where: eligible, orderBy: oldestFirst });
   if (next) {
     await tx.groupMembership.update({ where: { id: next.id }, data: { role: "COORDINATOR" } });
-    return { promoted: next.userId, archived: false };
+    await tx.researchGroup.update({ where: { id: groupId }, data: { adminManaged: false } });
+    return { promoted: next.userId, archived: false, flagged: false };
   }
-  await tx.researchGroup.update({ where: { id: groupId }, data: { status: "ARCHIVED", archivedAt: new Date(), adminManaged: true } });
-  return { promoted: null, archived: true };
+  const remaining = await tx.groupMembership.count({ where: { groupId, status: "ACTIVE" } });
+  if (remaining === 0) {
+    await tx.researchGroup.update({ where: { id: groupId }, data: { status: "ARCHIVED", archivedAt: new Date(), adminManaged: true } });
+    return { promoted: null, archived: true, flagged: true };
+  }
+  await tx.researchGroup.update({ where: { id: groupId }, data: { adminManaged: true } });
+  return { promoted: null, archived: false, flagged: true };
 }
 
-async function afterMembershipEnded(groupId: string, userId: string, outcome: { promoted: string | null; archived: boolean }) {
-  await publishRealtime(db, { t: "group.access_revoked", groupId, userId });
-  await publishRealtime(db, { t: "group.updated", groupId, what: "members" });
+const SUCCESSION_REASON = {
+  left: "The previous coordinator left the group.",
+  unavailable: "The previous coordinator is no longer available.",
+  vacant: "The group had no coordinator.",
+} as const;
+
+/** Notifications and audit entries for a succession (after the transaction has committed). */
+async function announceSuccession(groupId: string, outcome: Succession, why: keyof typeof SUCCESSION_REASON) {
+  if (!outcome.promoted && !outcome.archived && !outcome.flagged) return;
   const group = await db.researchGroup.findUniqueOrThrow({ where: { id: groupId }, select: { slug: true, name: true } });
   if (outcome.promoted) {
     await notify([outcome.promoted], {
       type: "COORDINATOR_ASSIGNED",
       title: `You are now the coordinator of “${group.name}”`,
-      body: "The previous coordinator left the group. As the longest-standing member, you were made coordinator. You can hand the role to another member at any time.",
+      body: `${SUCCESSION_REASON[why]} As the longest-standing member, you were made coordinator. You can hand the role to another member at any time.`,
       link: `/community/groups/${group.slug}`,
     });
-    await audit(null, "group.coordinator_succession", "ResearchGroup", groupId, { newCoordinator: outcome.promoted });
+    await audit(null, "group.coordinator_succession", "ResearchGroup", groupId, { newCoordinator: outcome.promoted, why });
   }
   if (outcome.archived) await audit(null, "group.archived_no_members", "ResearchGroup", groupId);
+  else if (outcome.flagged) await audit(null, "group.no_eligible_coordinator", "ResearchGroup", groupId, { why });
+  await publishRealtime(db, { t: "group.updated", groupId, what: "members" });
+}
+
+async function afterMembershipEnded(groupId: string, userId: string, outcome: Succession) {
+  await publishRealtime(db, { t: "group.access_revoked", groupId, userId });
+  await publishRealtime(db, { t: "group.updated", groupId, what: "members" });
+  await announceSuccession(groupId, outcome, "left");
 }
 
 /** Voluntary leave. Organization membership is not affected. History stays per retention policy. */
 export async function leaveGroup(userId: string, groupId: string) {
-  const m = await db.groupMembership.findUnique({ where: { groupId_userId: { groupId, userId } } });
-  if (!m || m.status !== "ACTIVE") return { ok: true as const };
-  const outcome = await db.$transaction(async (tx) => {
+  const outcome = await withGroupLock(groupId, async (tx) => {
+    const m = await tx.groupMembership.findUnique({ where: { groupId_userId: { groupId, userId } } });
+    if (!m || m.status !== "ACTIVE") return null;
     await tx.groupMembership.update({ where: { id: m.id }, data: { status: "LEFT", leftAt: new Date(), role: "MEMBER" } });
     await refreshMemberCount(groupId, tx);
     return ensureCoordinator(tx, groupId);
   });
-  await afterMembershipEnded(groupId, userId, outcome);
+  if (outcome) await afterMembershipEnded(groupId, userId, outcome);
   return { ok: true as const };
 }
 
@@ -210,30 +272,65 @@ export async function leaveAllGroups(userId: string) {
   for (const m of ms) await leaveGroup(userId, m.groupId);
 }
 
+/**
+ * Someone's account was suspended, or their community access was paused: they
+ * keep their place in their groups, but cannot act. Every group they coordinate
+ * gets a new coordinator at once (or is flagged for administrators when nobody
+ * else is eligible). Call this AFTER the account change has been saved.
+ */
+export async function reassignCoordinatorsOf(userId: string) {
+  const rows = await db.groupMembership.findMany({ where: { userId, status: "ACTIVE", role: "COORDINATOR" }, select: { groupId: true } });
+  for (const { groupId } of rows) {
+    const outcome = await withGroupLock(groupId, (tx) => ensureCoordinator(tx, groupId));
+    await announceSuccession(groupId, outcome, "unavailable");
+  }
+}
+
+/**
+ * Someone regained access. They return as an ordinary member (the coordinator
+ * role is never given back automatically). Groups of theirs that were left
+ * without any coordinator get one again by the normal succession rule.
+ */
+export async function fillVacantCoordinators(userId: string) {
+  const rows = await db.groupMembership.findMany({
+    where: { userId, status: "ACTIVE", group: { status: { not: "ARCHIVED" } } },
+    select: { groupId: true },
+  });
+  for (const { groupId } of rows) {
+    const outcome = await withGroupLock(groupId, (tx) => ensureCoordinator(tx, groupId));
+    await announceSuccession(groupId, outcome, "vacant");
+  }
+}
+
 /** Coordinator removes a disruptive member (audited). */
 export async function removeMember(coordinatorId: string, groupId: string, userId: string) {
   await requireCoordinator(groupId, coordinatorId);
   if (coordinatorId === userId) return { ok: false as const, error: "Use “Leave group” to leave yourself." };
-  const m = await db.groupMembership.findUnique({ where: { groupId_userId: { groupId, userId } } });
-  if (!m || m.status !== "ACTIVE") return { ok: false as const, error: "That person is not an active member." };
-  await db.$transaction(async (tx) => {
+  const removed = await withGroupLock(groupId, async (tx) => {
+    const m = await tx.groupMembership.findUnique({ where: { groupId_userId: { groupId, userId } } });
+    if (!m || m.status !== "ACTIVE") return false;
     await tx.groupMembership.update({ where: { id: m.id }, data: { status: "REMOVED", leftAt: new Date(), role: "MEMBER" } });
     await refreshMemberCount(groupId, tx);
+    return true;
   });
+  if (!removed) return { ok: false as const, error: "That person is not an active member." };
   await audit(coordinatorId, "group.member_removed", "ResearchGroup", groupId, { userId });
-  await afterMembershipEnded(groupId, userId, { promoted: null, archived: false });
+  await afterMembershipEnded(groupId, userId, { promoted: null, archived: false, flagged: false });
   return { ok: true as const };
 }
 
 /** Coordinator hands the role to another active member. */
 export async function transferCoordinator(coordinatorId: string, groupId: string, toUserId: string) {
   await requireCoordinator(groupId, coordinatorId);
-  const target = await db.groupMembership.findUnique({ where: { groupId_userId: { groupId, userId: toUserId } } });
-  if (!target || target.status !== "ACTIVE") return { ok: false as const, error: "Choose an active member of the group." };
-  await db.$transaction([
-    db.groupMembership.update({ where: { groupId_userId: { groupId, userId: coordinatorId } }, data: { role: "MEMBER" } }),
-    db.groupMembership.update({ where: { id: target.id }, data: { role: "COORDINATOR" } }),
-  ]);
+  const done = await withGroupLock(groupId, async (tx) => {
+    const target = await tx.groupMembership.findFirst({ where: { groupId, userId: toUserId, status: "ACTIVE", user: ACTIVE_MEMBER } });
+    const mine = await tx.groupMembership.findFirst({ where: { groupId, userId: coordinatorId, status: "ACTIVE", role: "COORDINATOR" } });
+    if (!target || !mine) return false;
+    await tx.groupMembership.updateMany({ where: { groupId, role: "COORDINATOR" }, data: { role: "MEMBER" } });
+    await tx.groupMembership.update({ where: { id: target.id }, data: { role: "COORDINATOR" } });
+    return true;
+  });
+  if (!done) return { ok: false as const, error: "Choose an active member of the group." };
   const g = await db.researchGroup.findUniqueOrThrow({ where: { id: groupId }, select: { slug: true, name: true } });
   await notify([toUserId], { type: "COORDINATOR_ASSIGNED", title: `You are now the coordinator of “${g.name}”`, link: `/community/groups/${g.slug}` });
   await audit(coordinatorId, "group.coordinator_transferred", "ResearchGroup", groupId, { to: toUserId });
@@ -286,20 +383,22 @@ export async function adminSetGroupState(adminId: string, groupId: string, actio
           ? { suspendedAt: new Date(), suspendedReason: reason?.slice(0, 500) || null }
           : { suspendedAt: null, suspendedReason: null };
   await db.researchGroup.update({ where: { id: groupId }, data });
-  if (action === "reopen") await db.$transaction(async (tx) => { await ensureCoordinator(tx, groupId); });
+  if (action === "reopen") await announceSuccession(groupId, await withGroupLock(groupId, (tx) => ensureCoordinator(tx, groupId)), "vacant");
   if (action === "suspend") await publishRealtime(db, { t: "group.access_revoked", groupId });
   await audit(adminId, `group.${action}`, "ResearchGroup", groupId, reason ? { reason: reason.slice(0, 200) } : undefined);
   return { ok: true as const };
 }
 
 export async function adminAssignCoordinator(adminId: string, groupId: string, userId: string) {
-  const m = await db.groupMembership.findUnique({ where: { groupId_userId: { groupId, userId } } });
-  if (!m || m.status !== "ACTIVE") return { ok: false as const, error: "The new coordinator must be an active member of the group." };
-  await db.$transaction([
-    db.groupMembership.updateMany({ where: { groupId, role: "COORDINATOR" }, data: { role: "MEMBER" } }),
-    db.groupMembership.update({ where: { id: m.id }, data: { role: "COORDINATOR" } }),
-    db.researchGroup.update({ where: { id: groupId }, data: { adminManaged: false } }),
-  ]);
+  const done = await withGroupLock(groupId, async (tx) => {
+    const m = await tx.groupMembership.findFirst({ where: { groupId, userId, status: "ACTIVE", user: ACTIVE_MEMBER } });
+    if (!m) return false;
+    await tx.groupMembership.updateMany({ where: { groupId, role: "COORDINATOR" }, data: { role: "MEMBER" } });
+    await tx.groupMembership.update({ where: { id: m.id }, data: { role: "COORDINATOR" } });
+    await tx.researchGroup.update({ where: { id: groupId }, data: { adminManaged: false } });
+    return true;
+  });
+  if (!done) return { ok: false as const, error: "The new coordinator must be an active member of the group who currently has community access." };
   const g = await db.researchGroup.findUniqueOrThrow({ where: { id: groupId }, select: { slug: true, name: true } });
   await notify([userId], { type: "COORDINATOR_ASSIGNED", title: `You are now the coordinator of “${g.name}”`, body: "The organization assigned you this role.", link: `/community/groups/${g.slug}` });
   await audit(adminId, "group.coordinator_assigned", "ResearchGroup", groupId, { userId });
