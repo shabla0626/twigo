@@ -19,12 +19,106 @@ export async function createIdea(authorId: string, input: IdeaInput) {
   return { ok: true as const, id: idea.id };
 }
 
-export async function updateIdea(userId: string, ideaId: string, input: IdeaInput) {
-  const idea = await db.businessIdea.findUnique({ where: { id: ideaId } });
-  if (!idea || idea.authorId !== userId) return { ok: false as const, error: "Only the author can edit this idea." };
-  if (idea.status === "REMOVED") return { ok: false as const, error: "This idea was removed by moderation." };
-  await db.businessIdea.update({ where: { id: ideaId }, data: { ...input, editedAt: new Date() } });
-  return { ok: true as const };
+/** The parts of an idea that are kept in its history, with the names shown to members. */
+export const IDEA_TEXT_FIELDS = {
+  title: "Title",
+  summary: "What the idea is",
+  category: "Area",
+  problem: "Problem or opportunity",
+  proposal: "What would be offered",
+  customers: "Customers",
+  revenueModel: "How it could earn money",
+  description: "More details",
+  skillsNeeded: "Skills needed",
+  timeEstimate: "Time needed",
+  links: "Links",
+} as const;
+type IdeaTextField = keyof typeof IDEA_TEXT_FIELDS;
+export type IdeaChangeKind = "MINOR" | "MATERIAL";
+
+const same = (x: unknown, y: unknown) => JSON.stringify(x ?? null) === JSON.stringify(y ?? null);
+
+/**
+ * Edits an idea (author only). Founder decision 5:
+ *
+ * - Every edit is recorded: the text as it was before, who changed it, when.
+ *   Members can read this history on the idea page.
+ * - Nobody supports the idea yet: it can be edited freely.
+ * - People support it, no group yet: the author says what kind of change it is.
+ *     MINOR    (wording, typos, clarity): support is kept; supporters are told and can withdraw.
+ *     MATERIAL (business purpose, revenue model, scope, area): support is reset;
+ *              supporters are told and can support the new version.
+ *   Changing the area is always material.
+ * - A research group exists: only minor corrections. The direction now belongs
+ *   to the group and is changed there, openly (see updateGroupInfo).
+ */
+export async function updateIdea(userId: string, ideaId: string, input: IdeaInput, opts: { kind?: IdeaChangeKind } = {}) {
+  const threshold = await getSetting("community.endorsementThreshold");
+  const outcome = await db.$transaction(async (tx) => {
+    await tx.$queryRaw`SELECT "id" FROM "BusinessIdea" WHERE "id" = ${ideaId} FOR UPDATE`;
+    const idea = await tx.businessIdea.findUnique({ where: { id: ideaId }, include: { group: { select: { id: true } }, endorsements: { select: { userId: true } } } });
+    if (!idea || idea.authorId !== userId) return { ok: false as const, error: "Only the author can edit this idea." };
+    if (idea.status === "REMOVED") return { ok: false as const, error: "This idea was removed by moderation." };
+
+    const changed = (Object.keys(IDEA_TEXT_FIELDS) as IdeaTextField[]).filter((f) => !same(idea[f], input[f]));
+    if (!changed.length) return { ok: true as const, changed: false as const };
+
+    const supporters = idea.endorsements.map((e) => e.userId);
+    let kind: IdeaChangeKind = opts.kind ?? "MINOR";
+    if (idea.group) {
+      if (opts.kind === "MATERIAL" || changed.includes("category")) {
+        return { ok: false as const, error: "This idea already has a research group, so only minor corrections can be made here. A change of direction is made in the group (coordinator tools), where everyone sees it." };
+      }
+      kind = "MINOR";
+    } else if (supporters.length > 0) {
+      if (!opts.kind) return { ok: false as const, error: "People already support this idea. Please say whether this is a minor correction or a material change." };
+      if (changed.includes("category") && opts.kind !== "MATERIAL") return { ok: false as const, error: "Changing the area is a material change. Choose “Material change” to save it." };
+    }
+    const reset = kind === "MATERIAL" && supporters.length > 0;
+
+    const before = Object.fromEntries((Object.keys(IDEA_TEXT_FIELDS) as IdeaTextField[]).map((f) => [f, idea[f] ?? null]));
+    await tx.ideaRevision.create({ data: { ideaId, editorId: userId, kind, before, changedFields: changed, supportersBefore: supporters.length, supportReset: reset } });
+    await tx.businessIdea.update({ where: { id: ideaId }, data: { ...input, editedAt: new Date(), lastActivityAt: new Date() } });
+    if (reset) {
+      await tx.ideaEndorsement.deleteMany({ where: { ideaId } });
+      await evaluateIdea(tx, { id: ideaId, authorId: idea.authorId, status: idea.status }, threshold);
+    }
+    return { ok: true as const, changed: true as const, kind, reset, supporters, title: input.title };
+  });
+  if (!outcome.ok || !outcome.changed) return outcome.ok ? { ok: true as const } : outcome;
+
+  // Supporters are always told when an idea they support changes.
+  if (outcome.supporters.length) {
+    await afterSaved("notify supporters of change", () =>
+      notify(
+        outcome.supporters,
+        outcome.reset
+          ? {
+              type: "IDEA_CHANGED",
+              title: `The idea “${outcome.title}” was changed materially`,
+              body: "Its author changed what the idea is about, so earlier support no longer counts. Read the new version and support it again if you still agree.",
+              link: `/community/ideas/${ideaId}`,
+            }
+          : {
+              type: "IDEA_CHANGED",
+              title: `The idea “${outcome.title}” was corrected`,
+              body: "Its author made a minor correction. Your support still counts. You can see what changed on the idea page and withdraw your support if you no longer agree.",
+              link: `/community/ideas/${ideaId}#history`,
+            },
+      ),
+    );
+  }
+  return { ok: true as const, reset: outcome.reset };
+}
+
+/** The history of an idea, newest first, with who made each change. */
+export async function ideaRevisions(ideaId: string) {
+  return db.ideaRevision.findMany({
+    where: { ideaId },
+    orderBy: { createdAt: "desc" },
+    take: 50,
+    select: { id: true, kind: true, before: true, changedFields: true, supportersBefore: true, supportReset: true, createdAt: true, editor: { select: { profile: { select: { displayName: true } } } } },
+  });
 }
 
 export async function closeIdea(userId: string, ideaId: string) {

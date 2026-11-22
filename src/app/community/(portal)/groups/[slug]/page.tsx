@@ -135,6 +135,14 @@ export default async function GroupOverviewPage({ params, searchParams }: Props)
                 <Field id="g-purpose" label="What the group is working on" optional>
                   <Textarea id="g-purpose" name="purpose" defaultValue={group.purpose ?? ""} maxLength={500} rows={2} />
                 </Field>
+                <Field
+                  id="g-reason"
+                  label="If you change the line above: what changes, and why?"
+                  optional
+                  hint="Needed only when you change what the group is working on. It is recorded as a decision, announced and sent to every member, together with the previous text. Talk it over in the group first."
+                >
+                  <Textarea id="g-reason" name="reason" maxLength={1000} rows={2} aria-describedby="g-reason-hint" />
+                </Field>
                 <Field id="g-desc" label="More information" optional>
                   <Textarea id="g-desc" name="description" defaultValue={group.description ?? ""} maxLength={10000} rows={4} />
                 </Field>

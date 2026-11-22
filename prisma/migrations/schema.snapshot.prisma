@@ -186,6 +186,7 @@ model User {
   recoveryCodes     RecoveryCode[]
   profile           MemberProfile?
   ideas             BusinessIdea[]
+  ideaRevisions     IdeaRevision[]
   endorsements      IdeaEndorsement[]
   comments          Comment[]
   discussions       GroupDiscussion[]
@@ -683,6 +684,7 @@ enum NotificationType {
   COORDINATOR_ASSIGNED
   DISCUSSION_REPLY
   ADMIN_MESSAGE
+  IDEA_CHANGED
 }
 
 enum ReportTarget {
@@ -750,6 +752,7 @@ model BusinessIdea {
 
   author       User?             @relation(fields: [authorId], references: [id], onDelete: SetNull)
   endorsements IdeaEndorsement[]
+  revisions    IdeaRevision[]
   comments     Comment[]
   group        ResearchGroup?
   files        StoredFile[]
@@ -759,6 +762,32 @@ model BusinessIdea {
   @@index([endorsementCount])
   @@index([lastActivityAt])
   @@index([authorId])
+}
+
+/// MINOR: wording, typos, clarity: existing support is kept (supporters are told and can withdraw).
+/// MATERIAL: the business purpose, revenue model, scope or category changed: support is reset.
+enum IdeaRevisionKind {
+  MINOR
+  MATERIAL
+}
+
+/// One edit of an idea. `before` is the idea's text as it was before the edit, so
+/// members can always see what an idea said when people supported it.
+model IdeaRevision {
+  id               String           @id @default(cuid())
+  ideaId           String
+  editorId         String?
+  kind             IdeaRevisionKind
+  before           Json
+  changedFields    String[]
+  supportersBefore Int              @default(0)
+  supportReset     Boolean          @default(false)
+  createdAt        DateTime         @default(now())
+
+  idea   BusinessIdea @relation(fields: [ideaId], references: [id], onDelete: Cascade)
+  editor User?        @relation(fields: [editorId], references: [id], onDelete: SetNull)
+
+  @@index([ideaId, createdAt])
 }
 
 model IdeaEndorsement {

@@ -394,10 +394,53 @@ export async function setGroupStatusByCoordinator(coordinatorId: string, groupId
   return { ok: true as const };
 }
 
-export async function updateGroupInfo(coordinatorId: string, groupId: string, input: { name: string; purpose: string | null; description: string | null }) {
-  await requireCoordinator(groupId, coordinatorId);
-  await db.researchGroup.update({ where: { id: groupId }, data: input });
-  return { ok: true as const };
+const clean = (v: string | null | undefined) => (v ?? "").trim();
+
+/**
+ * Coordinator edits the group's name and texts. Founder decision 5: what the
+ * group is working on (its purpose) is the group's business direction, and it
+ * may change only openly. So a change of purpose needs a short note saying
+ * what changed and why; the change is then written down as a group decision,
+ * posted as an announcement, shown in the chat and sent to every member, and
+ * the previous purpose stays on record. The discussion itself happens in the
+ * group's chat and discussions; there is no voting mechanism.
+ */
+export async function updateGroupInfo(coordinatorId: string, groupId: string, input: { name: string; purpose: string | null; description: string | null }, reason?: string | null) {
+  const a = await requireCoordinator(groupId, coordinatorId);
+  const purposeChanged = clean(a.group.purpose) !== clean(input.purpose);
+  const why = clean(reason);
+  if (purposeChanged && why.length < 10) {
+    return { ok: false as const, error: "You are changing what the group is working on. Please add a short note for the members: what changes, and why (at least a few words)." };
+  }
+  const line = await withGroupLock(groupId, async (tx) => {
+    await tx.researchGroup.update({ where: { id: groupId }, data: { ...input, ...(purposeChanged ? { lastActivityAt: new Date() } : {}) } });
+    if (!purposeChanged) return null;
+    const previous = clean(a.group.purpose) || "(none)";
+    const next = clean(input.purpose) || "(none)";
+    await tx.groupDecision.create({
+      data: { groupId, recordedById: coordinatorId, title: "Change of what the group is working on", decision: `New: ${next}`, rationale: `Why: ${why}\n\nPrevious: ${previous}` },
+    });
+    await tx.groupAnnouncement.create({
+      data: { groupId, authorId: coordinatorId, title: "What the group is working on has changed", body: `New: ${next}\n\nPrevious: ${previous}\n\nWhy: ${why}` },
+    });
+    return writeSystemLine(tx, groupId, `${await nameInChat(tx, coordinatorId)} changed what the group is working on (see the announcement on the Overview)`);
+  });
+  if (purposeChanged) {
+    await publishLines([line]);
+    await audit(coordinatorId, "group.purpose_changed", "ResearchGroup", groupId);
+    await notify(
+      await activeMemberIds(groupId),
+      {
+        type: "GROUP_DECISION",
+        title: `${a.group.name}: what the group is working on has changed`,
+        body: "The coordinator changed the group’s direction and wrote down why. You can read the previous and the new version in the group.",
+        link: `/community/groups/${a.group.slug}`,
+      },
+      { exclude: coordinatorId },
+    );
+    await publishRealtime(db, { t: "group.updated", groupId, what: "announcement" });
+  }
+  return { ok: true as const, purposeChanged };
 }
 
 export async function postAnnouncement(coordinatorId: string, groupId: string, input: { title: string; body: string }) {

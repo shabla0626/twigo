@@ -12,7 +12,8 @@ import { requireMember } from "@/lib/auth/guard";
 import { IDEA_CATEGORIES } from "@/lib/validation/community";
 import { commentTree } from "@/server/community/comments";
 import { GROUP_STATUS_LABELS } from "@/server/community/group-labels";
-import { getIdea } from "@/server/community/ideas";
+import { IdeaHistory } from "@/components/community/idea-history";
+import { IDEA_TEXT_FIELDS, getIdea, ideaRevisions } from "@/server/community/ideas";
 import { getSetting } from "@/server/settings";
 import { closeIdeaAction, endorseAction, withdrawEndorsementAction } from "../../../actions";
 
@@ -39,7 +40,7 @@ export default async function IdeaPage({ params, searchParams }: Props) {
   const sp = await searchParams;
   const idea = await getIdea(id, user.id);
   if (!idea) notFound();
-  const [comments, threshold] = await Promise.all([commentTree({ ideaId: idea.id }), getSetting("community.endorsementThreshold")]);
+  const [comments, threshold, revisions] = await Promise.all([commentTree({ ideaId: idea.id }), getSetting("community.endorsementThreshold"), ideaRevisions(idea.id)]);
   const isAuthor = idea.authorId === user.id;
   // The stored number counts only supporters who are active members right now: the same number the group decision uses.
   const eligible = idea.endorsementCount;
@@ -58,6 +59,10 @@ export default async function IdeaPage({ params, searchParams }: Props) {
           {sp.published && <FormAlert tone="success">Your idea is published. Members can now comment on it and support it.</FormAlert>}
           {sp.endorsed && <FormAlert tone="success">Thank you. Your support was recorded.</FormAlert>}
           {sp.withdrawn && <FormAlert tone="success">Your support was withdrawn.</FormAlert>}
+          {sp.changed === "1" && <FormAlert tone="success">Your changes were saved and added to the idea’s history.</FormAlert>}
+          {sp.changed === "material" && (
+            <FormAlert tone="success">Your changes were saved. Because this was a material change, earlier support was reset and the supporters were told.</FormAlert>
+          )}
           {sp.error && <FormAlert tone="error">{sp.error}</FormAlert>}
         </div>
         <article className="rounded-2xl border border-ink-100 bg-white p-6 sm:p-8">
@@ -77,7 +82,14 @@ export default async function IdeaPage({ params, searchParams }: Props) {
                 "Former member"
               )}{" "}
               · <Time date={idea.createdAt} />
-              {idea.editedAt && " · edited"}
+              {idea.editedAt && (
+                <>
+                  {" · "}
+                  <a href="#history" className="underline underline-offset-2">
+                    edited
+                  </a>
+                </>
+              )}
             </span>
           </div>
           <p className="mt-5 text-lg leading-8 text-ink-800">{idea.summary}</p>
@@ -113,6 +125,7 @@ export default async function IdeaPage({ params, searchParams }: Props) {
               </ul>
             </div>
           )}
+          <IdeaHistory revisions={revisions} fieldLabels={IDEA_TEXT_FIELDS} categoryLabels={IDEA_CATEGORIES} />
           <div className="mt-6 flex flex-wrap items-center gap-2 border-t border-ink-100 pt-4">
             {isAuthor ? (
               <>

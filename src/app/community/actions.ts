@@ -108,9 +108,10 @@ export async function updateIdeaAction(_p: FormState, fd: FormData): Promise<For
   const id = str(fd, "id");
   const parsed = ideaSchema.safeParse(fields(fd, IDEA_KEYS));
   if (!parsed.success) return { fieldErrors: parsed.error.flatten().fieldErrors };
-  const res = await updateIdea(user.id, id, parsed.data);
+  const kind = str(fd, "changeKind");
+  const res = await updateIdea(user.id, id, parsed.data, { kind: kind === "MINOR" || kind === "MATERIAL" ? kind : undefined });
   if (!res.ok) return { error: res.error };
-  redirect(`/community/ideas/${id}`);
+  redirect(`/community/ideas/${id}${"reset" in res && res.reset ? "?changed=material" : "?changed=1"}`);
 }
 
 export async function closeIdeaAction(fd: FormData) {
@@ -211,9 +212,10 @@ export async function groupInfoAction(_p: FormState, fd: FormData): Promise<Form
   return guarded(async () => {
     const parsed = groupInfoSchema.safeParse(fields(fd, ["name", "purpose", "description"]));
     if (!parsed.success) return { fieldErrors: parsed.error.flatten().fieldErrors };
-    await updateGroupInfo(user.id, str(fd, "groupId"), parsed.data);
+    const res = await updateGroupInfo(user.id, str(fd, "groupId"), parsed.data, str(fd, "reason"));
+    if (!res.ok) return { error: res.error };
     revalidatePath(`/community/groups/${await groupSlug(str(fd, "groupId"))}`, "layout");
-    return { ok: "Group details saved." };
+    return { ok: res.purposeChanged ? "Saved. The change of direction was recorded as a decision, announced, and sent to all members." : "Group details saved." };
   });
 }
 
