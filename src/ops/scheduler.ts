@@ -2,21 +2,42 @@
 // A Postgres advisory lock makes sure only one server instance runs a job.
 import type { PrismaClient } from "@prisma/client";
 import path from "node:path";
+import { Client } from "pg";
 import { createBackup } from "./backup";
+import { runHousekeeping } from "./housekeeping";
 import { runRetention } from "./retention";
 
 type Log = (msg: string, meta?: object) => void;
 
-const LOCKS = { retention: 81_002_001, backup: 81_002_002 } as const;
+export const LOCKS = { retention: 81_002_001, backup: 81_002_002, housekeeping: 81_002_003 } as const;
 const HOUR = 3600_000;
 
-async function withLock(db: PrismaClient, key: number, fn: () => Promise<void>) {
-  const rows = await db.$queryRaw<{ ok: boolean }[]>`SELECT pg_try_advisory_lock(${key}) AS ok`;
-  if (!rows[0]?.ok) return;
+/**
+ * Runs `fn` only if no other server instance is running the same job.
+ *
+ * The lock belongs to ONE database connection, so it is taken, held and
+ * released on a connection of its own. (Taking and releasing it through the
+ * shared connection pool could release it on a different connection: the lock
+ * would then stay held and later runs would be skipped without any message.)
+ * Closing the connection releases the lock even if the job crashed.
+ * Returns false when another instance holds the lock.
+ */
+export async function withJobLock(databaseUrl: string, key: number, fn: () => Promise<void>): Promise<boolean> {
+  const url = new URL(databaseUrl);
+  url.searchParams.delete("schema");
+  const client = new Client({ connectionString: url.toString() });
+  await client.connect();
   try {
-    await fn();
+    const { rows } = await client.query<{ ok: boolean }>("SELECT pg_try_advisory_lock($1) AS ok", [key]);
+    if (!rows[0]?.ok) return false;
+    try {
+      await fn();
+    } finally {
+      await client.query("SELECT pg_advisory_unlock($1)", [key]).catch(() => {});
+    }
+    return true;
   } finally {
-    await db.$queryRaw`SELECT pg_advisory_unlock(${key})`;
+    await client.end().catch(() => {});
   }
 }
 
@@ -28,12 +49,16 @@ async function ranRecently(db: PrismaClient, job: string, withinMs: number) {
 export function startScheduler(db: PrismaClient, opts: { databaseUrl: string; storageDir: string; backupDir: string; backupKeep: number; backupKey?: string; log: Log }) {
   const tick = async () => {
     try {
-      await withLock(db, LOCKS.retention, async () => {
+      await withJobLock(opts.databaseUrl, LOCKS.housekeeping, async () => {
+        const res = await runHousekeeping(db, { storageDir: opts.storageDir });
+        if (res.unsentAttachments) opts.log("job.housekeeping", res);
+      });
+      await withJobLock(opts.databaseUrl, LOCKS.retention, async () => {
         if (await ranRecently(db, "retention", 23 * HOUR)) return;
         const res = await runRetention(db, { dryRun: false, storageDir: opts.storageDir });
         opts.log("job.retention", { deleted: res.categories.reduce((n, c) => n + c.count, 0) });
       });
-      await withLock(db, LOCKS.backup, async () => {
+      await withJobLock(opts.databaseUrl, LOCKS.backup, async () => {
         if (await ranRecently(db, "backup", 23 * HOUR)) return;
         const run = await db.jobRun.create({ data: { job: "backup" } });
         try {

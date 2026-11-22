@@ -21,6 +21,7 @@ export default async function BackupsPage({ searchParams }: Props) {
         .sort((a, b) => b.mtimeMs - a.mtimeMs)
     : [];
   const runs = await db.jobRun.findMany({ where: { job: "backup" }, orderBy: { startedAt: "desc" }, take: 10 });
+  const lastOk = await db.jobRun.findFirst({ where: { job: "backup", ok: true }, orderBy: { startedAt: "desc" }, select: { startedAt: true } });
   return (
     <>
       <AdminHeader
@@ -33,6 +34,29 @@ export default async function BackupsPage({ searchParams }: Props) {
         }
       />
       <Flash ok={sp.ok} error={sp.error} />
+      <Panel title="What to know" className="mt-6">
+        <ul className="space-y-2 text-sm leading-6 text-ink-700">
+          <li>
+            • Last successful backup: <strong>{lastOk ? fmtDate(lastOk.startedAt, true) : "none recorded yet"}</strong>.
+          </li>
+          <li>
+            • Encryption:{" "}
+            {e.BACKUP_ENCRYPTION_KEY ? (
+              <strong>on</strong>
+            ) : (
+              <strong className="text-amber-800">off. A backup contains all personal data and compensation records; set BACKUP_ENCRYPTION_KEY (required in production).</strong>
+            )}
+          </li>
+          <li>
+            • These files are on the same disk as the site. A lost disk loses both, so copy them to a second place regularly (docs/DEPLOYMENT.md,
+            section 11).
+          </li>
+          <li>
+            • Uploaded files (chat attachments, research files, profile photos) are <strong>not</strong> inside these backups. They are in the folder{" "}
+            <span className="font-mono text-xs">{e.STORAGE_DIR}/</span> and must be copied as well.
+          </li>
+        </ul>
+      </Panel>
       <div className="mt-6">
         <Table head={["File", "Size", "Created"]} empty={!files.length && <Empty>No backups yet.</Empty>}>
           {files.map((f) => (

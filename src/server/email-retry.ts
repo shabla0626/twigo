@@ -53,7 +53,7 @@ export async function retryDelivery(adminId: string, deliveryId: string): Promis
     if (res.mailStatus !== "sent") return { ok: false, error: `Retry failed. ${res.error ?? ""}` };
     message = "A new confirmation link was sent. Earlier links no longer work.";
   } else if (d.templateKey === "password_reset") {
-    await requestPasswordReset(d.to, `admin-retry:${adminId}`);
+    await (await requestPasswordReset(d.to, `admin-retry:${adminId}`)).done;
     message = "If the account still exists, a new password reset link was sent. Check the log below for the result.";
   } else if (d.templateKey === "account_invitation") {
     return { ok: false, error: "This was an administrator invitation. Invite the person again from Admin → Administrators." };

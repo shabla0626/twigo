@@ -1,5 +1,6 @@
 "use client";
 
+import { discardAttachmentAction } from "@/app/community/actions";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { ChatMessageDTO } from "@/realtime/chat-service";
 import { Button, cn } from "../ui/primitives";
@@ -426,7 +427,15 @@ export function GroupChat({ channelId, groupId, me, members }: { channelId: stri
                 {attachments.map((a) => (
                   <li key={a.id} className="inline-flex items-center gap-1 rounded-full bg-ink-100 px-2.5 py-1">
                     {a.name}
-                    <button type="button" aria-label={`Remove ${a.name}`} onClick={() => setAttachments((all) => all.filter((x) => x.id !== a.id))}>
+                    <button
+                      type="button"
+                      aria-label={`Remove ${a.name}`}
+                      onClick={() => {
+                        setAttachments((all) => all.filter((x) => x.id !== a.id));
+                        // Not sent, so it is deleted on the server too (it was never shown to the group).
+                        void discardAttachmentAction(a.id).catch(() => {});
+                      }}
+                    >
                       ×
                     </button>
                   </li>

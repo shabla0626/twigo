@@ -7,6 +7,7 @@ import { deliverTemplate, type SendResult } from "@/lib/email";
 import { rateLimit } from "@/lib/rate-limit";
 import { TOKEN_TTL_HOURS } from "@/lib/auth/constants";
 import { hashPassword, passwordPolicyError, simulatePasswordCheck } from "@/lib/auth/password";
+import { logger } from "@/lib/logger";
 import { grantAcceptedMembership } from "./membership-grant";
 import { revokeUserSessions } from "@/lib/auth/session";
 import { consumeToken, describeTtl, issueToken } from "@/lib/auth/tokens";
@@ -102,14 +103,18 @@ export async function sendVerificationEmail(userId: string, opts: { ignoreCooldo
 }
 
 /** "Resend" from the public check-your-email page. Always answers the same way. */
-export async function resendVerificationByEmail(emailRaw: string, ipHash: string) {
+export async function resendVerificationByEmail(emailRaw: string, ipHash: string): Promise<{ message: string; done: Promise<void> }> {
   const email = emailRaw.trim().toLowerCase();
-  if (rateLimit(`verify-public:${ipHash}`, 10, 60 * 60_000).ok) {
-    const user = await db.user.findUnique({ where: { email } });
-    if (user && !user.emailVerifiedAt) await sendVerificationEmail(user.id);
-    else await simulatePasswordCheck();
-  }
-  return "If that address has an account waiting for confirmation, we sent a new link. You can ask again after one minute.";
+  const message = "If that address has an account waiting for confirmation, we sent a new link. You can ask again after one minute.";
+  // Same work before answering for every address; the email is sent afterwards (see requestPasswordReset).
+  const allowed = rateLimit(`verify-public:${ipHash}`, 10, 60 * 60_000).ok;
+  const user = await db.user.findUnique({ where: { email } });
+  await simulatePasswordCheck();
+  if (!allowed || !user || user.emailVerifiedAt) return { message, done: Promise.resolve() };
+  const done = sendVerificationEmail(user.id)
+    .then(() => undefined)
+    .catch((err) => logger.error("auth.verification_email_failed", { err }));
+  return { message, done };
 }
 
 /**

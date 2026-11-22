@@ -63,6 +63,16 @@ async function main() {
     if (mail) log("devmail.ready", { smtp: `127.0.0.1:${mail.smtpPort}`, inbox: mail.uiUrl, state: mail.smtp, note: "test emails are captured locally, not delivered" });
   }
 
+  // This site keeps sign-in limits, chat presence and a small settings cache in the memory of
+  // ONE process (see docs/DEPLOYMENT.md). A second instance on the same database would make
+  // those limits and the chat unreliable, so it is detected: refused in production, warned about elsewhere.
+  const { holdInstanceLock } = await import("./src/ops/instance-lock");
+  const single = await holdInstanceLock(process.env.DATABASE_URL!);
+  if (!single) {
+    if (!dev && !isLocalProductionTest(process.env, settings)) refuseToStart("another instance of the site is already running on this database", ["run exactly one instance (docs/DEPLOYMENT.md, section 5)"]);
+    log("server.second_instance", { warning: "another instance is already running on this database; sign-in limits and chat presence are per instance" });
+  }
+
   // A real production start also checks the database: no leftover test administrators, and an owner exists.
   if (!dev && !isLocalProductionTest(process.env, settings)) {
     const { launchProblems } = await import("./src/ops/launch-checks");

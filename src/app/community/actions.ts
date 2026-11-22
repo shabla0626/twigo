@@ -22,7 +22,7 @@ import {
 } from "@/lib/validation/community";
 import { AccessError } from "@/server/community/access";
 import { addComment, createDiscussion, deleteComment, deleteDiscussion, editComment } from "@/server/community/comments";
-import { deleteGroupFile } from "@/server/community/files";
+import { deleteGroupFile, discardUnsentAttachment } from "@/server/community/files";
 import {
   joinGroup,
   leaveGroup,
@@ -411,4 +411,10 @@ export async function openNotificationAction(fd: FormData) {
   if (n) await markRead(user.id, [n.id]);
   const link = n?.link && n.link.startsWith("/") && !n.link.startsWith("//") ? n.link : "/community/notifications";
   redirect(link);
+}
+
+/** A file was removed from the chat box before the message was sent. */
+export async function discardAttachmentAction(fileId: string): Promise<void> {
+  const user = await requireMember();
+  if (typeof fileId === "string" && fileId.length <= 40) await discardUnsentAttachment(user.id, fileId);
 }

@@ -33,8 +33,14 @@ type Ack = (res: unknown) => void;
 
 // Simple per-user token buckets (single instance; see README for scaling).
 const buckets = new Map<string, { n: number; reset: number }>();
+let lastSweep = Date.now();
 function allow(key: string, limit: number, windowMs: number) {
   const now = Date.now();
+  // Forget counters whose time window is over, so the list cannot grow without end.
+  if (now - lastSweep > 60_000) {
+    for (const [k, b] of buckets) if (b.reset < now) buckets.delete(k);
+    lastSweep = now;
+  }
   const b = buckets.get(key);
   if (!b || b.reset < now) {
     buckets.set(key, { n: 1, reset: now + windowMs });
@@ -285,6 +291,11 @@ export async function attachRealtime(httpServer: HttpServer, db: PrismaClient, o
         // A membership change was written into a chat: show the line to the people who have it open.
         const m = await messageFor(db, ev.messageId, null);
         if (m) await emitToChannel(m.channelId, "message:new", m);
+        break;
+      }
+      case "chat.message_changed": {
+        const m = await messageFor(db, ev.messageId, null);
+        if (m) await emitToChannel(m.channelId, "message:updated", m);
         break;
       }
       case "notifications.changed": {

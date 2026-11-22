@@ -12,6 +12,8 @@ export type RealtimeEvent =
   | { t: "sessions.ended"; sessionIds: string[] }
   /** The site wrote a line into a group chat (membership change): show it to the people in the chat. */
   | { t: "chat.system"; messageId: string }
+  /** A message changed outside the chat itself (removed by moderation): refresh it for the people in the chat. */
+  | { t: "chat.message_changed"; messageId: string }
   /** User lost access to a group (left, removed, group suspended): leave its rooms. */
   | { t: "group.access_revoked"; groupId: string; userId?: string }
   /** Unread notification count changed for a user. */

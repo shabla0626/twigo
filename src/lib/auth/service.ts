@@ -3,7 +3,7 @@ import type { User } from "@prisma/client";
 import { db } from "../db";
 import { audit } from "../audit";
 import { decryptSecret } from "../crypto";
-import { rateLimit } from "../rate-limit";
+import { rateLimit, rateLimitReached } from "../rate-limit";
 import { hashPassword, needsRehash, simulatePasswordCheck, verifyPassword } from "./password";
 import { LOCKOUT_MINUTES, MAX_FAILED_LOGINS } from "./constants";
 import { createSession } from "./session";
@@ -15,6 +15,19 @@ export type LoginResult =
   | { ok: false; error: string };
 
 const GENERIC = "Invalid email or password.";
+
+/**
+ * After MAX_FAILED_LOGINS wrong passwords (or wrong two-step codes) for one
+ * account FROM ONE NETWORK, further attempts for that account from that
+ * network are refused for LOCKOUT_MINUTES. The refusal looks exactly like a
+ * wrong password, so it does not reveal that the account exists, and it is
+ * tied to the network, so one outsider cannot lock out a person who signs in
+ * from somewhere else.
+ */
+const failKey = (email: string, ipHash: string) => `login:fail:${email}:${ipHash}`;
+const FAIL_WINDOW_MS = LOCKOUT_MINUTES * 60_000;
+/** Backstop against guessing one account from many networks at once. */
+const ACCOUNT_CEILING = 50;
 
 /**
  * Password step for every account type. Applies per-IP and per-account rate
@@ -29,30 +42,31 @@ export async function authenticate(
 ): Promise<LoginResult> {
   const email = emailRaw.trim().toLowerCase();
   const ipLimit = rateLimit(`login:ip:${ctx.ipHash}`, 20, 15 * 60_000);
-  const acctLimit = rateLimit(`login:acct:${email}`, 10, 15 * 60_000);
-  if (!ipLimit.ok || !acctLimit.ok) return { ok: false, error: "Too many attempts. Please wait and try again." };
+  if (!ipLimit.ok) return { ok: false, error: "Too many attempts. Please wait and try again." };
+  // Locked for this account from this network: answered like a wrong password, after the same amount of work.
+  if (rateLimitReached(failKey(email, ctx.ipHash), MAX_FAILED_LOGINS)) {
+    await simulatePasswordCheck(password);
+    return { ok: false, error: GENERIC };
+  }
+  if (!rateLimit(`login:acct:${email}`, ACCOUNT_CEILING, 15 * 60_000).ok) return { ok: false, error: "Too many attempts. Please wait and try again." };
 
   const user = await db.user.findUnique({ where: { email } });
   if (!user || !user.passwordHash) {
     await simulatePasswordCheck(password);
+    rateLimit(failKey(email, ctx.ipHash), MAX_FAILED_LOGINS, FAIL_WINDOW_MS); // unknown addresses lock the same way
     return { ok: false, error: GENERIC };
   }
+  // A lock set by an earlier version of the site (stored on the account) is still honoured until it runs out.
   if (user.lockedUntil && user.lockedUntil > new Date()) {
-    return { ok: false, error: "Account temporarily locked. Please try again later." };
+    await simulatePasswordCheck(password);
+    return { ok: false, error: GENERIC };
   }
 
   const valid = await verifyPassword(password, user.passwordHash);
   if (!valid) {
-    const failed = user.failedLogins + 1;
-    const lock = failed >= MAX_FAILED_LOGINS;
-    await db.user.update({
-      where: { id: user.id },
-      data: {
-        failedLogins: lock ? 0 : failed,
-        lockedUntil: lock ? new Date(Date.now() + LOCKOUT_MINUTES * 60_000) : user.lockedUntil,
-      },
-    });
-    await audit(user.id, lock ? "auth.locked" : "auth.login_failed", "User", user.id);
+    const nowLocked = !rateLimit(failKey(email, ctx.ipHash), MAX_FAILED_LOGINS, FAIL_WINDOW_MS).remaining;
+    await db.user.update({ where: { id: user.id }, data: { failedLogins: { increment: 1 } } });
+    await audit(user.id, nowLocked ? "auth.locked" : "auth.login_failed", "User", user.id);
     return { ok: false, error: GENERIC };
   }
 
@@ -107,6 +121,8 @@ export async function completeSecondFactor(
     if (used.count === 1) method = "recovery";
   }
   if (!method) {
+    // Wrong codes count like wrong passwords (same account, same network).
+    rateLimit(failKey(user.email, ctx.ipHash), MAX_FAILED_LOGINS, FAIL_WINDOW_MS);
     await audit(user.id, "auth.mfa_failed", "User", user.id);
     return { ok: false, error: "That code is not valid. Try again." };
   }

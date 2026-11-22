@@ -2,6 +2,7 @@ import "server-only";
 import type { ReportReason, ReportTarget } from "@prisma/client";
 import { db } from "@/lib/db";
 import { audit } from "@/lib/audit";
+import { publishRealtime } from "@/lib/realtime-events";
 import { chatBoundary } from "@/realtime/chat-service";
 import { rateLimit } from "@/lib/rate-limit";
 import { groupAccess } from "./access";
@@ -105,6 +106,9 @@ export async function moderate(adminId: string, reportId: string, action: "remov
         break;
       case "MESSAGE":
         authorId = (await db.chatMessage.update({ where: { id: r.targetId }, data: { deletedAt: now } })).authorId;
+        // A removed message takes its attachments with it, and open chats show the removal at once.
+        await db.storedFile.updateMany({ where: { messageId: r.targetId, deletedAt: null }, data: { deletedAt: now } });
+        await publishRealtime(db, { t: "chat.message_changed", messageId: r.targetId });
         break;
       case "GROUP":
         await db.researchGroup.update({ where: { id: r.targetId }, data: { suspendedAt: now, suspendedReason: note.slice(0, 300) } });

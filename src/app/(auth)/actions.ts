@@ -97,7 +97,7 @@ export async function resendVerificationAction(): Promise<FormState> {
 export async function resendVerificationPublicAction(_prev: FormState, fd: FormData): Promise<FormState> {
   const email = String(fd.get("email") ?? "").slice(0, 254);
   if (!email.includes("@")) return { error: "Enter the email address you used to create your account." };
-  return { ok: await resendVerificationByEmail(email, (await ctx()).ipHash) };
+  return { ok: (await resendVerificationByEmail(email, (await ctx()).ipHash)).message };
 }
 
 export async function changeUnverifiedEmailAction(_prev: FormState, fd: FormData): Promise<FormState> {

@@ -125,6 +125,8 @@ export async function writeSystemLine(tx: Prisma.TransactionClient, groupId: str
   return m.id;
 }
 
+class AttachmentGone extends Error {}
+
 export type SendInput = { channelId: string; body: string; clientId: string; replyToId?: string | null; attachmentIds: string[] };
 export type SendResult = { ok: true; message: ChatMessageDTO; duplicate: boolean } | { ok: false; error: string };
 
@@ -152,7 +154,11 @@ export async function sendMessage(db: PrismaClient, userId: string, access: Chan
   try {
     const created = await db.$transaction(async (tx) => {
       const m = await tx.chatMessage.create({ data: { channelId: access.channelId, authorId: userId, clientId: input.clientId, body: input.body, replyToId } });
-      if (input.attachmentIds.length) await tx.storedFile.updateMany({ where: { id: { in: input.attachmentIds } }, data: { messageId: m.id } });
+      if (input.attachmentIds.length) {
+        // Claim the files only while they are still unattached: two messages sent at the same moment cannot share one.
+        const claimed = await tx.storedFile.updateMany({ where: { id: { in: input.attachmentIds }, ownerId: userId, messageId: null, deletedAt: null }, data: { messageId: m.id } });
+        if (claimed.count !== new Set(input.attachmentIds).size) throw new AttachmentGone();
+      }
       await tx.researchGroup.update({ where: { id: access.groupId }, data: { lastActivityAt: new Date() } });
       await tx.channelReadState.upsert({
         where: { channelId_userId: { channelId: access.channelId, userId } },
@@ -163,6 +169,7 @@ export async function sendMessage(db: PrismaClient, userId: string, access: Chan
     });
     return { ok: true, message: toDTO(created), duplicate: false };
   } catch (err) {
+    if (err instanceof AttachmentGone) return { ok: false, error: "An attachment is missing. Please upload it again." };
     // A concurrent duplicate resend hit the unique constraint.
     const again = await db.chatMessage.findUnique({ where: { authorId_clientId: { authorId: userId, clientId: input.clientId } }, include });
     if (again) return { ok: true, message: toDTO(again), duplicate: true };

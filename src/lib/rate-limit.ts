@@ -23,6 +23,12 @@ export function rateLimit(key: string, limit: number, windowMs: number, now = Da
   return { ok: true, remaining: limit - bucket.count, retryAfterMs: 0 };
 }
 
+/** True when `key` has already reached `limit` in its current window. Does not count as an attempt. */
+export function rateLimitReached(key: string, limit: number, now = Date.now()): boolean {
+  const bucket = buckets.get(key);
+  return Boolean(bucket && bucket.resetAt > now && bucket.count >= limit);
+}
+
 export function resetRateLimits() {
   buckets.clear();
 }

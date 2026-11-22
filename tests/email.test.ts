@@ -154,7 +154,7 @@ describe("email delivery (integration, local test mail server)", () => {
     expect((await db.user.findUniqueOrThrow({ where: { id: account.id } })).email).toBe("ada.new@example.test");
 
     // 8. Password reset.
-    await requestPasswordReset("ada.new@example.test", "ip-2");
+    await (await requestPasswordReset("ada.new@example.test", "ip-2")).done;
     const reset = link(lastMailTo("ada.new@example.test").text, "/reset-password");
     expect(reset).toBeTruthy();
     expect((await resetPassword(reset!, "another-long-password-456")).ok).toBe(true);
@@ -237,7 +237,7 @@ describe("email delivery (integration, local test mail server)", () => {
     // Password reset: the failed link is never stored; a retry issues a new one.
     const user = await createUser({ email: "member@example.test", role: "MEMBER" });
     await stopCatcher();
-    await requestPasswordReset("member@example.test", "ip-9");
+    await (await requestPasswordReset("member@example.test", "ip-9")).done;
     const failedReset = await db.emailDelivery.findFirstOrThrow({ where: { templateKey: "password_reset" } });
     expect(failedReset.body).toBeNull();
     await startCatcher();

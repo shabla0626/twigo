@@ -235,7 +235,8 @@ describe("P1-1: no view into conversations from before an administrator joined",
     const researchFile = await file("GROUP_FILE", "research-file");
     await pause(30);
     await joinGroup(owner.id, g.id);
-    const laterAttachment = await file("CHAT_ATTACHMENT", "later-attachment");
+    const later = await say(a.id, channelId, "a later message with a file");
+    const laterAttachment = await file("CHAT_ATTACHMENT", "later-attachment", later.id);
 
     expect(await authorizeDownload(owner.id, earlierAttachment.id)).toBeNull();
     expect((await authorizeDownload(owner.id, laterAttachment.id))?.id).toBe(laterAttachment.id);

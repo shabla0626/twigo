@@ -73,12 +73,21 @@ describe("admin authentication", () => {
     expect(unknown).toEqual(wrong);
   });
 
-  it("locks the account after repeated failures", async () => {
+  it("after repeated failures from one network that network is locked out, with the same answer as a wrong password", async () => {
     await createAdmin();
-    for (let i = 0; i < 5; i++) await authenticate("founder@example.test", "nope", authCtx(`ip${i}`));
-    const res = await authenticate("founder@example.test", "correct-horse-battery-9", authCtx("ip-other"));
-    expect(res.ok).toBe(false);
-    if (!res.ok) expect(res.error).toMatch(/locked/i);
+    for (let i = 0; i < 5; i++) await authenticate("founder@example.test", "nope", authCtx("ip-attacker"));
+    // Even the correct password is refused from that network, and the answer reveals nothing.
+    expect(await authenticate("founder@example.test", "correct-horse-battery-9", authCtx("ip-attacker"))).toEqual({ ok: false, error: "Invalid email or password." });
+    // The owner, signing in from somewhere else, is not locked out by the attacker.
+    const elsewhere = await authenticate("founder@example.test", "correct-horse-battery-9", authCtx("ip-home"));
+    expect(elsewhere.ok && elsewhere.stage).toBe("mfa");
+    expect(await db.auditLog.count({ where: { action: "auth.locked" } })).toBe(1);
+  });
+
+  it("an unknown address locks in exactly the same way (nothing distinguishes it from a real account)", async () => {
+    const answers = [];
+    for (let i = 0; i < 7; i++) answers.push(await authenticate("ghost@example.test", "nope", authCtx("ip-x")));
+    expect(new Set(answers.map((a) => JSON.stringify(a)))).toEqual(new Set([JSON.stringify({ ok: false, error: "Invalid email or password." })]));
   });
 
   it("rejects deactivated and suspended accounts", async () => {

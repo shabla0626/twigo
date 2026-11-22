@@ -3,6 +3,7 @@ import type { CommunityMembership, UserRole } from "@prisma/client";
 import { brand } from "@/config/brand";
 import { db } from "@/lib/db";
 import { audit } from "@/lib/audit";
+import { logger } from "@/lib/logger";
 import { siteUrl } from "@/lib/env";
 import { decryptSecret, encryptSecret } from "@/lib/crypto";
 import { deliver, deliverTemplate, renderEmail } from "@/lib/email";
@@ -142,24 +143,30 @@ export async function activateAccount(
 
 const RESET_SENT = "If an active account exists for that address, we sent a link to reset the password.";
 
-export async function requestPasswordReset(emailRaw: string, ipHash: string): Promise<{ message: string }> {
+/**
+ * The answer is the same for every address AND takes the same time: the same
+ * work is done before answering whether or not an account exists, and the
+ * email itself is sent afterwards (`done` resolves when that has finished;
+ * the page does not wait for it). Otherwise the waiting time would reveal
+ * which addresses have accounts.
+ */
+export async function requestPasswordReset(emailRaw: string, ipHash: string): Promise<{ message: string; done: Promise<void> }> {
   const email = emailRaw.trim().toLowerCase();
-  const ok = rateLimit(`reset:ip:${ipHash}`, 10, 60 * 60_000).ok && rateLimit(`reset:acct:${email}`, 3, 60 * 60_000).ok;
-  if (!ok) return { message: RESET_SENT };
+  const allowed = rateLimit(`reset:ip:${ipHash}`, 10, 60 * 60_000).ok && rateLimit(`reset:acct:${email}`, 3, 60 * 60_000).ok;
   const user = await db.user.findUnique({ where: { email } });
-  if (!user || user.status !== "ACTIVE" || !user.passwordHash) {
-    await simulatePasswordCheck();
-    return { message: RESET_SENT };
-  }
-  const { token } = await issueToken(user.id, "RESET_PASSWORD");
-  await deliverTemplate(
-    "password_reset",
-    user.email,
-    { name: user.name, resetLink: siteUrl(`/reset-password/${token}`), expiresIn: describeTtl(TOKEN_TTL_HOURS.RESET_PASSWORD) },
-    { userId: user.id },
-  );
-  await audit(user.id, "auth.reset_requested", "User", user.id);
-  return { message: RESET_SENT };
+  await simulatePasswordCheck();
+  if (!allowed || !user || user.status !== "ACTIVE" || !user.passwordHash) return { message: RESET_SENT, done: Promise.resolve() };
+  const done = (async () => {
+    const { token } = await issueToken(user.id, "RESET_PASSWORD");
+    await deliverTemplate(
+      "password_reset",
+      user.email,
+      { name: user.name, resetLink: siteUrl(`/reset-password/${token}`), expiresIn: describeTtl(TOKEN_TTL_HOURS.RESET_PASSWORD) },
+      { userId: user.id },
+    );
+    await audit(user.id, "auth.reset_requested", "User", user.id);
+  })().catch((err) => logger.error("auth.reset_email_failed", { err }));
+  return { message: RESET_SENT, done };
 }
 
 export async function resetPassword(token: string, password: string): Promise<Result> {

@@ -105,14 +105,19 @@ export async function runRetention(db: PrismaClient, opts: { dryRun: boolean; st
         await db.comment.deleteMany({ where: { ...commentWhere, replies: { none: {} } } });
       }
       if (discussionWhere) await db.groupDiscussion.deleteMany({ where: discussionWhere });
+      // Attachments go with their messages (the link is cleared when a message is deleted,
+      // so they are collected first; otherwise they would stay behind, visible in the group's files).
+      const doomed = [...(messageWhere ? [messageWhere] : []), ...(chatWhere ? [chatWhere] : [])];
+      const orphaned = doomed.length ? await db.storedFile.findMany({ where: { message: { OR: doomed } }, select: { id: true, storageKey: true } }) : [];
       if (messageWhere) await db.chatMessage.deleteMany({ where: messageWhere });
       if (ideaWhere) await db.businessIdea.deleteMany({ where: { ...ideaWhere, group: null } });
       if (chatWhere) await db.chatMessage.deleteMany({ where: chatWhere });
-      for (const f of [...files, ...softFiles]) {
+      const gone = [...new Map([...files, ...softFiles, ...orphaned].map((f) => [f.id, f])).values()];
+      for (const f of gone) {
         const p = path.resolve(opts.storageDir, f.storageKey);
         if (p.startsWith(path.resolve(opts.storageDir) + path.sep)) await unlink(p).catch(() => {});
       }
-      if (files.length || softFiles.length) await db.storedFile.deleteMany({ where: { id: { in: [...files, ...softFiles].map((f) => f.id) } } });
+      if (gone.length) await db.storedFile.deleteMany({ where: { id: { in: gone.map((f) => f.id) } } });
       if (notifWhere) await db.notification.deleteMany({ where: notifWhere });
       if (meetWhere) await db.groupMeeting.deleteMany({ where: meetWhere });
       if (emailWhere) await db.emailDelivery.deleteMany({ where: emailWhere });

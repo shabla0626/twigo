@@ -114,6 +114,7 @@ export async function authorizeDownload(userId: string, fileId: string): Promise
   // Chat attachments belong to the conversation: owners and administrators see
   // them only from the moment they joined (same rule as the chat itself).
   if (f.scope === "CHAT_ATTACHMENT") {
+    if (!f.messageId && f.ownerId !== userId) return null; // not sent yet: only its uploader
     const from = await chatBoundaryFor(userId, a.membership!.joinedAt);
     if (from && f.createdAt < from) return null;
   }
@@ -134,11 +135,32 @@ export async function listGroupFiles(groupId: string, viewerId?: string) {
     chatFrom = m ? await chatBoundaryFor(viewerId, m.joinedAt) : null;
   }
   return db.storedFile.findMany({
-    where: { groupId, deletedAt: null, ...(chatFrom ? { NOT: { scope: "CHAT_ATTACHMENT", createdAt: { lt: chatFrom } } } : {}) },
+    where: {
+      groupId,
+      deletedAt: null,
+      NOT: [
+        // A file chosen in the chat box but never sent belongs to no message: it is not group content.
+        { scope: "CHAT_ATTACHMENT", messageId: null },
+        ...(chatFrom ? [{ scope: "CHAT_ATTACHMENT" as const, createdAt: { lt: chatFrom } }] : []),
+      ],
+    },
     orderBy: { createdAt: "desc" },
     take: 200,
     select: { id: true, originalName: true, mimeType: true, size: true, createdAt: true, scope: true, ownerId: true, owner: { select: { profile: { select: { displayName: true } } } } },
   });
+}
+
+/**
+ * The person removed a file from the chat box before sending: delete it. Only
+ * their own upload, and only while it belongs to no message.
+ */
+export async function discardUnsentAttachment(userId: string, fileId: string): Promise<boolean> {
+  const f = await db.storedFile.findUnique({ where: { id: fileId } });
+  if (!f || f.ownerId !== userId || f.scope !== "CHAT_ATTACHMENT" || f.messageId || f.deletedAt) return false;
+  const res = await db.storedFile.deleteMany({ where: { id: fileId, messageId: null } });
+  if (res.count !== 1) return false;
+  await deleteStoredFile(f);
+  return true;
 }
 
 export async function deleteGroupFile(userId: string, groupId: string, fileId: string) {
