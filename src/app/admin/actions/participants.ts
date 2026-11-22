@@ -17,10 +17,12 @@ export async function updateParticipantAction(fd: FormData) {
 }
 
 export async function removeParticipantAction(fd: FormData) {
-  const admin = await requireAdmin("participants.manage");
+  // Owner only: removing is permanent.
+  const admin = await requireAdmin("participants.remove");
   const id = String(fd.get("id") ?? "");
   if (fd.get("confirm") !== "REMOVE") redirect(`/admin/participants/${encodeURIComponent(id)}?error=confirm`);
-  await removeParticipant(admin.id, id);
+  const res = await removeParticipant(admin.id, id);
+  if (!res.ok) redirect(`/admin/participants/${encodeURIComponent(id)}?error=${encodeURIComponent(res.error)}`);
   revalidatePath("/admin", "layout");
   redirect("/admin/participants?ok=removed");
 }

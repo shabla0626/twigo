@@ -12,7 +12,9 @@ export const PERMISSIONS = [
   "applications.erase",
   "applications.export",
   "participants.manage",
+  "participants.remove", // delete a participant record (owner only)
   "projects.manage",
+  "projects.delete", // delete a project and its records (owner only)
   "compensation.view", // private compensation records
   "compensation.manage",
   "finance.view", // future financial reporting (Phase 3)

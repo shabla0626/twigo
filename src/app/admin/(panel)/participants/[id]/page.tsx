@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import { AdminHeader, Dl, Flash, Panel, fmtDate, smallInput, smallLabel } from "@/components/admin/ui";
 import { Badge, buttonClass } from "@/components/ui/primitives";
 import { requireAdmin } from "@/lib/auth/guard";
+import { can } from "@/lib/auth/permissions";
 import { ASSIGNMENT_STATUSES, PARTICIPANT_STATUSES, PROJECT_STATUSES, WORK_CATEGORIES } from "@/lib/labels";
 import { getParticipant } from "@/server/admin/participants";
 import { removeParticipantAction, updateParticipantAction } from "../../../actions/participants";
@@ -10,7 +11,8 @@ import { removeParticipantAction, updateParticipantAction } from "../../../actio
 type Props = { params: Promise<{ id: string }>; searchParams: Promise<Record<string, string | undefined>> };
 
 export default async function ParticipantDetail({ params, searchParams }: Props) {
-  await requireAdmin("participants.manage");
+  const admin = await requireAdmin("participants.manage");
+  const canRemove = can(admin.role, "participants.remove");
   const { id } = await params;
   const sp = await searchParams;
   const p = await getParticipant(id);
@@ -126,12 +128,14 @@ export default async function ParticipantDetail({ params, searchParams }: Props)
               </ul>
             )}
           </Panel>
+          {canRemove && (
           <Panel title="Remove participant">
             <form action={removeParticipantAction} className="space-y-2">
               <input type="hidden" name="id" value={p.id} />
               <p className="text-xs text-ink-600">
-                Deletes the participant record, their project assignments and compensation records. The application is
-                kept. Prefer setting the status to Inactive.
+                Permanently deletes the participant record and their project assignments. Not possible while one of those assignments has a
+                compensation agreement (remove it on the project page first). The application is kept. Prefer setting the status to Inactive.
+                Only the owner can remove a participant record.
               </p>
               <label htmlFor="confirm" className={smallLabel}>
                 Type REMOVE to confirm
@@ -142,6 +146,7 @@ export default async function ParticipantDetail({ params, searchParams }: Props)
               </button>
             </form>
           </Panel>
+          )}
         </div>
       </div>
     </>

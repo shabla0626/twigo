@@ -16,6 +16,7 @@ import {
   deleteProjectAction,
   deleteRoleAction,
   milestoneStatusAction,
+  removeCompensationAction,
   saveCompensationAction,
   updateProjectAction,
 } from "../../../actions/projects";
@@ -25,6 +26,7 @@ type Props = { params: Promise<{ id: string }>; searchParams: Promise<Record<str
 export default async function ProjectDetail({ params, searchParams }: Props) {
   const admin = await requireAdmin("projects.manage");
   const showComp = can(admin.role, "compensation.view");
+  const canDelete = can(admin.role, "projects.delete");
   const { id } = await params;
   const sp = await searchParams;
   const [project, participants] = await Promise.all([getProject(id, showComp), assignableParticipants()]);
@@ -295,6 +297,24 @@ export default async function ProjectDetail({ params, searchParams }: Props) {
                     <p className="text-xs text-ink-500 sm:col-span-4">Agreed {fmtDate(a.compensation.agreedAt)}</p>
                   )}
                 </form>
+                {a.compensation && can(admin.role, "compensation.manage") && (
+                  <details className="mt-3 border-t border-ink-200 pt-3">
+                    <summary className="cursor-pointer text-xs font-medium text-ink-700">Remove this agreement…</summary>
+                    <form action={removeCompensationAction} className="mt-2 flex flex-wrap items-end gap-3">
+                      <input type="hidden" name="projectId" value={project.id} />
+                      <input type="hidden" name="assignmentId" value={a.id} />
+                      <div>
+                        <label htmlFor={`rm-${a.id}`} className={smallLabel}>
+                          Type REMOVE to permanently remove this agreement record (recorded in the audit log)
+                        </label>
+                        <input id={`rm-${a.id}`} name="confirm" autoComplete="off" className={smallInput} />
+                      </div>
+                      <button type="submit" className={buttonClass("danger", "sm")}>
+                        Remove agreement
+                      </button>
+                    </form>
+                  </details>
+                )}
               </details>
               )}
             </div>
@@ -347,20 +367,26 @@ export default async function ProjectDetail({ params, searchParams }: Props) {
         </form>
       </Panel>
 
-      <Panel title="Delete project" className="mt-6">
-        <form action={deleteProjectAction} className="flex flex-wrap items-end gap-3">
-          <input type="hidden" name="id" value={project.id} />
-          <div>
-            <label htmlFor="confirm" className={smallLabel}>
-              Type DELETE to permanently delete this project and its records
-            </label>
-            <input id="confirm" name="confirm" autoComplete="off" className={smallInput} />
-          </div>
-          <button type="submit" className={buttonClass("danger", "sm")}>
-            Delete project
-          </button>
-        </form>
-      </Panel>
+      {canDelete && (
+        <Panel title="Delete project" className="mt-6">
+          <p className="mb-3 text-xs text-ink-600">
+            Permanently deletes this project with its roles, milestones and assignments. Not possible while an assignment has a compensation
+            agreement: remove those agreements first, so that no financial record disappears unnoticed. Only the owner can delete a project.
+          </p>
+          <form action={deleteProjectAction} className="flex flex-wrap items-end gap-3">
+            <input type="hidden" name="id" value={project.id} />
+            <div>
+              <label htmlFor="confirm" className={smallLabel}>
+                Type DELETE to confirm
+              </label>
+              <input id="confirm" name="confirm" autoComplete="off" className={smallInput} />
+            </div>
+            <button type="submit" className={buttonClass("danger", "sm")}>
+              Delete project
+            </button>
+          </form>
+        </Panel>
+      )}
     </>
   );
 }

@@ -83,9 +83,37 @@ export async function updateProject(adminId: string, id: string, input: ProjectI
   await audit(adminId, "project.updated", "Project", id, { status: input.status, isPublished: input.isPublished });
 }
 
-export async function deleteProject(adminId: string, id: string) {
+export type DeleteResult = { ok: true } | { ok: false; error: string };
+
+/**
+ * Permanently deletes a project with its roles, milestones and assignments.
+ * Refused while any of its assignments has a compensation agreement: those are
+ * removed first, one by one, in their own audited action (removeCompensation).
+ * The database enforces the same rule (ON DELETE RESTRICT).
+ */
+export async function deleteProject(adminId: string, id: string): Promise<DeleteResult> {
+  const project = await db.project.findUnique({
+    where: { id },
+    select: { title: true, _count: { select: { assignments: true, roles: true, milestones: true } } },
+  });
+  if (!project) return { ok: false, error: "Project not found." };
+  const agreements = await db.compensationAgreement.count({ where: { assignment: { projectId: id } } });
+  if (agreements > 0) {
+    return { ok: false, error: `This project has ${agreements} compensation agreement${agreements === 1 ? "" : "s"}. Remove ${agreements === 1 ? "it" : "them"} first (in “Team assignments & compensation”), then delete the project.` };
+  }
   await db.project.delete({ where: { id } });
-  await audit(adminId, "project.deleted", "Project", id);
+  // What was removed is recorded (titles and counts only).
+  await audit(adminId, "project.deleted", "Project", id, { title: project.title, assignments: project._count.assignments, roles: project._count.roles, milestones: project._count.milestones });
+  return { ok: true };
+}
+
+/** Removes one compensation agreement (owner only; audited without amounts or terms). */
+export async function removeCompensation(ownerId: string, assignmentId: string): Promise<DeleteResult & { projectId?: string }> {
+  const rec = await db.compensationAgreement.findUnique({ where: { assignmentId }, select: { id: true, status: true, assignment: { select: { projectId: true, participantId: true } } } });
+  if (!rec) return { ok: false, error: "No compensation agreement is recorded for this assignment." };
+  await db.compensationAgreement.delete({ where: { id: rec.id } });
+  await audit(ownerId, "compensation.removed", "CompensationAgreement", rec.id, { projectId: rec.assignment.projectId, participantId: rec.assignment.participantId, statusWhenRemoved: rec.status });
+  return { ok: true, projectId: rec.assignment.projectId };
 }
 
 export async function addRole(

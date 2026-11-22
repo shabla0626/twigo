@@ -551,7 +551,9 @@ model CompensationAgreement {
   createdAt    DateTime        @default(now())
   updatedAt    DateTime        @updatedAt
 
-  assignment ProjectAssignment @relation(fields: [assignmentId], references: [id], onDelete: Cascade)
+  // Restrict: an assignment (and so a project or participant record) cannot be
+  // deleted while its agreement exists. Financial records never vanish as a side effect.
+  assignment ProjectAssignment @relation(fields: [assignmentId], references: [id], onDelete: Restrict)
 }
 
 // ---------------------------------------------------------------- site

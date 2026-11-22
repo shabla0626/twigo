@@ -20,6 +20,7 @@ import {
   createProject,
   deleteMilestone,
   deleteProject,
+  removeCompensation,
   deleteRole,
   saveCompensation,
   setAssignmentStatus,
@@ -53,13 +54,24 @@ export async function updateProjectAction(fd: FormData) {
   redirect(back(id, "ok=saved"));
 }
 
+/** Owner only: deleting is permanent and removes the project's records. */
 export async function deleteProjectAction(fd: FormData) {
-  const admin = await requireAdmin("projects.manage");
+  const owner = await requireAdmin("projects.delete");
   const id = String(fd.get("id") ?? "");
   if (fd.get("confirm") !== "DELETE") redirect(back(id, "error=Type%20DELETE%20to%20confirm"));
-  await deleteProject(admin.id, id);
+  const res = await deleteProject(owner.id, id);
+  if (!res.ok) redirect(back(id, `error=${encodeURIComponent(res.error)}`));
   refreshPublic();
   redirect("/admin/projects?ok=deleted");
+}
+
+/** Owner only: removes one compensation agreement (needed before its project or participant record can be deleted). */
+export async function removeCompensationAction(fd: FormData) {
+  const owner = await requireAdmin("compensation.manage");
+  const pid = String(fd.get("projectId") ?? "");
+  if (fd.get("confirm") !== "REMOVE") redirect(back(pid, "error=Type%20REMOVE%20to%20confirm"));
+  const res = await removeCompensation(owner.id, String(fd.get("assignmentId") ?? ""));
+  redirect(back(pid, res.ok ? "ok=compensation-removed" : `error=${encodeURIComponent(res.error)}`));
 }
 
 export async function addRoleAction(fd: FormData) {

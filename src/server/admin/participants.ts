@@ -44,8 +44,19 @@ export async function updateParticipant(
   await audit(adminId, "participant.updated", "Participant", id, { status: data.status });
 }
 
-/** Removes a participant record (and their assignments/compensation records). */
-export async function removeParticipant(adminId: string, id: string) {
+/**
+ * Permanently removes a participant record and their project assignments.
+ * Refused while any assignment has a compensation agreement: those are removed
+ * first, in their own audited action. The database enforces the same rule.
+ */
+export async function removeParticipant(adminId: string, id: string): Promise<{ ok: true } | { ok: false; error: string }> {
+  const p = await db.participant.findUnique({ where: { id }, select: { _count: { select: { assignments: true } } } });
+  if (!p) return { ok: false, error: "Participant not found." };
+  const agreements = await db.compensationAgreement.count({ where: { assignment: { participantId: id } } });
+  if (agreements > 0) {
+    return { ok: false, error: `This person has ${agreements} compensation agreement${agreements === 1 ? "" : "s"}. Remove ${agreements === 1 ? "it" : "them"} first (on the project page), or set the status to Inactive instead.` };
+  }
   await db.participant.delete({ where: { id } });
-  await audit(adminId, "participant.removed", "Participant", id);
+  await audit(adminId, "participant.removed", "Participant", id, { assignments: p._count.assignments });
+  return { ok: true };
 }
