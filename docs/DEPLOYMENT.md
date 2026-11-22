@@ -191,3 +191,49 @@ development scripts create UTF-8 databases automatically.
 - [ ] Retention periods confirmed at /admin/settings
 - [ ] Full flow tested on staging: application → acceptance → invitation → activation →
       idea → endorsements → group → chat → meeting link
+
+## 11. Version control, backups and rollback (development computer)
+
+Set up on 22 November 2026 as Stage 0 of `docs/CORRECTIVE-IMPLEMENTATION-PLAN.md`.
+
+### What is and is not in the repository
+
+* The project is a local Git repository on branch `main`. The state at the final audit
+  is tagged `audit-baseline-2026-11-22`.
+* **Never tracked:** `.env` files (only `.env.example` is tracked), the local database
+  (`.pgdata/`), `backups/`, uploaded files (`storage/`), captured test email, build
+  output, keys and certificates, database exports. The rules are in `.gitignore`.
+* Before every commit that adds new kinds of files, run `git status --ignored --short`
+  and check that nothing private is about to be tracked and that no source folder is
+  hidden by a rule. (Two such mistakes were caught this way when the repository was
+  created: a rule for backup folders hid the admin Backups page, and a rule for SQL
+  exports hid the migration files. Both rules were corrected.)
+
+### Making a safety copy
+
+1. Code: `git bundle create backups/cowork-code-<date>.bundle --all`
+   (one file that contains the whole history; check it with `git bundle verify <file>`).
+2. Data: `npm run db:backup -- --label <reason>` (writes to `backups/`).
+3. Uploaded files: copy the `storage/` folder, if it exists.
+4. Copy the bundle, the newest backup file and the `storage/` copy to a second place
+   (external drive first; an outside service only after the founder approves one).
+5. Keep `.env` in a password manager, not next to the copies.
+
+### Proving a backup works
+
+`npm run db:restore -- backups/<file> --into cowork_restore_check`
+
+Restore always creates a new, separate database and checks every table. It refuses to
+write over the database the site is using. Remove the check database afterwards.
+
+### Rolling back
+
+| What went wrong | How to go back |
+|---|---|
+| One correction caused a problem | `git revert <commit>`. Every correction is its own commit, named with its finding ID |
+| Everything since the audit must be undone | `git checkout audit-baseline-2026-11-22` (look at it) or create a branch from that tag and continue there. Nothing is deleted from history |
+| A database migration must be undone | Restore the backup that was made immediately before that migration into a **new** database (`--into <name>`), then set `DATABASE_URL` to the new database and check out the commit from before the migration. The old database is kept until the founder confirms it is no longer needed |
+| Data was changed by mistake | Same restore; compare and copy back only what is needed |
+
+Before every migration: make a backup, restore it once into a check database, and only
+then apply the migration.
