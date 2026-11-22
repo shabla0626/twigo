@@ -95,10 +95,10 @@ address; on a real site the start is refused if it is set.
 | `PORT`, `HOST` | Default 3000 / 0.0.0.0 |
 | `AUTH_SECRET` | ≥ 32 random chars (form tokens, IP hashing) |
 | `ENCRYPTION_KEY` | ≥ 32 random chars, different from `AUTH_SECRET` (encrypts 2FA secrets). **Losing it disables everyone's 2FA**: keep it in your password manager |
-| `SESSION_TTL_HOURS` / `MEMBER_SESSION_TTL_HOURS` | Admin 8 h, member 14 days by default |
+| `SESSION_TTL_HOURS` / `MEMBER_SESSION_TTL_HOURS` | Admin 8 h, member 14 days by default. Independently of this, an owner or administrator who does nothing for 60 minutes must sign in again (fixed, `ADMIN_IDLE_MINUTES` in `src/lib/auth/constants.ts`) |
 | `ADMIN_REQUIRE_2FA` | `true` (keep it) |
 | `ORG_NAME`, `ORG_TAGLINE`, `ORG_LEGAL_NAME`, `ORG_JURISDICTION`, `ORG_CONTACT_EMAIL`, `EMAIL_FROM_NAME` | Branding (one place: `src/config/brand.ts`) |
-| `SMTP_HOST`, `SMTP_PORT`, `SMTP_SECURE`, `SMTP_USER`, `SMTP_PASSWORD`, `EMAIL_FROM` | Required for invitations and password resets |
+| `SMTP_HOST`, `SMTP_PORT`, `SMTP_SECURE`, `SMTP_USER`, `SMTP_PASSWORD`, `EMAIL_FROM` | Required for confirmation emails, password resets and administrator invitations |
 | `ADMIN_NOTIFICATION_EMAIL`, `SEND_APPLICANT_CONFIRMATION` | Optional |
 | `STORAGE_DIR`, `MAX_UPLOAD_MB` | Persistent disk path; default 10 MB |
 | `JOBS_ENABLED`, `BACKUP_DIR`, `BACKUP_KEEP`, `BACKUP_ENCRYPTION_KEY` | Daily jobs; set the encryption key |
@@ -210,8 +210,8 @@ development scripts create UTF-8 databases automatically.
 2. Set the SMTP variables, then use **Admin → Email → Check connection** and **Send a test email to me**.
 3. Confirm the test arrives in a real inbox (the app can only confirm that the provider
    *accepted* the message).
-4. Send yourself a password reset and an invitation to a test address before public
-   recruitment.
+4. Create a test account (confirmation email) and send yourself a password reset before
+   public recruitment.
 
 ## 8. Backups and restore
 
@@ -251,10 +251,10 @@ development scripts create UTF-8 databases automatically.
 - [ ] Branding variables set; content reviewed in /admin/content
 - [ ] Strong `AUTH_SECRET` and `ENCRYPTION_KEY`; owner account with 2FA; no test accounts
 - [ ] HTTPS active; WebSockets work through the proxy (chat shows "Connected")
-- [ ] Email provider verified with a real inbox (invitation + password reset)
+- [ ] Email provider verified with a real inbox (confirmation email + password reset)
 - [ ] Off-site backup copy job running; restore test done on the server
 - [ ] Retention periods confirmed at /admin/settings
-- [ ] Full flow tested on staging: application → acceptance → invitation → activation →
+- [ ] Full flow tested on staging: create account → confirm email → application → acceptance →
       idea → endorsements → group → chat → meeting link
 
 ## 11. Version control, backups and rollback (development computer)

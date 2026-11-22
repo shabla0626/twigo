@@ -19,9 +19,13 @@ export type RetentionCategory = {
 const DAY = 86_400_000;
 const cutoff = (days: number, now: number) => new Date(now - days * DAY);
 
-export async function runRetention(db: PrismaClient, opts: { dryRun: boolean; storageDir: string; now?: number }): Promise<{ categories: RetentionCategory[]; jobRunId: string }> {
+/**
+ * `dryRun` only counts what WOULD be removed. A dry run changes nothing and leaves no record
+ * (the Privacy page shows one on every visit), so `jobRunId` is null for it.
+ */
+export async function runRetention(db: PrismaClient, opts: { dryRun: boolean; storageDir: string; now?: number }): Promise<{ categories: RetentionCategory[]; jobRunId: string | null }> {
   const now = opts.now ?? Date.now();
-  const run = await db.jobRun.create({ data: { job: "retention", dryRun: opts.dryRun } });
+  const run = opts.dryRun ? null : await db.jobRun.create({ data: { job: "retention", dryRun: false } });
   try {
     const s = await readAllSettings(db);
     const cats: RetentionCategory[] = [];
@@ -127,10 +131,10 @@ export async function runRetention(db: PrismaClient, opts: { dryRun: boolean; st
         data: { action: "retention.purge", entityType: "System", metadata: Object.fromEntries(cats.map((c) => [c.key, c.count])) },
       });
     }
-    await db.jobRun.update({ where: { id: run.id }, data: { finishedAt: new Date(), ok: true, summary: cats } });
-    return { categories: cats, jobRunId: run.id };
+    if (run) await db.jobRun.update({ where: { id: run.id }, data: { finishedAt: new Date(), ok: true, summary: cats } });
+    return { categories: cats, jobRunId: run?.id ?? null };
   } catch (err) {
-    await db.jobRun.update({ where: { id: run.id }, data: { finishedAt: new Date(), ok: false, error: String(err).slice(0, 1000) } });
+    if (run) await db.jobRun.update({ where: { id: run.id }, data: { finishedAt: new Date(), ok: false, error: String(err).slice(0, 1000) } });
     throw err;
   }
 }

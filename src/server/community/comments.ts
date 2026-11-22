@@ -1,4 +1,5 @@
 import "server-only";
+import type { Prisma } from "@prisma/client";
 import { db } from "@/lib/db";
 import { audit } from "@/lib/audit";
 import { rateLimit } from "@/lib/rate-limit";
@@ -72,10 +73,30 @@ export async function editComment(userId: string, commentId: string, body: strin
 }
 
 /** Soft delete: the text is hidden immediately and purged after the retention period. */
+/**
+ * Sets the stored number of comments to the number people can actually read (not deleted by the
+ * author, not removed by moderation). Called whenever a comment disappears.
+ * The parent row is locked first, so a comment added at the same moment is never lost from the count.
+ */
+export async function recountComments(tx: Prisma.TransactionClient, target: { ideaId?: string | null; discussionId?: string | null }) {
+  const visible = { deletedAt: null, removedAt: null };
+  if (target.ideaId) {
+    await tx.$queryRaw`SELECT 1 FROM "BusinessIdea" WHERE "id" = ${target.ideaId} FOR UPDATE`;
+    await tx.businessIdea.updateMany({ where: { id: target.ideaId }, data: { commentCount: await tx.comment.count({ where: { ideaId: target.ideaId, ...visible } }) } });
+  }
+  if (target.discussionId) {
+    await tx.$queryRaw`SELECT 1 FROM "GroupDiscussion" WHERE "id" = ${target.discussionId} FOR UPDATE`;
+    await tx.groupDiscussion.updateMany({ where: { id: target.discussionId }, data: { commentCount: await tx.comment.count({ where: { discussionId: target.discussionId, ...visible } }) } });
+  }
+}
+
 export async function deleteComment(userId: string, commentId: string) {
   const c = await db.comment.findUnique({ where: { id: commentId } });
   if (!c || c.authorId !== userId || c.deletedAt) return { ok: false as const, error: "You can only delete your own comments." };
-  await db.comment.update({ where: { id: commentId }, data: { deletedAt: new Date() } });
+  await db.$transaction(async (tx) => {
+    await tx.comment.update({ where: { id: commentId }, data: { deletedAt: new Date() } });
+    await recountComments(tx, c);
+  });
   await audit(userId, "comment.deleted_by_author", "Comment", commentId);
   return { ok: true as const };
 }

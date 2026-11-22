@@ -63,7 +63,7 @@ Four things are stored separately and never mixed up:
 - **Access rules:** `src/lib/auth/session-core.ts`, `guard.ts`, `destination.ts` (new), `member-where.ts` (new), `src/realtime/server.ts`, `src/realtime/chat-service.ts`, `src/app/api/files/**`, `src/proxy.ts`.
 - **Server logic:** `src/server/onboarding.ts` (new), `src/server/membership-application.ts` (new), `src/server/admin/applications.ts`, `src/server/accounts.ts`, `src/server/email-retry.ts`, `src/server/community/ideas.ts`, `groups.ts`. Removed: `src/server/applications.ts` (anonymous submission).
 - **Pages:** `src/app/(auth)/join`, `login`, `verify-email`, `verify-email/[token]`, `actions.ts`; `src/app/continue`; `src/app/(applicant)/apply`, `application`, `layout.tsx`, `actions.ts`. Removed: the public `/apply` form.
-- **Admin:** `src/app/admin/(panel)/applications/page.tsx`, `[id]/page.tsx`, `[id]/invite` (now a redirect), `members/page.tsx`, `members/[id]/page.tsx`, `src/app/admin/actions/applications.ts`, `community.ts`.
+- **Admin:** `src/app/admin/(panel)/applications/page.tsx`, `[id]/page.tsx`, `members/page.tsx`, `members/[id]/page.tsx`, `src/app/admin/actions/applications.ts`, `community.ts`.
 - **Email:** `src/lib/email/index.ts`, `status.ts`, `templates.ts`, `webhook.ts`, `scripts/dev-mail.ts`.
 - **Public site (links only):** header, phone menu, footer, home, How It Works step 1, call-to-action buttons → `/join`.
 - **Forms:** `src/components/forms/password-input.tsx` (Show / Hide), `password-fields.tsx`, `src/lib/validation/application.ts`, `account.ts`.
@@ -104,7 +104,7 @@ Verified by tests:
 - Pausing membership cuts access immediately, including live chat.
 - A suspended account's sessions stop working.
 - Non-administrators get an error on `/admin`.
-- Passwords are hashed with bcrypt, and administrator two-step verification and recovery codes are unchanged.
+- Passwords are hashed with scrypt (Node's built-in implementation, `src/lib/auth/password.ts`). Hashes made earlier with bcrypt are still accepted and are replaced with scrypt the next time the person signs in. Administrator two-step verification and recovery codes are unchanged.
 - Reset links are single-use, last one hour, and end all sessions.
 - Session cookies are HttpOnly, SameSite=Lax (and `__Host-`/Secure in production).
 - Sign-up, sign-in, reset and resend are rate limited.

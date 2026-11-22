@@ -17,7 +17,9 @@ Browser ──HTTPS──▶ server.ts (one Node.js process)
 - One `User` table for owners, administrators and members (the former `AdminUser`
   table was renamed in a non-destructive migration; ids and audit history kept).
 - `role`: OWNER | ADMIN | MEMBER. `status`: INVITED | ACTIVE | SUSPENDED | DEACTIVATED.
-  Applicants without an invitation have no `User` row (APPLICANT = application state).
+  People create their own account (status ACTIVE after confirming their email); community
+  access is a separate field (`membershipStatus`) granted when an application is accepted.
+  INVITED exists only for administrators invited by the owner, until they activate.
 - Sessions are database rows (`Session`); the cookie holds a random token, the table
   stores its SHA-256. This allows per-device sign-out, "sign out everywhere",
   revocation on suspension/password change, and a short-lived `mfaPending` stage.

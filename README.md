@@ -16,18 +16,18 @@ Architecture: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md). Deployment and costs
 | Area | Features |
 | --- | --- |
 | Public site | Home, About, How It Works (incl. the member-community model), Participation, Compensation, Founding Contributors, **Work With Us** (honest business inquiry form), FAQ, Contact, Apply, **Community rules**, Privacy (draft), Terms (draft), sitemap, robots, generated share image |
-| Accounts | One identity model (OWNER / ADMIN / MEMBER), invitation → email-verified activation, sign-in with lockout and rate limits, **two-step verification (TOTP + recovery codes)**, password reset and change, email change with verification, device/session list with revoke, re-confirmation for sensitive actions, suspension/deactivation |
+| Accounts | One identity model (OWNER / ADMIN / MEMBER), self-registration with email confirmation (administrators are invited by the owner), sign-in with lockout and rate limits, **two-step verification (TOTP + recovery codes)**, password reset and change, email change with verification, device/session list with revoke, re-confirmation for sensitive actions, suspension/deactivation |
 | Community | Home feed, Business Ideas (submit, search, filter, sort, threaded comments, endorsements), **automatic research group at 2 endorsements** (configurable), group directory, My Groups, dedicated group pages (Overview, Discussions, Chat, Meetings, Research & Planning, Members, Files), join/leave/rejoin, coordinator succession, notifications with preferences, member profiles with visibility controls, reporting |
 | Real-time | Socket.IO group chat: persisted history, replies, edit/delete, unread counts, presence, typing indicator, attachments, reconnection with idempotent resend; live notification badge |
 | Meetings | Google Meet links per group (founder decision), voice or video, member-only join, attendance metadata; nothing recorded |
-| Admin | Overview, applications (status, notes, **email with preview**, **invite**, export), members, participants, reports & moderation, ideas, research groups (coordinator, archive/suspend, **approve into project**), projects (compensation OWNER-only), inquiries, email templates + delivery log, content, privacy & retention, backups, administrators, settings, audit log |
+| Admin | Overview, applications (status, notes, **email with preview**, export for the owner), members, participants, reports & moderation, ideas, research groups (coordinator, archive/suspend, **approve into project**), projects (compensation OWNER-only), inquiries, email templates + delivery log, content, privacy & retention, backups, administrators, settings, audit log |
 | Operations | Custom server (`server.ts`), daily retention + backup jobs, verified backup/restore tooling, health check, structured logging, security headers |
 
 ## Tech stack
 
 Next.js 16 (App Router, React 19, TypeScript strict, webpack) · Tailwind CSS 4 ·
 PostgreSQL + Prisma 6 (Rust-free client with `@prisma/adapter-pg`) · Socket.IO 4 ·
-Zod 4 · React Hook Form · bcryptjs · otpauth (TOTP) · qrcode · Nodemailer (SMTP) ·
+Zod 4 · React Hook Form · scrypt password hashing (Node built-in; bcryptjs only reads older hashes) · otpauth (TOTP) · qrcode · Nodemailer (SMTP) ·
 sharp · Vitest · Playwright (+ axe-core).
 
 ## Project structure
@@ -150,7 +150,7 @@ copies and rollback are described in `docs/DEPLOYMENT.md`, section 11.
 
 ## Testing
 
-* `npm test`: 103 Vitest tests (unit + PostgreSQL integration), including permissions,
+* `npm test`: the Vitest suite (unit + PostgreSQL integration; the current count is in the latest stage report under `docs/`), including permissions,
   TOTP, sessions, tokens, simultaneous endorsements, succession, chat isolation, a real
   Socket.IO client, uploads, invitations through a local SMTP server, email failures,
   retention, and backup → restore.

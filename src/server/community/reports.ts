@@ -2,6 +2,7 @@ import "server-only";
 import type { ReportReason, ReportTarget } from "@prisma/client";
 import { db } from "@/lib/db";
 import { audit } from "@/lib/audit";
+import { recountComments } from "./comments";
 import { publishRealtime } from "@/lib/realtime-events";
 import { chatBoundary } from "@/realtime/chat-service";
 import { rateLimit } from "@/lib/rate-limit";
@@ -99,7 +100,11 @@ export async function moderate(adminId: string, reportId: string, action: "remov
         authorId = (await db.businessIdea.update({ where: { id: r.targetId }, data: { status: "REMOVED", removedAt: now, removedReason: note.slice(0, 300) } })).authorId;
         break;
       case "COMMENT":
-        authorId = (await db.comment.update({ where: { id: r.targetId }, data: { removedAt: now } })).authorId;
+        authorId = await db.$transaction(async (tx) => {
+          const c = await tx.comment.update({ where: { id: r.targetId }, data: { removedAt: now } });
+          await recountComments(tx, c);
+          return c.authorId;
+        });
         break;
       case "DISCUSSION":
         authorId = (await db.groupDiscussion.update({ where: { id: r.targetId }, data: { removedAt: now } })).authorId;

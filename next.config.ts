@@ -34,7 +34,8 @@ const securityHeaders = [
   { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
   { key: "Permissions-Policy", value: "camera=(), microphone=(), geolocation=(), payment=()" },
   ...(isProd
-    ? [{ key: "Strict-Transport-Security", value: "max-age=63072000; includeSubDomains; preload" }]
+    ? // No "preload" yet: preloading is hard to undo and belongs to a final domain, which is not settled.
+      [{ key: "Strict-Transport-Security", value: "max-age=63072000; includeSubDomains" }]
     : []),
 ];
 

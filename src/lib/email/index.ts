@@ -92,6 +92,14 @@ function failure(err: unknown): Extract<SendResult, { status: "failed" }> {
 /** Carries our own delivery id, so a provider's delivery report can be matched to the exact message. */
 export const DELIVERY_HEADER = "X-Delivery-Id";
 
+/** A short technical code of a send error ("ECONNREFUSED", "EAUTH", 550…), never its text. */
+function errorCode(err: unknown): string | number | null {
+  const e = err as { code?: unknown; responseCode?: unknown } | null;
+  if (e && (typeof e.code === "string" || typeof e.code === "number")) return e.code;
+  if (e && typeof e.responseCode === "number") return e.responseCode;
+  return null;
+}
+
 export async function sendEmail(message: EmailMessage, deliveryId?: string): Promise<SendResult> {
   const problem = emailConfigProblem();
   if (problem) {
@@ -105,13 +113,15 @@ export async function sendEmail(message: EmailMessage, deliveryId?: string): Pro
   try {
     const info = await getTransporter().sendMail({ from: fromAddress(), ...message, headers: deliveryId ? { [DELIVERY_HEADER]: deliveryId } : undefined });
     if (info.rejected && info.rejected.length > 0) {
-      logger.warn("email.rejected", { subject: message.subject });
+      logger.warn("email.rejected", { deliveryId: deliveryId ?? null });
       return { status: "failed", kind: "RECIPIENT_REJECTED", error: "The provider refused the recipient address." };
     }
     return { status: "sent", messageId: info.messageId, response: typeof info.response === "string" ? info.response.slice(0, 300) : undefined, local: smtpSettings().local };
   } catch (err) {
     const f = failure(err);
-    logger.error("email.send_failed", { subject: message.subject, kind: f.kind, err });
+    // Provider errors often quote the recipient's address, so the error itself is not logged:
+    // the kind of failure and the delivery id are enough to find the row in Admin, Email.
+    logger.error("email.send_failed", { kind: f.kind, deliveryId: deliveryId ?? null, code: errorCode(err) });
     return f;
   }
 }
