@@ -260,8 +260,12 @@ export async function pendingTotpSetup(userId: string) {
   return totpSetupData(decryptSecret(user.totpPendingEnc), user.email);
 }
 
-/** Verifies the first code, enables 2FA and returns new recovery codes (shown once). */
-export async function confirmTotpSetup(userId: string, code: string): Promise<Result<{ recoveryCodes: string[] }>> {
+/**
+ * Verifies the first code, enables 2FA and returns new recovery codes (shown once).
+ * All other sessions of the account are ended (`keepSessionId` is the session
+ * doing the setup), so no session opened before two-step verification survives it.
+ */
+export async function confirmTotpSetup(userId: string, code: string, keepSessionId?: string): Promise<Result<{ recoveryCodes: string[] }>> {
   const user = await db.user.findUniqueOrThrow({ where: { id: userId } });
   if (!user.totpPendingEnc) return { ok: false, error: "Start the setup again." };
   const secret = decryptSecret(user.totpPendingEnc);
@@ -272,7 +276,8 @@ export async function confirmTotpSetup(userId: string, code: string): Promise<Re
     db.recoveryCode.deleteMany({ where: { userId } }),
     db.recoveryCode.createMany({ data: codes.map((c) => ({ userId, codeHash: hashRecoveryCode(c) })) }),
   ]);
-  await audit(userId, "auth.2fa_enabled", "User", userId);
+  const ended = await revokeUserSessions(userId, keepSessionId);
+  await audit(userId, "auth.2fa_enabled", "User", userId, { otherSessionsEnded: ended });
   return { ok: true, recoveryCodes: codes };
 }
 

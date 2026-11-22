@@ -1,24 +1,37 @@
 /**
- * Creates or resets an administrator account.
+ * Creates or resets an administrator account, or removes two-step verification
+ * from one (recovery after a lost authenticator).
  *
  *   npm run admin:create -- --email founder@example.com --name "Founder" [--role OWNER]
+ *   npm run admin:create -- --email founder@example.com --reset-2fa
  *
- * The password is read from the ADMIN_PASSWORD environment variable or
- * prompted for interactively (input hidden). It is never echoed or logged.
- * Re-running for an existing email resets the password and revokes all
- * existing sessions for that account. Administrators must then set up
- * two-step verification at /account/security before using /admin.
+ * Create / reset: the password is read from the ADMIN_PASSWORD environment
+ * variable or prompted for interactively (input hidden). It is never echoed or
+ * logged. Re-running for an existing administrator resets the password and ends
+ * all of that account's sessions. Administrators must set up two-step
+ * verification at /account/security before the admin area opens.
+ *
+ * An existing account is never given more power silently: making a member an
+ * administrator, changing an administrator's role, or bringing back a
+ * suspended or deactivated account needs the extra flag --promote.
+ *
+ * --reset-2fa: removes two-step verification and ends the account's sessions.
+ * The password is not changed; the person sets up two-step verification again
+ * at the next sign-in. Use it only for someone you have identified yourself.
+ *
+ * Every use is written to the audit log.
  */
 import type { UserRole } from "@prisma/client";
-import { createPrismaClient } from "../src/lib/db-core";
 import { createInterface } from "node:readline";
-import { hashPassword, passwordPolicyError } from "../src/lib/auth/password";
+import { createPrismaClient } from "../src/lib/db-core";
+import { createOrResetAdmin, resetTwoStepVerification } from "../src/ops/admin-accounts";
 import { loadDotEnv } from "./load-env";
 
 function arg(name: string) {
   const i = process.argv.indexOf(`--${name}`);
   return i > -1 ? process.argv[i + 1] : undefined;
 }
+const flag = (name: string) => process.argv.includes(`--${name}`);
 
 async function promptHidden(question: string): Promise<string> {
   const rl = createInterface({ input: process.stdin, output: process.stdout, terminal: true });
@@ -42,38 +55,30 @@ async function promptHidden(question: string): Promise<string> {
 async function main() {
   loadDotEnv();
   const email = arg("email")?.trim().toLowerCase();
-  const name = arg("name")?.trim() || "Administrator";
-  const role = (arg("role")?.toUpperCase() ?? "OWNER") as UserRole;
-  if (!email || !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) throw new Error("Provide --email <address>");
-  if (!["OWNER", "ADMIN"].includes(role)) throw new Error("--role must be OWNER or ADMIN");
-
-  let password = process.env.ADMIN_PASSWORD ?? "";
-  if (!password) {
-    password = await promptHidden("Password (min 12 chars, letters and numbers): ");
-    const again = await promptHidden("Repeat password: ");
-    if (password !== again) throw new Error("Passwords do not match");
-  }
-  const policy = passwordPolicyError(password);
-  if (policy) throw new Error(policy);
-
+  if (!email) throw new Error("Provide --email <address>");
   const db = createPrismaClient();
   try {
-    const passwordHash = await hashPassword(password);
-    const now = new Date();
-    const existing = await db.user.findUnique({ where: { email } });
-    if (existing) {
-      await db.user.update({
-        where: { email },
-        data: { passwordHash, name, role, status: "ACTIVE", emailVerifiedAt: existing.emailVerifiedAt ?? now, passwordChangedAt: now, failedLogins: 0, lockedUntil: null, deactivatedAt: null, suspendedAt: null },
-      });
-      await db.session.updateMany({ where: { userId: existing.id, revokedAt: null }, data: { revokedAt: now } });
-      await db.auditLog.create({ data: { actorId: existing.id, action: "admin.password_reset_cli", entityType: "User", entityId: existing.id } });
-      console.log(`Updated administrator ${email}. Existing sessions were revoked.`);
-    } else {
-      const created = await db.user.create({ data: { email, name, role, passwordHash, status: "ACTIVE", emailVerifiedAt: now, passwordChangedAt: now } });
-      await db.auditLog.create({ data: { actorId: created.id, action: "admin.created_cli", entityType: "User", entityId: created.id } });
-      console.log(`Created administrator ${email} (${role}).`);
+    if (flag("reset-2fa")) {
+      const res = await resetTwoStepVerification(db, email);
+      if (!res.ok) throw new Error(res.error);
+      console.log(res.message);
+      return;
     }
+    let password = process.env.ADMIN_PASSWORD ?? "";
+    if (!password) {
+      password = await promptHidden("Password (min 12 chars, letters and numbers): ");
+      const again = await promptHidden("Repeat password: ");
+      if (password !== again) throw new Error("Passwords do not match");
+    }
+    const res = await createOrResetAdmin(db, {
+      email,
+      name: arg("name"),
+      role: arg("role")?.toUpperCase() as UserRole | undefined,
+      password,
+      promote: flag("promote"),
+    });
+    if (!res.ok) throw new Error(res.error);
+    console.log(res.message);
   } finally {
     await db.$disconnect();
   }

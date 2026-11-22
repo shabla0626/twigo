@@ -55,15 +55,23 @@ export async function changeEmailAction(_prev: FormState, fd: FormData): Promise
   return { ok: message };
 }
 
+// Setting up two-step verification decides who can sign in to this account from
+// now on, so it needs a recent proof of identity (signing in counts for a few
+// minutes; later the password is asked again). Without this, anyone holding an
+// open session could attach their own authenticator and lock the owner out.
 export async function startTotpAction() {
   const s = await current();
+  if (!(await isRecentlyAuthenticated())) redirect("/account/confirm?next=/account/security");
   await beginTotpSetup(s.user.id);
   redirect("/account/security?setup=1");
 }
 
 export async function confirmTotpAction(_prev: FormState, fd: FormData): Promise<FormState> {
   const s = await current();
-  const res = await confirmTotpSetup(s.user.id, String(fd.get("code") ?? ""));
+  // Took longer than the confirmation window: ask for the password, then return to this step (the setup is kept).
+  if (!(await isRecentlyAuthenticated())) redirect(`/account/confirm?next=${encodeURIComponent("/account/security?setup=1")}`);
+  // Every other session of this account is ended: only the device that set it up stays signed in.
+  const res = await confirmTotpSetup(s.user.id, String(fd.get("code") ?? ""), s.sessionId);
   if (!res.ok) return { error: res.error };
   // Recovery codes are shown exactly once via a short-lived, http-only flash.
   await stashCodes(s.user.id, res.recoveryCodes);
