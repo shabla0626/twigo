@@ -9,6 +9,7 @@ import { decryptSecret, encryptSecret } from "@/lib/crypto";
 import { deliver, deliverTemplate, renderEmail } from "@/lib/email";
 import { publishRealtime } from "@/lib/realtime-events";
 import { rateLimit } from "@/lib/rate-limit";
+import { normalizeEmail } from "@/lib/validation/email";
 import { TOKEN_TTL_HOURS } from "@/lib/auth/constants";
 import { hashPassword, passwordPolicyError, simulatePasswordCheck, verifyPassword } from "@/lib/auth/password";
 import { revokeUserSessions } from "@/lib/auth/session";
@@ -70,19 +71,23 @@ export async function sendInvitation(
   const app = await db.application.findUniqueOrThrow({ where: { id: applicationId }, select: { participant: { select: { id: true } } } });
   const participantId = app.participant!.id;
 
-  const { user, token } = await db.$transaction(async (tx) => {
+  const found = await db.$transaction(async (tx) => {
     const other = await tx.user.findUnique({ where: { email: t.target.email } });
     if (other && other.participantId && other.participantId !== participantId) throw new Error("EMAIL_IN_USE");
+    // Never bring back an account that was suspended or deactivated on purpose.
+    if (other && (other.status === "SUSPENDED" || other.status === "DEACTIVATED")) throw new Error("ACCOUNT_BLOCKED");
     const user = other
       ? await tx.user.update({ where: { id: other.id }, data: { participantId, status: other.status === "ACTIVE" ? "ACTIVE" : "INVITED" } })
       : await tx.user.create({ data: { email: t.target.email, name: t.target.name, role: "MEMBER", status: "INVITED", participantId } });
     const issued = await issueToken(user.id, "INVITE", { createdById: adminId }, tx);
     return { user, token: issued.token };
   }).catch((err: Error) => {
-    if (err.message === "EMAIL_IN_USE") return { user: null, token: "" };
+    if (err.message === "EMAIL_IN_USE") return { user: null, token: "", why: "That email address belongs to a different account." };
+    if (err.message === "ACCOUNT_BLOCKED") return { user: null, token: "", why: "That account is suspended or deactivated. Reactivate it under Members first." };
     throw err;
   });
-  if (!user) return { ok: false, error: "That email address belongs to a different account." };
+  const { user, token } = found;
+  if (!user) return { ok: false, error: ("why" in found ? found.why : undefined) ?? "The invitation could not be prepared." };
 
   const link = siteUrl(`/activate/${token}`);
   const res = await deliver({
@@ -192,6 +197,8 @@ export async function resetPassword(token: string, password: string): Promise<Re
 }
 
 export async function changePassword(userId: string, sessionId: string, current: string, next: string): Promise<Result> {
+  // Someone at an unlocked computer must not be able to guess the current password without limit.
+  if (!rateLimit(`password-change:${userId}`, 5, 15 * 60_000).ok) return { ok: false, error: "Too many attempts. Please wait 15 minutes and try again." };
   const user = await db.user.findUnique({ where: { id: userId } });
   if (!user?.passwordHash || !(await verifyPassword(current, user.passwordHash))) return { ok: false, error: "Your current password is incorrect." };
   const policy = passwordPolicyError(next);
@@ -220,9 +227,9 @@ export async function confirmIdentity(userId: string, sessionId: string, passwor
 // ---------------------------------------------------------------- email change
 
 export async function requestEmailChange(userId: string, newEmailRaw: string): Promise<{ message: string }> {
-  const email = newEmailRaw.trim().toLowerCase();
+  const email = normalizeEmail(newEmailRaw);
   const message = "If that address can be used, we sent a confirmation link to it. Your email changes after you click the link.";
-  if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email) || email.length > 254) return { message: "Enter a valid email address." };
+  if (!email) return { message: "Enter a valid email address." };
   if (!rateLimit(`email-change:${userId}`, 3, 60 * 60_000).ok) return { message };
   const user = await db.user.findUniqueOrThrow({ where: { id: userId } });
   if (email === user.email) return { message: "That is already your email address." };
@@ -237,19 +244,6 @@ export async function requestEmailChange(userId: string, newEmailRaw: string): P
   );
   await audit(userId, "account.email_change_requested", "User", userId);
   return { message };
-}
-
-export async function confirmEmailChange(token: string): Promise<Result> {
-  const res = await db.$transaction(async (tx) => {
-    const t = await consumeToken(tx, token, "VERIFY_EMAIL");
-    if (!t.ok || !t.email) return { ok: false as const, error: "This confirmation link is not valid, expired or was already used." };
-    const taken = await tx.user.findUnique({ where: { email: t.email } });
-    if (taken) return { ok: false as const, error: "That email address is already in use." };
-    await tx.user.update({ where: { id: t.userId }, data: { email: t.email, emailVerifiedAt: new Date() } });
-    return { ok: true as const, userId: t.userId };
-  });
-  if (res.ok) await audit(res.userId, "account.email_changed", "User", res.userId);
-  return res.ok ? { ok: true } : res;
 }
 
 // ---------------------------------------------------------------- two-factor
@@ -466,10 +460,14 @@ export async function setUserRole(ownerId: string, userId: string, role: UserRol
 
 /** Owner invites a new administrator by email (no application involved). */
 export async function inviteAdministrator(ownerId: string, emailRaw: string, name: string, role: "ADMIN" | "OWNER"): Promise<Result<{ status: string }>> {
-  const email = emailRaw.trim().toLowerCase();
-  if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) return { ok: false, error: "Enter a valid email address." };
+  const email = normalizeEmail(emailRaw);
+  if (!email) return { ok: false, error: "Enter a valid email address." };
   const existing = await db.user.findUnique({ where: { email } });
   if (existing?.status === "ACTIVE") return { ok: false, error: "That person already has an account. Change their role instead." };
+  // An invitation must never bring back an account that was suspended or deactivated on purpose.
+  if (existing && (existing.status === "SUSPENDED" || existing.status === "DEACTIVATED")) {
+    return { ok: false, error: "That account is suspended or deactivated. Reactivate it under Members first, then change its role." };
+  }
   const user = existing
     ? await db.user.update({ where: { id: existing.id }, data: { role, name, status: "INVITED" } })
     : await db.user.create({ data: { email, name, role, status: "INVITED" } });

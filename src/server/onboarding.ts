@@ -5,6 +5,7 @@ import { audit } from "@/lib/audit";
 import { siteUrl } from "@/lib/env";
 import { deliverTemplate, type SendResult } from "@/lib/email";
 import { rateLimit } from "@/lib/rate-limit";
+import { normalizeEmail } from "@/lib/validation/email";
 import { TOKEN_TTL_HOURS } from "@/lib/auth/constants";
 import { hashPassword, passwordPolicyError, simulatePasswordCheck } from "@/lib/auth/password";
 import { logger } from "@/lib/logger";
@@ -122,8 +123,8 @@ export async function resendVerificationByEmail(emailRaw: string, ipHash: string
  * The new address must not belong to another account; a new link is sent to it.
  */
 export async function changeUnverifiedEmail(userId: string, newEmailRaw: string): Promise<{ ok: true } | { ok: false; error: string }> {
-  const email = newEmailRaw.trim().toLowerCase();
-  if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email) || email.length > 254) return { ok: false, error: "Please enter a valid email address." };
+  const email = normalizeEmail(newEmailRaw);
+  if (!email) return { ok: false, error: "Please enter a valid email address." };
   if (!rateLimit(`verify-change:${userId}`, 5, 60 * 60_000).ok) return { ok: false, error: "Too many changes. Please wait a while and try again." };
   const user = await db.user.findUniqueOrThrow({ where: { id: userId } });
   if (user.emailVerifiedAt) return { ok: false, error: "Your email address is already confirmed. Change it in Account Settings." };
@@ -139,7 +140,7 @@ export async function changeUnverifiedEmail(userId: string, newEmailRaw: string)
 }
 
 export type VerifyResult =
-  | { ok: true; kind: "registration"; userId: string; role: Prisma.UserGetPayload<object>["role"]; membershipGranted: boolean }
+  | { ok: true; kind: "registration"; userId: string; role: Prisma.UserGetPayload<object>["role"]; membershipGranted: boolean; twoStep: boolean }
   | { ok: true; kind: "change"; userId: string }
   | { ok: false; error: string };
 
@@ -165,7 +166,7 @@ export async function verifyEmailToken(token: string): Promise<VerifyResult> {
       const linkedGrant = await linkLegacyApplicant(tx, user.id, user.email);
       // An application accepted before the address was confirmed gives access now.
       const granted = linkedGrant || (await grantAcceptedMembership(tx, user.id, { reason: "email confirmed" }));
-      return { ok: true as const, kind: "registration" as const, userId: user.id, role: user.role, membershipGranted: granted };
+      return { ok: true as const, kind: "registration" as const, userId: user.id, role: user.role, membershipGranted: granted, twoStep: Boolean(user.totpEnabledAt) };
     }
     if (!t.email) return { ok: false as const, error: "This link is not valid." };
     const taken = await tx.user.findUnique({ where: { email: t.email } });

@@ -1,6 +1,8 @@
 "use server";
 
 import { redirect } from "next/navigation";
+import { PENDING_EMAIL_COOKIE } from "@/lib/auth/constants";
+import { cookies } from "next/headers";
 import { z } from "zod";
 import type { FormState } from "@/components/forms/action-form";
 import { audit } from "@/lib/audit";
@@ -76,7 +78,10 @@ export async function registerAction(_prev: FormState, fd: FormData): Promise<Fo
   );
   if (!res.ok) return { error: res.error, fieldErrors: res.fieldErrors };
   const mail = res.mailStatus === "sent" || res.mailStatus === "skipped" ? "" : "&mail=failed";
-  redirect(`/verify-email?sent=1&email=${encodeURIComponent(res.email)}${mail}`);
+  // The address is shown on the next page, but it is kept out of the page address (which
+  // browsers store in their history): a short-lived cookie that only this server can read.
+  (await cookies()).set(PENDING_EMAIL_COOKIE, res.email, { httpOnly: true, secure: process.env.NODE_ENV === "production", sameSite: "lax", path: "/verify-email", maxAge: 30 * 60 });
+  redirect(`/verify-email?sent=1${mail}`);
 }
 
 /** Resend for a signed-in, not yet verified account. */
@@ -116,9 +121,13 @@ export async function verifyEmailAction(_prev: FormState, fd: FormData): Promise
     await clearSessionCookie();
     redirect("/login?emailchanged=1");
   }
-  // Opening the emailed link proves the address; sign the person in and continue.
   const existing = await getSession();
-  if (!existing || existing.user.id !== res.userId) {
+  const signedIn = existing && existing.user.id === res.userId;
+  // Opening the emailed link proves the address, and for an ordinary new account that is enough
+  // to continue. It is NOT a replacement for two-step verification, and never for staff:
+  // those accounts confirm the address here and then sign in the normal way.
+  if (!signedIn && (res.twoStep || res.role !== "MEMBER")) redirect("/login?confirmed=1");
+  if (!signedIn) {
     const s = await createSession(res.userId, res.role, await ctx());
     await setSessionCookie(s.token, s.expiresAt);
   }

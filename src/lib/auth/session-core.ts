@@ -2,7 +2,7 @@
 // No `server-only` / `next/*` imports here.
 import type { AccountStatus, CommunityMembership, PrismaClient, UserRole } from "@prisma/client";
 import { sha256 } from "../crypto";
-import { SESSION_COOKIE } from "./constants";
+import { ADMIN_IDLE_MINUTES, SESSION_COOKIE } from "./constants";
 
 export type SessionUser = {
   id: string;
@@ -44,7 +44,13 @@ const TOUCH_INTERVAL_MS = 5 * 60_000;
  * revoked or expired. Account status is returned and must be checked by the
  * caller (a suspended user's session is still "found" so it can be shown a message).
  */
-export async function lookupSession(db: PrismaClient, token: string | undefined | null, now = new Date()): Promise<SessionInfo | null> {
+export async function lookupSession(
+  db: PrismaClient,
+  token: string | undefined | null,
+  now = new Date(),
+  /** `touch: false` for background checks (the realtime connection), which must not count as the person being active. */
+  opts: { touch?: boolean } = {},
+): Promise<SessionInfo | null> {
   if (!token || token.length > 200) return null;
   const s = await db.session.findUnique({
     where: { tokenHash: sha256(token) },
@@ -72,7 +78,15 @@ export async function lookupSession(db: PrismaClient, token: string | undefined 
     },
   });
   if (!s || s.revokedAt || s.expiresAt <= now) return null;
-  if (now.getTime() - s.lastSeenAt.getTime() > TOUCH_INTERVAL_MS) {
+  // Owners and administrators: a session left unused for an hour is ended, so an unattended
+  // computer does not stay signed in to the admin area for the whole working day.
+  // ("Last seen" is refreshed every few minutes, so the real limit is 60 to 65 minutes.)
+  const staff = s.user.role === "OWNER" || s.user.role === "ADMIN";
+  if (staff && !s.mfaPending && now.getTime() - s.lastSeenAt.getTime() > ADMIN_IDLE_MINUTES * 60_000) {
+    await db.session.update({ where: { id: s.id }, data: { revokedAt: now } }).catch(() => {});
+    return null;
+  }
+  if (opts.touch !== false && now.getTime() - s.lastSeenAt.getTime() > TOUCH_INTERVAL_MS) {
     await db.session.update({ where: { id: s.id }, data: { lastSeenAt: now } }).catch(() => {});
   }
   const base = {

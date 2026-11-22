@@ -42,7 +42,7 @@ async function cleanImage(bytes: Buffer, mime: string, maxSize?: number): Promis
   return { bytes: out, mime: "image/webp", ext: "webp" };
 }
 
-export type UploadInput = { scope: FileScope; groupId?: string; ideaId?: string; name: string; bytes: Buffer };
+export type UploadInput = { scope: FileScope; groupId?: string; name: string; bytes: Buffer };
 export type UploadResult = { ok: true; file: { id: string; name: string; mimeType: string; size: number } } | { ok: false; error: string };
 
 export async function storeUpload(userId: string, input: UploadInput): Promise<UploadResult> {
@@ -59,9 +59,9 @@ export async function storeUpload(userId: string, input: UploadInput): Promise<U
     } catch (e) {
       return { ok: false, error: (e as Error).message };
     }
-  } else if (input.scope === "IDEA_ATTACHMENT") {
-    const idea = input.ideaId ? await db.businessIdea.findUnique({ where: { id: input.ideaId } }) : null;
-    if (!idea || idea.authorId !== userId) return { ok: false, error: "Only the author can attach files to an idea." };
+  } else if (input.scope !== "PROFILE_PHOTO") {
+    // Only the three kinds above exist. (The database still knows an older kind that was never used.)
+    return { ok: false, error: "Invalid upload." };
   }
 
   const type = sniff(input.bytes, input.name);
@@ -88,7 +88,6 @@ export async function storeUpload(userId: string, input: UploadInput): Promise<U
       ownerId: userId,
       scope: input.scope,
       groupId: input.groupId ?? null,
-      ideaId: input.ideaId ?? null,
       originalName: safeFileName(input.name, ext),
       mimeType: mime,
       size: bytes.length,
@@ -100,14 +99,13 @@ export async function storeUpload(userId: string, input: UploadInput): Promise<U
 }
 
 /**
- * Authorization for downloads. Profile photos: any active member. Idea
- * attachments: any active member (ideas are community-visible). Chat and
+ * Authorization for downloads. Profile photos: any active member. Chat and
  * group files: ACTIVE group members only.
  */
 export async function authorizeDownload(userId: string, fileId: string): Promise<StoredFile | null> {
   const f = await db.storedFile.findUnique({ where: { id: fileId } });
   if (!f || f.deletedAt) return null;
-  if (f.scope === "PROFILE_PHOTO" || f.scope === "IDEA_ATTACHMENT") return f;
+  if (f.scope === "PROFILE_PHOTO") return f;
   if (!f.groupId) return null;
   const a = await groupAccess(f.groupId, userId);
   if (!a?.isMember) return null;

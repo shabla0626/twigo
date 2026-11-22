@@ -19,7 +19,6 @@ import {
   deactivateUser,
   inviteAdministrator,
   reactivateUser,
-  sendInvitation,
   setUserRole,
   setMembership,
   suspendUser,
@@ -92,13 +91,6 @@ export async function sendApplicantEmailAction(_p: FormState, fd: FormData): Pro
   await audit(admin.id, "email.sent_to_applicant", "Application", applicationId, { template: key, status: res.status });
   if (res.status === "sent") return { ok: `${describeSend(res)} Sending an email does not change the application status.` };
   return { error: `${res.error} The attempt was logged; you can retry it from Admin → Email.` };
-}
-
-export async function sendInvitationAction(_p: FormState, fd: FormData): Promise<FormState> {
-  const admin = await requireAdmin("members.invite");
-  if (fd.get("confirm") !== "on") return { error: "Tick the box to confirm you reviewed the message." };
-  const res = await sendInvitation(admin.id, str(fd, "applicationId"), { subject: str(fd, "subject").slice(0, 200), body: str(fd, "body").slice(0, 20000) });
-  return res.ok ? { ok: res.status } : { error: res.error };
 }
 
 // ---------------------------------------------------------------- moderation

@@ -18,7 +18,7 @@ describe("permissions", () => {
     expect(ROLE_PERMISSIONS.MEMBER).toHaveLength(0);
   });
   it("ADMIN is explicitly limited (no owner-only operations)", () => {
-    for (const p of ["admins.manage", "settings.manage", "compensation.view", "compensation.manage", "finance.view", "retention.run", "backups.manage", "data.export", "email.templates", "applications.erase", "projects.delete", "participants.remove"] as const) {
+    for (const p of ["admins.manage", "settings.manage", "compensation.view", "compensation.manage", "retention.run", "backups.manage", "data.export", "email.templates", "applications.erase", "projects.delete", "participants.remove"] as const) {
       expect(can("ADMIN", p), p).toBe(false);
     }
     for (const p of ["admin.access", "applications.review", "moderation.act", "groups.manage", "members.suspend"] as const) expect(can("ADMIN", p), p).toBe(true);

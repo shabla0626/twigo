@@ -127,7 +127,8 @@ export async function attachRealtime(httpServer: HttpServer, db: PrismaClient, o
   io.use(async (socket, next) => {
     try {
       const token = readCookie(socket.handshake.headers.cookie);
-      const s = await lookupSession(db, token);
+      // A background connection is not "activity": it must not keep an idle administrator signed in.
+      const s = await lookupSession(db, token, new Date(), { touch: false });
       if (!s || s.mfaPending || !s.user.communityAccess || !s.user.displayName) return next(new Error("unauthorized"));
       (socket.data as Data).user = { id: s.user.id, name: s.user.displayName };
       (socket.data as Data).sessionId = s.sessionId;

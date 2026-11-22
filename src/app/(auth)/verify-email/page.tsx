@@ -1,9 +1,12 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { ActionForm } from "@/components/forms/action-form";
 import { Field, FormAlert, Input } from "@/components/forms/fields";
+import { PENDING_EMAIL_COOKIE } from "@/lib/auth/constants";
 import { getSession } from "@/lib/auth/guard";
+import { normalizeEmail } from "@/lib/validation/email";
 import { localInboxUrl } from "@/lib/email";
 import { changeUnverifiedEmailAction, logoutAction, resendVerificationAction, resendVerificationPublicAction } from "../actions";
 
@@ -20,7 +23,8 @@ export default async function VerifyEmailInstructions({ searchParams }: Props) {
   const s = await getSession();
   const user = s && s.user.status === "ACTIVE" ? s.user : null;
   if (user?.emailVerified) redirect("/continue");
-  const email = user?.email ?? (sp.email && sp.email.length <= 254 ? sp.email : "");
+  // Right after sign-up the address comes from a short-lived cookie set by this server, never from the page address.
+  const email = user?.email ?? normalizeEmail((await cookies()).get(PENDING_EMAIL_COOKIE)?.value) ?? "";
   const inbox = localInboxUrl();
 
   return (

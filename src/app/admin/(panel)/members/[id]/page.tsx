@@ -160,11 +160,6 @@ export default async function MemberAdminDetail({ params, searchParams }: Props)
                   </li>
                 ))}
               </ul>
-              {u.participant?.applicationId && (
-                <Link href={`/admin/applications/${u.participant.applicationId}/invite`} className={`${buttonClass("secondary", "sm")} mt-3`}>
-                  Send a new invitation
-                </Link>
-              )}
             </Panel>
           )}
         </div>

@@ -2,6 +2,7 @@
 // They need access to the server and its database settings, which only the
 // owner has. Everything here is written to the audit log.
 import type { PrismaClient, UserRole } from "@prisma/client";
+import { normalizeEmail } from "../lib/validation/email";
 import { hashPassword, passwordPolicyError } from "../lib/auth/password";
 import { publishRealtime } from "../lib/realtime-events";
 
@@ -24,8 +25,8 @@ export async function createOrResetAdmin(
   db: PrismaClient,
   input: { email: string; name?: string; role?: UserRole; password: string; promote?: boolean },
 ): Promise<AdminCliResult> {
-  const email = input.email.trim().toLowerCase();
-  if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) return { ok: false, error: "Provide --email <address>" };
+  const email = normalizeEmail(input.email);
+  if (!email) return { ok: false, error: "Provide --email <address> (a valid email address)" };
   if (input.role && !["OWNER", "ADMIN"].includes(input.role)) return { ok: false, error: "--role must be OWNER or ADMIN" };
   const policy = passwordPolicyError(input.password);
   if (policy) return { ok: false, error: policy };

@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { emailField } from "./email";
 import {
   AGREEMENT_STATUSES,
   APPLICATION_STATUSES,
@@ -39,7 +40,7 @@ const checkbox = z
   .transform((v) => v === "on" || v === "true");
 
 export const loginSchema = z.object({
-  email: z.string().trim().email().max(200),
+  email: emailField(),
   password: z.string().min(1).max(200),
 });
 

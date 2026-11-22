@@ -22,6 +22,7 @@ export default async function LoginPage({ searchParams }: Props) {
     <>
       <h1 className="text-2xl font-semibold text-ink-950">Sign In</h1>
       <div className="mt-4 space-y-3 empty:hidden">
+        {sp.confirmed && <FormAlert tone="success">Your email address is confirmed. Please sign in to continue.</FormAlert>}
         {sp.reset && <FormAlert tone="success">Your password was changed. Sign in with your new password.</FormAlert>}
         {sp.signedout && <FormAlert tone="success">You are signed out.</FormAlert>}
         {sp.emailchanged && <FormAlert tone="success">Your email address was updated. Sign in with the new address.</FormAlert>}
