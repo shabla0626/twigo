@@ -5,6 +5,7 @@ import { redirect } from "next/navigation";
 import type { GroupStatus, TaskStatus } from "@prisma/client";
 import type { FormState } from "@/components/forms/action-form";
 import { db } from "@/lib/db";
+import { withFlash } from "@/lib/flash";
 import { requireMember, requireUser } from "@/lib/auth/guard";
 import {
   announcementSchema,
@@ -54,8 +55,32 @@ async function guarded(fn: () => Promise<FormState>): Promise<FormState> {
   }
 }
 
+/**
+ * For the small one-click buttons (delete, mark done, end meeting). Every refusal comes back as
+ * a short message that is shown next to the button; nothing fails silently.
+ */
+async function quick(fn: () => Promise<{ ok: true } | { ok: false; error: string } | void>): Promise<FormState> {
+  try {
+    const res = await fn();
+    return res && !res.ok ? { error: res.error } : undefined;
+  } catch (e) {
+    if (e instanceof AccessError) return { error: e.message };
+    throw e;
+  }
+}
+
+/** The group's address name. An unknown group is an ordinary "not found", never a crash. */
 async function groupSlug(groupId: string) {
-  return (await db.researchGroup.findUniqueOrThrow({ where: { id: groupId }, select: { slug: true } })).slug;
+  const g = groupId ? await db.researchGroup.findUnique({ where: { id: groupId }, select: { slug: true } }) : null;
+  if (!g) throw new AccessError("Group not found.");
+  return g.slug;
+}
+
+/** For actions that end with a redirect: an unknown group leads to the list of groups with a message. */
+async function groupPath(groupId: string): Promise<string> {
+  const g = groupId ? await db.researchGroup.findUnique({ where: { id: groupId }, select: { slug: true } }) : null;
+  if (!g) redirect(withFlash("/community/groups", { error: "Group not found." }));
+  return `/community/groups/${g.slug}`;
 }
 
 // ---------------------------------------------------------------- profile
@@ -114,11 +139,14 @@ export async function updateIdeaAction(_p: FormState, fd: FormData): Promise<For
   redirect(`/community/ideas/${id}${"reset" in res && res.reset ? "?changed=material" : "?changed=1"}`);
 }
 
-export async function closeIdeaAction(fd: FormData) {
+export async function closeIdeaAction(_p: FormState, fd: FormData): Promise<FormState> {
   const user = await requireMember();
   const id = str(fd, "id");
-  await closeIdea(user.id, id);
-  revalidatePath(`/community/ideas/${id}`);
+  return quick(async () => {
+    const res = await closeIdea(user.id, id);
+    if (res.ok) revalidatePath(`/community/ideas/${id}`);
+    return res;
+  });
 }
 
 export async function endorseAction(fd: FormData) {
@@ -126,7 +154,7 @@ export async function endorseAction(fd: FormData) {
   const id = str(fd, "id");
   const res = await endorseIdea(user.id, id);
   if (res.ok && res.groupCreated) redirect(`/community/groups/${res.groupCreated.slug}?created=1`);
-  redirect(`/community/ideas/${id}${res.ok ? "?endorsed=1" : `?error=${encodeURIComponent(res.error)}`}`);
+  redirect(res.ok ? `/community/ideas/${id}?endorsed=1` : withFlash(`/community/ideas/${encodeURIComponent(id)}`, { error: res.error }));
 }
 
 export async function withdrawEndorsementAction(fd: FormData) {
@@ -160,10 +188,14 @@ export async function editCommentAction(_p: FormState, fd: FormData): Promise<Fo
   return { ok: "Saved." };
 }
 
-export async function deleteCommentAction(fd: FormData) {
+export async function deleteCommentAction(_p: FormState, fd: FormData): Promise<FormState> {
   const user = await requireMember();
-  await deleteComment(user.id, str(fd, "id"));
-  revalidatePath(str(fd, "path") || "/community");
+  return quick(async () => {
+    const res = await deleteComment(user.id, str(fd, "id"));
+    const path = str(fd, "path");
+    if (res.ok) revalidatePath(path.startsWith("/community") ? path : "/community");
+    return res;
+  });
 }
 
 // ---------------------------------------------------------------- reports
@@ -181,21 +213,23 @@ export async function reportAction(_p: FormState, fd: FormData): Promise<FormSta
 export async function joinGroupAction(fd: FormData) {
   const user = await requireMember();
   const groupId = str(fd, "groupId");
+  const path = await groupPath(groupId);
   const res = await joinGroup(user.id, groupId);
-  const slug = await groupSlug(groupId);
-  redirect(`/community/groups/${slug}${res.ok ? "?joined=1" : `?error=${encodeURIComponent(res.error)}`}`);
+  redirect(res.ok ? `${path}?joined=1` : withFlash(path, { error: res.error }));
 }
 
 export async function leaveGroupAction(fd: FormData) {
   const user = await requireMember();
   const groupId = str(fd, "groupId");
+  const path = await groupPath(groupId);
   await leaveGroup(user.id, groupId);
-  redirect(`/community/groups/${await groupSlug(groupId)}?left=1`);
+  redirect(`${path}?left=1`);
 }
 
 export async function groupStatusAction(fd: FormData) {
   const user = await requireMember();
   const groupId = str(fd, "groupId");
+  const path = await groupPath(groupId);
   let msg = "";
   try {
     const res = await setGroupStatusByCoordinator(user.id, groupId, str(fd, "status") as GroupStatus);
@@ -204,7 +238,7 @@ export async function groupStatusAction(fd: FormData) {
     if (!(e instanceof AccessError)) throw e;
     msg = e.message;
   }
-  redirect(`/community/groups/${await groupSlug(groupId)}${msg ? `?error=${encodeURIComponent(msg)}` : "?ok=Status+updated"}`);
+  redirect(withFlash(path, msg ? { error: msg } : { ok: "Status updated." }));
 }
 
 export async function groupInfoAction(_p: FormState, fd: FormData): Promise<FormState> {
@@ -230,32 +264,28 @@ export async function announcementAction(_p: FormState, fd: FormData): Promise<F
   });
 }
 
-export async function removeMemberAction(fd: FormData) {
+/** Coordinator removes a member. The refusal, if any, is shown next to the button. */
+export async function removeMemberAction(_p: FormState, fd: FormData): Promise<FormState> {
   const user = await requireMember();
   const groupId = str(fd, "groupId");
-  let msg = "Member removed";
-  try {
-    const res = await removeMember(user.id, groupId, str(fd, "userId"));
-    if (!res.ok) msg = res.error;
-  } catch (e) {
-    if (!(e instanceof AccessError)) throw e;
-    msg = e.message;
-  }
-  redirect(`/community/groups/${await groupSlug(groupId)}/members?ok=${encodeURIComponent(msg)}`);
+  const refused = await quick(async () => {
+    await groupSlug(groupId);
+    return removeMember(user.id, groupId, str(fd, "userId"));
+  });
+  if (refused) return refused;
+  redirect(withFlash(`${await groupPath(groupId)}/members`, { ok: "The member was removed and has been told. The group can see this in the chat." }));
 }
 
-export async function transferCoordinatorAction(fd: FormData) {
+/** Coordinator hands the role to another member. */
+export async function transferCoordinatorAction(_p: FormState, fd: FormData): Promise<FormState> {
   const user = await requireMember();
   const groupId = str(fd, "groupId");
-  let msg = "Coordinator role handed over";
-  try {
-    const res = await transferCoordinator(user.id, groupId, str(fd, "userId"));
-    if (!res.ok) msg = res.error;
-  } catch (e) {
-    if (!(e instanceof AccessError)) throw e;
-    msg = e.message;
-  }
-  redirect(`/community/groups/${await groupSlug(groupId)}/members?ok=${encodeURIComponent(msg)}`);
+  const refused = await quick(async () => {
+    await groupSlug(groupId);
+    return transferCoordinator(user.id, groupId, str(fd, "userId"));
+  });
+  if (refused) return refused;
+  redirect(withFlash(`${await groupPath(groupId)}/members`, { ok: "The coordinator role was handed over. The new coordinator has been told." }));
 }
 
 // ---------------------------------------------------------------- discussions
@@ -270,10 +300,15 @@ export async function createDiscussionAction(_p: FormState, fd: FormData): Promi
   redirect(`/community/groups/${await groupSlug(groupId)}/discussions/${res.id}`);
 }
 
-export async function deleteDiscussionAction(fd: FormData) {
+export async function deleteDiscussionAction(_p: FormState, fd: FormData): Promise<FormState> {
   const user = await requireMember();
-  await deleteDiscussion(user.id, str(fd, "id"));
-  redirect(`/community/groups/${await groupSlug(str(fd, "groupId"))}/discussions`);
+  const groupId = str(fd, "groupId");
+  const refused = await quick(async () => {
+    await groupSlug(groupId);
+    return deleteDiscussion(user.id, str(fd, "id"));
+  });
+  if (refused) return refused;
+  redirect(`${await groupPath(groupId)}/discussions`);
 }
 
 // ---------------------------------------------------------------- meetings
@@ -301,19 +336,19 @@ export async function joinMeetingAction(fd: FormData) {
   } catch (e) {
     if (!(e instanceof AccessError)) throw e;
   }
-  if (!url) redirect(`/community/groups/${await groupSlug(groupId)}/meetings?error=${encodeURIComponent("This meeting is not available.")}`);
+  if (!url) redirect(withFlash(`${await groupPath(groupId)}/meetings`, { error: "This meeting is not available. It may have ended." }));
   redirect(url);
 }
 
-export async function endMeetingAction(fd: FormData) {
+export async function endMeetingAction(_p: FormState, fd: FormData): Promise<FormState> {
   const user = await requireMember();
   const groupId = str(fd, "groupId");
-  try {
-    await endMeeting(user.id, groupId, str(fd, "meetingId"));
-  } catch (e) {
-    if (!(e instanceof AccessError)) throw e;
-  }
-  revalidatePath(`/community/groups/${await groupSlug(groupId)}/meetings`);
+  return quick(async () => {
+    const slug = await groupSlug(groupId);
+    const res = await endMeeting(user.id, groupId, str(fd, "meetingId"));
+    revalidatePath(`/community/groups/${slug}/meetings`);
+    return res;
+  });
 }
 
 // ---------------------------------------------------------------- research workspace
@@ -334,10 +369,15 @@ export async function saveNoteAction(_p: FormState, fd: FormData): Promise<FormS
   });
 }
 
-export async function deleteNoteAction(fd: FormData) {
+export async function deleteNoteAction(_p: FormState, fd: FormData): Promise<FormState> {
   const user = await requireMember();
-  await deleteNote(user.id, str(fd, "groupId"), str(fd, "id")).catch(() => {});
-  revalidatePath(await researchPath(str(fd, "groupId")), "layout");
+  const groupId = str(fd, "groupId");
+  return quick(async () => {
+    const slug = await groupSlug(groupId);
+    const res = await deleteNote(user.id, groupId, str(fd, "id"));
+    revalidatePath(`/community/groups/${slug}`, "layout");
+    return res;
+  });
 }
 
 export async function addTaskAction(_p: FormState, fd: FormData): Promise<FormState> {
@@ -352,16 +392,26 @@ export async function addTaskAction(_p: FormState, fd: FormData): Promise<FormSt
   });
 }
 
-export async function taskStatusAction(fd: FormData) {
+export async function taskStatusAction(_p: FormState, fd: FormData): Promise<FormState> {
   const user = await requireMember();
-  await setTaskStatus(user.id, str(fd, "groupId"), str(fd, "id"), str(fd, "status") as TaskStatus).catch(() => {});
-  revalidatePath(await researchPath(str(fd, "groupId")), "layout");
+  const groupId = str(fd, "groupId");
+  return quick(async () => {
+    const slug = await groupSlug(groupId);
+    const res = await setTaskStatus(user.id, groupId, str(fd, "id"), str(fd, "status") as TaskStatus);
+    revalidatePath(`/community/groups/${slug}`, "layout");
+    return res;
+  });
 }
 
-export async function deleteTaskAction(fd: FormData) {
+export async function deleteTaskAction(_p: FormState, fd: FormData): Promise<FormState> {
   const user = await requireMember();
-  await deleteTask(user.id, str(fd, "groupId"), str(fd, "id")).catch(() => {});
-  revalidatePath(await researchPath(str(fd, "groupId")), "layout");
+  const groupId = str(fd, "groupId");
+  return quick(async () => {
+    const slug = await groupSlug(groupId);
+    const res = await deleteTask(user.id, groupId, str(fd, "id"));
+    revalidatePath(`/community/groups/${slug}`, "layout");
+    return res;
+  });
 }
 
 export async function decisionAction(_p: FormState, fd: FormData): Promise<FormState> {
@@ -386,16 +436,26 @@ export async function addLinkAction(_p: FormState, fd: FormData): Promise<FormSt
   });
 }
 
-export async function deleteLinkAction(fd: FormData) {
+export async function deleteLinkAction(_p: FormState, fd: FormData): Promise<FormState> {
   const user = await requireMember();
-  await deleteLink(user.id, str(fd, "groupId"), str(fd, "id")).catch(() => {});
-  revalidatePath(`/community/groups/${await groupSlug(str(fd, "groupId"))}`, "layout");
+  const groupId = str(fd, "groupId");
+  return quick(async () => {
+    const slug = await groupSlug(groupId);
+    const res = await deleteLink(user.id, groupId, str(fd, "id"));
+    revalidatePath(`/community/groups/${slug}`, "layout");
+    return res;
+  });
 }
 
-export async function deleteFileAction(fd: FormData) {
+export async function deleteFileAction(_p: FormState, fd: FormData): Promise<FormState> {
   const user = await requireMember();
-  await deleteGroupFile(user.id, str(fd, "groupId"), str(fd, "id")).catch(() => {});
-  revalidatePath(`/community/groups/${await groupSlug(str(fd, "groupId"))}`, "layout");
+  const groupId = str(fd, "groupId");
+  return quick(async () => {
+    const slug = await groupSlug(groupId);
+    const res = await deleteGroupFile(user.id, groupId, str(fd, "id"));
+    revalidatePath(`/community/groups/${slug}`, "layout");
+    return res;
+  });
 }
 
 // ---------------------------------------------------------------- notifications

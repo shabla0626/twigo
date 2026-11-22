@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
+import { withFlash } from "@/lib/flash";
 import type { NotificationType } from "@prisma/client";
 import type { FormState } from "@/components/forms/action-form";
 import { audit } from "@/lib/audit";
@@ -85,7 +86,7 @@ export async function disableTotpAction() {
   const s = await current();
   if (!(await isRecentlyAuthenticated())) redirect("/account/confirm?next=/account/security");
   const res = await disableTotp(s.user.id);
-  redirect(res.ok ? "/account/security?ok=Two-step+verification+turned+off" : `/account/security?error=${encodeURIComponent(res.error)}`);
+  redirect(withFlash("/account/security", res.ok ? { ok: "Two-step verification turned off" } : { error: res.error }));
 }
 
 export async function revokeSessionAction(fd: FormData) {
@@ -100,7 +101,7 @@ export async function signOutOthersAction() {
   const s = await current();
   const n = await revokeUserSessions(s.user.id, s.sessionId);
   await audit(s.user.id, "auth.sessions_revoked", "User", s.user.id, { count: n });
-  redirect(`/account/security?ok=${encodeURIComponent(`Signed out of ${n} other session${n === 1 ? "" : "s"}.`)}`);
+  redirect(withFlash("/account/security", { ok: `Signed out of ${n} other session${n === 1 ? "" : "s"}.` }));
 }
 
 export async function saveNotificationPrefsAction(_prev: FormState, fd: FormData): Promise<FormState> {

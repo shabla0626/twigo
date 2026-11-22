@@ -1,13 +1,14 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { AdminHeader, Dl, Flash, Panel, fmtDate, smallInput, smallLabel } from "@/components/admin/ui";
+import { readFlash } from "@/lib/flash";
 import { Badge, buttonClass } from "@/components/ui/primitives";
 import { db } from "@/lib/db";
 import { requireAdmin } from "@/lib/auth/guard";
 import { can } from "@/lib/auth/permissions";
 import { RESEARCH_SECTIONS } from "@/lib/validation/community";
 import { GROUP_STATUS_LABELS } from "@/server/community/group-labels";
-import { approveGroupAction, assignCoordinatorAction, groupStateAction } from "../../../actions/community";
+import { approveGroupAction, assignCoordinatorAction, groupStateAction, liftRemovalAction } from "../../../actions/community";
 
 type Props = { params: Promise<{ id: string }>; searchParams: Promise<Record<string, string | undefined>> };
 
@@ -53,7 +54,7 @@ export default async function GroupAdminDetail({ params, searchParams }: Props) 
           </Link>
         }
       />
-      <Flash ok={sp.ok} error={sp.error} />
+      <Flash {...readFlash(sp)} />
       <div className="mt-6 grid gap-6 lg:grid-cols-[1fr_22rem]">
         <div className="space-y-6">
           <Panel title="Overview">
@@ -77,9 +78,18 @@ export default async function GroupAdminDetail({ params, searchParams }: Props) 
                     {m.user.profile?.displayName ?? m.user.email}
                   </Link>
                   <span className="text-ink-600">
-                    {m.role === "COORDINATOR" ? "Coordinator" : "Member"} · {m.status.toLowerCase()} · joined {fmtDate(m.joinedAt)}
+                    {m.role === "COORDINATOR" ? "Coordinator" : "Member"} · {m.status === "REMOVED" ? "removed by the coordinator" : m.status.toLowerCase()} · joined {fmtDate(m.joinedAt)}
                     {m.founding && " · founding"}
                   </span>
+                  {m.status === "REMOVED" && (
+                    <form action={liftRemovalAction} className="basis-full text-right">
+                      <input type="hidden" name="id" value={g.id} />
+                      <input type="hidden" name="userId" value={m.user.id} />
+                      <button type="submit" className="text-sm font-medium text-accent-700 underline underline-offset-2">
+                        Allow to join again
+                      </button>
+                    </form>
+                  )}
                 </li>
               ))}
             </ul>

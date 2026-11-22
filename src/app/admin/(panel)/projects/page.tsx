@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { AdminHeader, Empty, Flash, Panel, Table, fmtDate } from "@/components/admin/ui";
+import { readFlash } from "@/lib/flash";
 import { ProjectFields } from "@/components/admin/project-fields";
 import { Badge, buttonClass } from "@/components/ui/primitives";
 import { requireAdmin } from "@/lib/auth/guard";
@@ -14,7 +15,7 @@ export default async function ProjectsPage({ searchParams }: { searchParams: Pro
   return (
     <>
       <AdminHeader title="Projects" description="Create projects, define roles, assign participants and track milestones." />
-      <Flash ok={sp.ok} error={sp.error} />
+      <Flash {...readFlash(sp)} />
       <div className="mt-6">
         <Table
           head={["Project", "Status", "Category", "Roles", "Assigned", "Progress", "Updated"]}

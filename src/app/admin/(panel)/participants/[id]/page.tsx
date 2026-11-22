@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { AdminHeader, Dl, Flash, Panel, fmtDate, smallInput, smallLabel } from "@/components/admin/ui";
+import { readFlash } from "@/lib/flash";
 import { Badge, buttonClass } from "@/components/ui/primitives";
 import { requireAdmin } from "@/lib/auth/guard";
 import { can } from "@/lib/auth/permissions";
@@ -36,7 +37,7 @@ export default async function ParticipantDetail({ params, searchParams }: Props)
           ) : null
         }
       />
-      <Flash ok={sp.ok} error={sp.error} />
+      <Flash {...readFlash(sp)} />
 
       <div className="mt-6 grid gap-6 lg:grid-cols-[1fr_20rem]">
         <Panel title="Participation record">

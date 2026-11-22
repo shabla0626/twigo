@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
+import { withFlash } from "@/lib/flash";
 import { requireAdmin } from "@/lib/auth/guard";
 import { formToObject, participantUpdateSchema } from "@/lib/validation/admin";
 import { removeParticipant, updateParticipant } from "@/server/admin/participants";
@@ -22,7 +23,7 @@ export async function removeParticipantAction(fd: FormData) {
   const id = String(fd.get("id") ?? "");
   if (fd.get("confirm") !== "REMOVE") redirect(`/admin/participants/${encodeURIComponent(id)}?error=confirm`);
   const res = await removeParticipant(admin.id, id);
-  if (!res.ok) redirect(`/admin/participants/${encodeURIComponent(id)}?error=${encodeURIComponent(res.error)}`);
+  if (!res.ok) redirect(withFlash(`/admin/participants/${encodeURIComponent(id)}`, { error: res.error }));
   revalidatePath("/admin", "layout");
   redirect("/admin/participants?ok=removed");
 }

@@ -3,6 +3,7 @@ import { MEMBERSHIP_LABELS } from "@/lib/labels";
 import type { AccountStatus, CommunityMembership } from "@prisma/client";
 import { MEMBER_LISTS, accountTypeLabel, memberListWhere, type MemberList } from "@/server/admin/members";
 import { AdminHeader, Empty, Flash, Table, fmtDate, smallInput } from "@/components/admin/ui";
+import { readFlash } from "@/lib/flash";
 import { Badge, buttonClass } from "@/components/ui/primitives";
 import { db } from "@/lib/db";
 import { requireAdmin } from "@/lib/auth/guard";
@@ -39,7 +40,7 @@ export default async function MembersAdminPage({ searchParams }: Props) {
   return (
     <>
       <AdminHeader title={MEMBER_LISTS[show].label} description={`${MEMBER_LISTS[show].description} ${users.length} shown.`} />
-      <Flash ok={sp.ok} error={sp.error} />
+      <Flash {...readFlash(sp)} />
       <div className="mt-6 flex flex-wrap items-center gap-2" role="group" aria-label="Which accounts to show">
         {lists.map((l, i) => (
           <Link key={l} href={`/admin/members?show=${l}`} aria-current={show === l ? "page" : undefined} className={buttonClass(show === l ? "primary" : "secondary", "sm")}>

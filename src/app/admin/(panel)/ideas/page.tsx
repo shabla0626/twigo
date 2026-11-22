@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { AdminHeader, Empty, Flash, Table, fmtDate, smallInput } from "@/components/admin/ui";
+import { readFlash } from "@/lib/flash";
 import { Badge, buttonClass } from "@/components/ui/primitives";
 import { db } from "@/lib/db";
 import { requireAdmin } from "@/lib/auth/guard";
@@ -23,7 +24,7 @@ export default async function IdeasAdminPage({ searchParams }: Props) {
   return (
     <>
       <AdminHeader title="Business ideas" description="All ideas, including removed ones. Endorsement records show who endorsed and when; groups are created automatically at the configured threshold." />
-      <Flash ok={sp.ok} error={sp.error} />
+      <Flash {...readFlash(sp)} />
       <div className="mt-6">
         <Table head={["Idea", "Author", "Status", "Endorsements", "Group", "Created", "Moderation"]} empty={!ideas.length && <Empty>No ideas yet.</Empty>}>
           {ideas.map((i) => (

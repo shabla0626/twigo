@@ -3,10 +3,11 @@ import type { GroupStatus, IdeaCategory } from "@prisma/client";
 import { GroupCard } from "@/components/community/cards";
 import { IconSearch } from "@/components/community/icons";
 import { EmptyState, PageTitle } from "@/components/community/ui";
-import { Input, Select } from "@/components/forms/fields";
+import { FormAlert, Input, Select } from "@/components/forms/fields";
 import { Button, buttonClass } from "@/components/ui/primitives";
 import { db } from "@/lib/db";
 import { requireMember } from "@/lib/auth/guard";
+import { readFlash } from "@/lib/flash";
 import { IDEA_CATEGORIES } from "@/lib/validation/community";
 import { GROUP_STATUS_LABELS } from "@/server/community/group-labels";
 import { listGroups } from "@/server/community/groups";
@@ -24,6 +25,7 @@ const SORTS = [
 export default async function GroupsPage({ searchParams }: Props) {
   const user = await requireMember();
   const sp = await searchParams;
+  const flash = readFlash(sp);
   const sort = SORTS.find((s) => s.key === sp.sort)?.key ?? "active";
   const category = sp.category && sp.category in IDEA_CATEGORIES ? (sp.category as IdeaCategory) : undefined;
   const status = sp.status && sp.status in GROUP_STATUS_LABELS ? (sp.status as GroupStatus) : undefined;
@@ -53,6 +55,11 @@ export default async function GroupsPage({ searchParams }: Props) {
           </>
         }
       />
+      {flash.error && (
+        <div className="mb-4">
+          <FormAlert tone="error">{flash.error}</FormAlert>
+        </div>
+      )}
       <form role="search" action="/community/groups" className="mb-5 grid gap-2 sm:grid-cols-2 lg:grid-cols-[minmax(10rem,1fr)_max-content_max-content_max-content_auto]">
         <label htmlFor="q" className="sr-only">
           Search groups

@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { AdminHeader, Flash, Panel, Table, fmtDate, smallInput, smallLabel } from "@/components/admin/ui";
+import { readFlash } from "@/lib/flash";
 import { ActionForm } from "@/components/forms/action-form";
 import { buttonClass } from "@/components/ui/primitives";
 import { db } from "@/lib/db";
@@ -18,7 +19,7 @@ export default async function AdminsPage({ searchParams }: Props) {
   return (
     <>
       <AdminHeader title="Administrators" description="Only the owner can add administrators or change roles. Role changes sign the person out." />
-      <Flash ok={sp.ok} error={sp.error} />
+      <Flash {...readFlash(sp)} />
       {!recent && (
         <p className="mt-6 rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950">
           Changes here need a fresh identity confirmation.{" "}

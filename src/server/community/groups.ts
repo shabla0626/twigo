@@ -361,6 +361,39 @@ export async function removeMember(coordinatorId: string, groupId: string, userI
   await publishLines([removed.line]);
   await audit(coordinatorId, "group.member_removed", "ResearchGroup", groupId, { userId });
   await afterMembershipEnded(groupId, userId, { promoted: null, archived: false, flagged: false });
+  // The person is told, in plain words, what happened and whom to ask.
+  const g = await db.researchGroup.findUniqueOrThrow({ where: { id: groupId }, select: { slug: true, name: true } });
+  await notify([userId], {
+    type: "GROUP_MEMBERSHIP",
+    title: `You were removed from “${g.name}” by its coordinator`,
+    body: "You no longer have access to its chat, meetings and shared research. Your account and your other groups are not affected. If you think this was a mistake, contact the organization.",
+    link: `/community/groups/${g.slug}`,
+  });
+  return { ok: true as const };
+}
+
+/**
+ * The organization lifts a removal: the person may join the group again by themselves.
+ * They are NOT put back automatically, and the group sees a line in its chat, so nothing
+ * about who can be in the group changes behind the members' backs.
+ */
+export async function adminLiftRemoval(adminId: string, groupId: string, userId: string) {
+  const done = await withGroupLock(groupId, async (tx) => {
+    const m = await tx.groupMembership.findUnique({ where: { groupId_userId: { groupId, userId } } });
+    if (!m || m.status !== "REMOVED") return null;
+    await tx.groupMembership.update({ where: { id: m.id }, data: { status: "LEFT" } });
+    return { line: await writeSystemLine(tx, groupId, `The organization allowed ${await nameInChat(tx, userId)} to join the group again`) };
+  });
+  if (!done) return { ok: false as const, error: "This person is not currently removed from the group." };
+  await publishLines([done.line]);
+  await audit(adminId, "group.removal_lifted", "ResearchGroup", groupId, { userId });
+  const g = await db.researchGroup.findUniqueOrThrow({ where: { id: groupId }, select: { slug: true, name: true } });
+  await notify([userId], {
+    type: "GROUP_MEMBERSHIP",
+    title: `You can join “${g.name}” again`,
+    body: "The organization lifted your removal from this group. You are not a member yet: open the group and choose “Join” if you want to return.",
+    link: `/community/groups/${g.slug}`,
+  });
   return { ok: true as const };
 }
 

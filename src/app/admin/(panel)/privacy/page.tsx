@@ -1,6 +1,7 @@
 import path from "node:path";
 import Link from "next/link";
 import { AdminHeader, Flash, Panel, Table, fmtDate, smallInput } from "@/components/admin/ui";
+import { readFlash } from "@/lib/flash";
 import { buttonClass } from "@/components/ui/primitives";
 import { db } from "@/lib/db";
 import { env } from "@/lib/env";
@@ -20,7 +21,7 @@ export default async function PrivacyAdminPage({ searchParams }: Props) {
   return (
     <>
       <AdminHeader title="Privacy & data retention" description="What the daily retention job would delete right now, per category. Periods are set by the owner in Settings." />
-      <Flash ok={sp.ok} error={sp.error} />
+      <Flash {...readFlash(sp)} />
       <div className="mt-6">
         <Table head={["Category", "Kept for", "Would be deleted now"]}>
           {preview.categories.map((c) => (

@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { AdminHeader, Flash, Panel, smallInput, smallLabel } from "@/components/admin/ui";
+import { readFlash } from "@/lib/flash";
 import { buttonClass, cn } from "@/components/ui/primitives";
 import { requireAdmin } from "@/lib/auth/guard";
 import { getSiteContent } from "@/lib/content";
@@ -115,7 +116,7 @@ export default async function ContentPage({ searchParams }: { searchParams: Prom
         title="Website content"
         description="Edit public website text. Changes are published immediately. Project opportunities are published from the Projects page."
       />
-      <Flash ok={sp.ok} error={sp.error} />
+      <Flash {...readFlash(sp)} />
       <div className="mt-6 grid gap-6 lg:grid-cols-[14rem_1fr]">
         <nav aria-label="Content sections">
           <ul className="flex gap-1 overflow-x-auto lg:block lg:space-y-1">

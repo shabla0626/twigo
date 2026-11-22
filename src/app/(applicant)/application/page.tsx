@@ -7,6 +7,7 @@ import { FormAlert } from "@/components/forms/fields";
 import { Badge, Button, buttonClass } from "@/components/ui/primitives";
 import { getSession } from "@/lib/auth/guard";
 import { applicationView } from "@/lib/application-view";
+import { readFlash } from "@/lib/flash";
 import { getMyApplication } from "@/server/membership-application";
 import { withdrawApplicationAction } from "../actions";
 
@@ -37,6 +38,7 @@ export default async function ApplicationStatusPage({ searchParams }: Props) {
   const contact = brand().contactEmail;
   const status = app?.status;
   const canWithdraw = status && ["SUBMITTED", "UNDER_REVIEW", "INTERVIEW_REQUESTED", "WAITLISTED"].includes(status);
+  const flash = readFlash(sp);
   const view = applicationView({ membership: user.membership, communityAccess: user.communityAccess, status: status ?? null, contact });
 
   return (
@@ -49,7 +51,7 @@ export default async function ApplicationStatusPage({ searchParams }: Props) {
       <div className="mt-5 space-y-3 empty:hidden" aria-live="polite">
         {sp.submitted && <FormAlert tone="success">Thank you. Your application was received and saved.</FormAlert>}
         {sp.withdrawn && <FormAlert tone="success">Your application was withdrawn.</FormAlert>}
-        {sp.error && <FormAlert tone="error">{sp.error}</FormAlert>}
+        {flash.error && <FormAlert tone="error">{flash.error}</FormAlert>}
       </div>
 
       <section className="mt-6 rounded-2xl border border-ink-100 bg-white p-5 sm:p-8" aria-labelledby="status-h">

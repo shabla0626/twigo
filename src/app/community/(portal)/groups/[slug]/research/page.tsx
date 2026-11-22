@@ -3,7 +3,8 @@ import { Field, Input, Select, Textarea } from "@/components/forms/fields";
 import { FileUpload } from "@/components/community/file-upload";
 import { MembersOnly } from "@/components/community/members-only";
 import { EmptyState, Panel, TextBody, Time } from "@/components/community/ui";
-import { Badge, Button } from "@/components/ui/primitives";
+import { QuickAction } from "@/components/community/quick-action";
+import { Badge } from "@/components/ui/primitives";
 import { RESEARCH_SECTIONS, type ResearchSectionKey } from "@/lib/validation/community";
 import { ALLOWED_DESCRIPTION } from "@/lib/files/sniff";
 import { activeMemberIds } from "@/server/community/access";
@@ -100,13 +101,7 @@ export default async function ResearchPage({ params }: { params: Promise<{ slug:
                           </ActionForm>
                         </details>
                         {(n.authorId === user.id || isCoordinator) && (
-                          <form action={deleteNoteAction}>
-                            <input type="hidden" name="groupId" value={group.id} />
-                            <input type="hidden" name="id" value={n.id} />
-                            <Button type="submit" variant="ghost" size="sm">
-                              Delete
-                            </Button>
-                          </form>
+                          <QuickAction action={deleteNoteAction} fields={{ groupId: group.id, id: n.id }} label="Delete" ariaLabel={`Delete note ${n.title}`} />
                         )}
                       </div>
                     )}
@@ -156,23 +151,10 @@ export default async function ResearchPage({ params }: { params: Promise<{ slug:
                       {(["TODO", "IN_PROGRESS", "DONE"] as const)
                         .filter((s) => s !== t.status)
                         .map((s) => (
-                          <form key={s} action={taskStatusAction}>
-                            <input type="hidden" name="groupId" value={group.id} />
-                            <input type="hidden" name="id" value={t.id} />
-                            <input type="hidden" name="status" value={s} />
-                            <Button type="submit" variant="secondary" size="sm">
-                              {s === "DONE" ? "Mark done" : TASK_LABEL[s]}
-                            </Button>
-                          </form>
+                          <QuickAction key={s} action={taskStatusAction} fields={{ groupId: group.id, id: t.id, status: s }} label={s === "DONE" ? "Mark done" : TASK_LABEL[s]} variant="secondary" />
                         ))}
                       {(t.createdById === user.id || isCoordinator) && (
-                        <form action={deleteTaskAction}>
-                          <input type="hidden" name="groupId" value={group.id} />
-                          <input type="hidden" name="id" value={t.id} />
-                          <Button type="submit" variant="ghost" size="sm">
-                            Delete
-                          </Button>
-                        </form>
+                        <QuickAction action={deleteTaskAction} fields={{ groupId: group.id, id: t.id }} label="Delete" ariaLabel={`Delete task ${t.title}`} />
                       )}
                     </div>
                   )}
@@ -232,13 +214,7 @@ export default async function ResearchPage({ params }: { params: Promise<{ slug:
                       </span>
                     </span>
                     {isOpen && (f.ownerId === user.id || isCoordinator) && (
-                      <form action={deleteFileAction}>
-                        <input type="hidden" name="groupId" value={group.id} />
-                        <input type="hidden" name="id" value={f.id} />
-                        <Button type="submit" variant="ghost" size="sm" aria-label={`Delete ${f.originalName}`}>
-                          Delete
-                        </Button>
-                      </form>
+                      <QuickAction action={deleteFileAction} fields={{ groupId: group.id, id: f.id }} label="Delete" ariaLabel={`Delete ${f.originalName}`} />
                     )}
                   </li>
                 ))}
@@ -253,13 +229,7 @@ export default async function ResearchPage({ params }: { params: Promise<{ slug:
                       </span>
                     </span>
                     {isOpen && (l.addedById === user.id || isCoordinator) && (
-                      <form action={deleteLinkAction}>
-                        <input type="hidden" name="groupId" value={group.id} />
-                        <input type="hidden" name="id" value={l.id} />
-                        <Button type="submit" variant="ghost" size="sm" aria-label={`Remove link ${l.title}`}>
-                          Remove
-                        </Button>
-                      </form>
+                      <QuickAction action={deleteLinkAction} fields={{ groupId: group.id, id: l.id }} label="Remove" ariaLabel={`Remove link ${l.title}`} />
                     )}
                   </li>
                 ))}

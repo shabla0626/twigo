@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { AdminHeader, Flash, Panel, fmtDate, smallInput, smallLabel } from "@/components/admin/ui";
+import { readFlash } from "@/lib/flash";
 import { ProjectFields } from "@/components/admin/project-fields";
 import { Badge, buttonClass } from "@/components/ui/primitives";
 import { requireAdmin } from "@/lib/auth/guard";
@@ -56,7 +57,7 @@ export default async function ProjectDetail({ params, searchParams }: Props) {
           </>
         }
       />
-      <Flash ok={sp.ok} error={sp.error} />
+      <Flash {...readFlash(sp)} />
 
       {progress !== null && (
         <div className="mt-6" aria-label={`Milestone progress ${progress}%`}>

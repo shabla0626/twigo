@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { AdminHeader, Empty, Flash, Panel, fmtDate, smallInput } from "@/components/admin/ui";
+import { readFlash } from "@/lib/flash";
 import { Badge, buttonClass } from "@/components/ui/primitives";
 import { requireAdmin } from "@/lib/auth/guard";
 import { can } from "@/lib/auth/permissions";
@@ -23,7 +24,7 @@ export default async function ReportsPage({ searchParams }: Props) {
         title="Reports & moderation"
         description="Reports from members. You see a copy of the reported content captured when it was reported. Private group chat is only visible here, through reports; there is no other admin access to it."
       />
-      <Flash ok={sp.ok} error={sp.error} />
+      <Flash {...readFlash(sp)} />
       <div className="mt-6 flex gap-2">
         {(["OPEN", "ACTIONED", "DISMISSED"] as const).map((s) => (
           <Link key={s} href={`/admin/reports?status=${s}`} className={buttonClass(status === s ? "primary" : "secondary", "sm")}>

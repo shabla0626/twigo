@@ -1,6 +1,7 @@
 import { existsSync, readdirSync, statSync } from "node:fs";
 import path from "node:path";
 import { AdminHeader, Empty, Flash, Panel, Table, fmtDate } from "@/components/admin/ui";
+import { readFlash } from "@/lib/flash";
 import { buttonClass } from "@/components/ui/primitives";
 import { db } from "@/lib/db";
 import { env } from "@/lib/env";
@@ -33,7 +34,7 @@ export default async function BackupsPage({ searchParams }: Props) {
           </form>
         }
       />
-      <Flash ok={sp.ok} error={sp.error} />
+      <Flash {...readFlash(sp)} />
       <Panel title="What to know" className="mt-6">
         <ul className="space-y-2 text-sm leading-6 text-ink-700">
           <li>

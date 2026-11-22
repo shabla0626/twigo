@@ -1,6 +1,7 @@
 import Link from "next/link";
 import type { ParticipantStatus, WorkCategory } from "@prisma/client";
 import { AdminHeader, Empty, Flash, Table, fmtDate, smallInput, smallLabel } from "@/components/admin/ui";
+import { readFlash } from "@/lib/flash";
 import { Badge, buttonClass } from "@/components/ui/primitives";
 import { requireAdmin } from "@/lib/auth/guard";
 import { PARTICIPANT_STATUSES, WORK_CATEGORIES } from "@/lib/labels";
@@ -21,7 +22,7 @@ export default async function ParticipantsPage({ searchParams }: { searchParams:
         title="Participants"
         description="Accepted applicants. Participant records are created automatically when an application is accepted."
       />
-      <Flash ok={sp.ok} />
+      <Flash ok={readFlash(sp).ok} />
       <form className="mt-6 flex flex-wrap items-end gap-3 rounded-lg border border-ink-200 bg-white p-4 shadow-sm">
         <div>
           <label htmlFor="status" className={smallLabel}>

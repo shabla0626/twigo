@@ -4,6 +4,7 @@ import { Badge, Button } from "@/components/ui/primitives";
 import { SettingsCard } from "@/components/ui/settings-card";
 import { db } from "@/lib/db";
 import { getSession } from "@/lib/auth/guard";
+import { readFlash } from "@/lib/flash";
 import { isAdminRole } from "@/lib/auth/permissions";
 import { pendingTotpSetup } from "@/server/accounts";
 import { takeRecoveryCodes } from "@/server/flash";
@@ -25,6 +26,7 @@ export default async function SecurityPage({ searchParams }: Props) {
   const s = await getSession();
   if (!s) redirect("/login");
   const sp = await searchParams;
+  const flash = readFlash(sp);
   const user = await db.user.findUniqueOrThrow({ where: { id: s.user.id }, select: { totpEnabledAt: true, totpPendingEnc: true, role: true, passwordChangedAt: true } });
   const setup = sp.setup && user.totpPendingEnc && !user.totpEnabledAt ? await pendingTotpSetup(s.user.id) : null;
   const codes = sp.codes ? await takeRecoveryCodes(s.user.id) : null;
@@ -41,8 +43,8 @@ export default async function SecurityPage({ searchParams }: Props) {
       {sp.required === "2fa" && !user.totpEnabledAt && (
         <FormAlert tone="error">Administrator accounts must turn on two-step verification before opening the admin dashboard.</FormAlert>
       )}
-      {sp.ok && <FormAlert tone="success">{sp.ok}</FormAlert>}
-      {sp.error && <FormAlert tone="error">{sp.error}</FormAlert>}
+      {flash.ok && <FormAlert tone="success">{flash.ok}</FormAlert>}
+      {flash.error && <FormAlert tone="error">{flash.error}</FormAlert>}
 
       <SettingsCard
         title="Two-step verification"

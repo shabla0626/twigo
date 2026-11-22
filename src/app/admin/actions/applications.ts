@@ -3,6 +3,7 @@
 import { APPROVAL_MESSAGE } from "@/server/membership-grant";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
+import { withFlash } from "@/lib/flash";
 import { requireAdmin } from "@/lib/auth/guard";
 import { LOCAL_CAPTURE_MESSAGE, type SendResult } from "@/lib/email";
 import { formToObject, noteSchema, statusChangeSchema } from "@/lib/validation/admin";
@@ -15,10 +16,7 @@ function emailOutcome(email: SendResult | null): { ok?: string; error?: string }
 }
 
 function back(id: string, msg: { ok?: string; error?: string }): never {
-  const p = new URLSearchParams();
-  if (msg.ok) p.set("ok", msg.ok);
-  if (msg.error) p.set("error", msg.error);
-  redirect(`/admin/applications/${id}?${p.toString()}`);
+  redirect(withFlash(`/admin/applications/${encodeURIComponent(id)}`, msg));
 }
 
 /**

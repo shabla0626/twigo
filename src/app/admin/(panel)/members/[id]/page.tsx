@@ -3,6 +3,7 @@ import { accountTypeLabel } from "@/server/admin/members";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { AdminHeader, Dl, Flash, Panel, fmtDate, membershipTone, smallInput, smallLabel } from "@/components/admin/ui";
+import { readFlash } from "@/lib/flash";
 import { ActionForm } from "@/components/forms/action-form";
 import { Badge, buttonClass } from "@/components/ui/primitives";
 import { db } from "@/lib/db";
@@ -58,7 +59,7 @@ export default async function MemberAdminDetail({ params, searchParams }: Props)
         </Link>
       </p>
       <AdminHeader title={u.profile?.displayName ?? u.name} description={accountTypeLabel(u.role)} />
-      <Flash ok={sp.ok} error={sp.error} />
+      <Flash {...readFlash(sp)} />
       <div className="mt-6 grid gap-6 lg:grid-cols-[1fr_20rem]">
         <div className="space-y-6">
           <Panel title="Where this person stands">

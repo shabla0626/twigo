@@ -1,9 +1,9 @@
 import Link from "next/link";
+import { QuickAction } from "@/components/community/quick-action";
 import { notFound } from "next/navigation";
 import { CommentThread } from "@/components/community/comment-thread";
 import { ReportButton } from "@/components/community/report-button";
 import { MemberAvatar, Panel, TextBody, Time } from "@/components/community/ui";
-import { Button } from "@/components/ui/primitives";
 import { db } from "@/lib/db";
 import { commentTree } from "@/server/community/comments";
 import { loadGroupPage } from "@/server/community/group-page";
@@ -29,13 +29,7 @@ export default async function DiscussionPage({ params }: { params: Promise<{ slu
         <TextBody text={d.body} className="mt-4" />
         <div className="mt-4 flex gap-2 border-t border-ink-100 pt-3">
           {d.authorId === user.id ? (
-            <form action={deleteDiscussionAction}>
-              <input type="hidden" name="id" value={d.id} />
-              <input type="hidden" name="groupId" value={group.id} />
-              <Button type="submit" variant="ghost" size="sm">
-                Delete discussion
-              </Button>
-            </form>
+            <QuickAction action={deleteDiscussionAction} fields={{ id: d.id, groupId: group.id }} label="Delete discussion" />
           ) : (
             <ReportButton targetType="DISCUSSION" targetId={d.id} />
           )}

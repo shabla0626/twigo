@@ -5,10 +5,12 @@ import { ideaStatus } from "@/components/community/cards";
 import { IconCheck, IconGroup, IconThumb } from "@/components/community/icons";
 import { ReportButton } from "@/components/community/report-button";
 import { MemberAvatar, Panel, TextBody, Time } from "@/components/community/ui";
+import { QuickAction } from "@/components/community/quick-action";
 import { FormAlert } from "@/components/forms/fields";
 import { Badge, Button, ButtonLink } from "@/components/ui/primitives";
 import { db } from "@/lib/db";
 import { requireMember } from "@/lib/auth/guard";
+import { readFlash } from "@/lib/flash";
 import { IDEA_CATEGORIES } from "@/lib/validation/community";
 import { commentTree } from "@/server/community/comments";
 import { GROUP_STATUS_LABELS } from "@/server/community/group-labels";
@@ -38,6 +40,7 @@ export default async function IdeaPage({ params, searchParams }: Props) {
   const user = await requireMember();
   const { id } = await params;
   const sp = await searchParams;
+  const flash = readFlash(sp);
   const idea = await getIdea(id, user.id);
   if (!idea) notFound();
   const [comments, threshold, revisions] = await Promise.all([commentTree({ ideaId: idea.id }), getSetting("community.endorsementThreshold"), ideaRevisions(idea.id)]);
@@ -63,7 +66,7 @@ export default async function IdeaPage({ params, searchParams }: Props) {
           {sp.changed === "material" && (
             <FormAlert tone="success">Your changes were saved. Because this was a material change, earlier support was reset and the supporters were told.</FormAlert>
           )}
-          {sp.error && <FormAlert tone="error">{sp.error}</FormAlert>}
+          {flash.error && <FormAlert tone="error">{flash.error}</FormAlert>}
         </div>
         <article className="rounded-2xl border border-ink-100 bg-white p-6 sm:p-8">
           <div className="flex flex-wrap items-center gap-2">
@@ -133,12 +136,17 @@ export default async function IdeaPage({ params, searchParams }: Props) {
                   Edit idea
                 </ButtonLink>
                 {!idea.group && idea.status === "OPEN" && (
-                  <form action={closeIdeaAction}>
-                    <input type="hidden" name="id" value={idea.id} />
-                    <Button type="submit" variant="ghost" size="sm">
-                      Close idea
-                    </Button>
-                  </form>
+                  <QuickAction
+                    action={closeIdeaAction}
+                    fields={{ id: idea.id }}
+                    label="Close idea"
+                    confirm={{
+                      question: "Close this idea?",
+                      detail: "It stays visible, but nobody can support it any more, so no research group can start from it. You cannot reopen it yourself.",
+                      yes: "Yes, close the idea",
+                      danger: true,
+                    }}
+                  />
                 )}
               </>
             ) : (

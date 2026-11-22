@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
+import { withFlash } from "@/lib/flash";
 import { requireAdmin } from "@/lib/auth/guard";
 import { audit } from "@/lib/audit";
 import { resetContent, saveContent } from "@/lib/content";
@@ -46,7 +47,7 @@ export async function saveContentAction(fd: FormData) {
   if (!parsed.success) {
     const issue = parsed.error.issues[0];
     const msg = `${issue?.path.join(".") || key}: ${issue?.message ?? "invalid"}`;
-    redirect(`/admin/content?section=${key}&error=${encodeURIComponent(msg)}`);
+    redirect(withFlash(`/admin/content?section=${key}`, { error: msg }));
   }
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   await saveContent(key, parsed.data as any, admin.id);

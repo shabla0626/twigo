@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { readFlash } from "@/lib/flash";
 import { notFound } from "next/navigation";
 import { ActionForm } from "@/components/forms/action-form";
 import { Field, FormAlert, Input, Select, Textarea } from "@/components/forms/fields";
@@ -20,6 +21,7 @@ const STAGES = ["FORMING", "RESEARCHING", "VALIDATING", "PLANNING", "READY_FOR_R
 export default async function GroupOverviewPage({ params, searchParams }: Props) {
   const { slug } = await params;
   const sp = await searchParams;
+  const flash = readFlash(sp);
   const { group, isMember, isCoordinator, isOpen } = await loadGroupPage(slug);
   const overview = await groupOverview(slug);
   if (!overview) notFound();
@@ -50,8 +52,8 @@ export default async function GroupOverviewPage({ params, searchParams }: Props)
           )}
           {sp.joined && <FormAlert tone="success">You joined the group. Chat, meetings and shared research are now open to you.</FormAlert>}
           {sp.left && <FormAlert tone="success">You left the group. Your account is still active, and you can rejoin at any time while the group is active.</FormAlert>}
-          {sp.ok && <FormAlert tone="success">{sp.ok}</FormAlert>}
-          {sp.error && <FormAlert tone="error">{sp.error}</FormAlert>}
+          {flash.ok && <FormAlert tone="success">{flash.ok}</FormAlert>}
+          {flash.error && <FormAlert tone="error">{flash.error}</FormAlert>}
         </div>
 
         {meeting && (

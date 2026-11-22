@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { AdminHeader, Flash, Panel, smallInput, smallLabel } from "@/components/admin/ui";
+import { readFlash } from "@/lib/flash";
 import { ActionForm } from "@/components/forms/action-form";
 import { buttonClass } from "@/components/ui/primitives";
 import { requireAdmin } from "@/lib/auth/guard";
@@ -25,7 +26,7 @@ export default async function EditTemplatePage({ params, searchParams }: Props) 
         </Link>
       </p>
       <AdminHeader title={def.label} description={def.description} />
-      <Flash ok={sp.ok} error={sp.error} />
+      <Flash {...readFlash(sp)} />
       <div className="mt-6 grid gap-6 lg:grid-cols-[1fr_18rem]">
         <Panel title="Wording">
           <ActionForm action={saveTemplateAction} submitLabel="Save template">

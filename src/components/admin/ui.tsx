@@ -14,33 +14,10 @@ export function AdminHeader({ title, description, actions }: { title: string; de
   );
 }
 
-const OK_MESSAGES: Record<string, string> = {
-  status: "Status updated.",
-  note: "Note added.",
-  deleted: "Deleted.",
-  saved: "Changes saved.",
-  removed: "Participant removed.",
-  created: "Project created.",
-  role: "Role added.",
-  role_deleted: "Role removed.",
-  assigned: "Participant assigned.",
-  assignment: "Assignment updated.",
-  milestone: "Milestone updated.",
-  milestone_deleted: "Milestone removed.",
-  compensation: "Compensation record saved.",
-  reset: "Section reset to default content.",
-};
-
-const ERROR_MESSAGES: Record<string, string> = {
-  note: "Note cannot be empty.",
-  confirm: "Confirmation text did not match. Nothing was changed.",
-  participant: "This person is a participant. Remove the participant record first.",
-  invalid: "Some values were invalid. Nothing was saved.",
-};
-
+/** One-time message at the top of a page. Pass it the result of readFlash(), never raw text from the address. */
 export function Flash({ ok, error }: { ok?: string; error?: string }) {
   if (!ok && !error) return null;
-  const text = error ? (ERROR_MESSAGES[error] ?? error) : (OK_MESSAGES[ok!] ?? ok);
+  const text = error ?? ok;
   return (
     <div
       role={error ? "alert" : "status"}

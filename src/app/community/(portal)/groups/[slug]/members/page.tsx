@@ -2,7 +2,9 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { FormAlert } from "@/components/forms/fields";
 import { MemberAvatar, Panel, Time } from "@/components/community/ui";
-import { Badge, Button } from "@/components/ui/primitives";
+import { QuickAction } from "@/components/community/quick-action";
+import { Badge } from "@/components/ui/primitives";
+import { readFlash } from "@/lib/flash";
 import { groupOverview, loadGroupPage } from "@/server/community/group-page";
 import { removeMemberAction, transferCoordinatorAction } from "../../../../actions";
 
@@ -10,7 +12,7 @@ type Props = { params: Promise<{ slug: string }>; searchParams: Promise<Record<s
 
 export default async function MembersPage({ params, searchParams }: Props) {
   const { slug } = await params;
-  const { ok } = await searchParams;
+  const { ok } = readFlash(await searchParams);
   const { user, group, isCoordinator } = await loadGroupPage(slug);
   const overview = await groupOverview(slug);
   if (!overview) notFound();
@@ -41,27 +43,31 @@ export default async function MembersPage({ params, searchParams }: Props) {
                   </p>
                 </div>
                 {isCoordinator && m.user.id !== user.id && (
-                  <div className="flex gap-2">
-                    <form action={transferCoordinatorAction}>
-                      <input type="hidden" name="groupId" value={group.id} />
-                      <input type="hidden" name="userId" value={m.user.id} />
-                      <Button type="submit" variant="secondary" size="sm">
-                        Make coordinator
-                      </Button>
-                    </form>
-                    <details className="relative">
-                      <summary className="cursor-pointer list-none rounded-full px-3 py-1.5 text-sm text-red-700 hover:bg-red-50">Remove</summary>
-                      <div className="absolute right-0 z-10 mt-2 w-64 rounded-xl border border-ink-100 bg-white p-3 text-sm shadow-soft-lg">
-                        <p className="text-ink-700">Remove {name} from the group? They lose access to the chat, meetings and shared research. This is recorded.</p>
-                        <form action={removeMemberAction} className="mt-2">
-                          <input type="hidden" name="groupId" value={group.id} />
-                          <input type="hidden" name="userId" value={m.user.id} />
-                          <Button type="submit" variant="danger" size="sm">
-                            Remove member
-                          </Button>
-                        </form>
-                      </div>
-                    </details>
+                  <div className="flex flex-wrap items-start gap-2">
+                    <QuickAction
+                      action={transferCoordinatorAction}
+                      fields={{ groupId: group.id, userId: m.user.id }}
+                      label="Make coordinator"
+                      variant="secondary"
+                      confirm={{
+                        question: `Make ${name} the coordinator?`,
+                        detail: "You hand the role over and become an ordinary member. You cannot take it back yourself; only the new coordinator or the organization can change it again.",
+                        yes: "Yes, hand over",
+                      }}
+                    />
+                    <QuickAction
+                      action={removeMemberAction}
+                      fields={{ groupId: group.id, userId: m.user.id }}
+                      label="Remove"
+                      buttonClassName="rounded-full px-3 py-1.5 text-sm text-red-700 hover:bg-red-50"
+                      ariaLabel={`Remove ${name} from the group`}
+                      confirm={{
+                        question: `Remove ${name} from the group?`,
+                        detail: "They lose access to the chat, meetings and shared research, and they cannot rejoin by themselves (only the organization can allow that). They are told, the group sees it in the chat, and it is recorded.",
+                        yes: "Yes, remove",
+                        danger: true,
+                      }}
+                    />
                   </div>
                 )}
               </li>

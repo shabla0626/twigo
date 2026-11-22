@@ -3,6 +3,7 @@
 import { brand } from "@/config/brand";
 import path from "node:path";
 import { redirect } from "next/navigation";
+import { withFlash } from "@/lib/flash";
 import type { UserRole } from "@prisma/client";
 import type { FormState } from "@/components/forms/action-form";
 import { db } from "@/lib/db";
@@ -23,14 +24,13 @@ import {
   setMembership,
   suspendUser,
 } from "@/server/accounts";
-import { adminAssignCoordinator, adminSetGroupState, approveGroupForProject } from "@/server/community/groups";
+import { adminAssignCoordinator, adminLiftRemoval, adminSetGroupState, approveGroupForProject } from "@/server/community/groups";
 import { moderate } from "@/server/community/reports";
 import { notify } from "@/server/community/notifications";
 import { saveSetting, SETTINGS, type SettingKey } from "@/server/settings";
 
 const str = (fd: FormData, k: string) => String(fd.get(k) ?? "");
-const back = (to: string, msg: { ok?: string; error?: string }) =>
-  redirect(`${to}${to.includes("?") ? "&" : "?"}${msg.error ? `error=${encodeURIComponent(msg.error)}` : `ok=${encodeURIComponent(msg.ok ?? "Done")}`}`);
+const back = (to: string, msg: { ok?: string; error?: string }) => redirect(withFlash(to, msg.error ? { error: msg.error } : { ok: msg.ok ?? "Done" }));
 
 async function requireRecent(returnTo: string) {
   if (!(await isRecentlyAuthenticated())) redirect(`/account/confirm?next=${encodeURIComponent(returnTo)}`);
@@ -139,6 +139,13 @@ export async function assignCoordinatorAction(fd: FormData) {
   const id = str(fd, "id");
   const res = await adminAssignCoordinator(admin.id, id, str(fd, "userId"));
   back(`/admin/groups/${id}`, res.ok ? { ok: "Coordinator assigned." } : { error: res.error });
+}
+
+export async function liftRemovalAction(fd: FormData) {
+  const admin = await requireAdmin("groups.manage");
+  const id = str(fd, "id");
+  const res = await adminLiftRemoval(admin.id, id, str(fd, "userId"));
+  back(`/admin/groups/${encodeURIComponent(id)}`, res.ok ? { ok: "Removal lifted. The person was told and may join the group again; the group sees this in its chat." } : { error: res.error });
 }
 
 export async function approveGroupAction(fd: FormData) {

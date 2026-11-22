@@ -1,6 +1,7 @@
 "use server";
 
 import { redirect } from "next/navigation";
+import { withFlash } from "@/lib/flash";
 import type { FormState } from "@/components/forms/action-form";
 import { requireVerifiedUser } from "@/lib/auth/guard";
 import { rateLimit } from "@/lib/rate-limit";
@@ -44,7 +45,7 @@ export async function submitApplicationAction(_p: FormState, fd: FormData): Prom
 
 export async function withdrawApplicationAction(fd: FormData) {
   const user = await requireVerifiedUser("/application");
-  if (fd.get("confirm") !== "on") redirect("/application?error=Tick+the+box+to+confirm+that+you+want+to+withdraw+your+application.");
+  if (fd.get("confirm") !== "on") redirect(withFlash("/application", { error: "Tick the box to confirm that you want to withdraw your application." }));
   const res = await withdrawMyApplication(user.id);
-  redirect(res.ok ? "/application?withdrawn=1" : `/application?error=${encodeURIComponent(res.error ?? "Could not withdraw.")}`);
+  redirect(res.ok ? "/application?withdrawn=1" : withFlash("/application", { error: res.error ?? "Could not withdraw." }));
 }

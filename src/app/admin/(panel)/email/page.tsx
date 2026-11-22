@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { ActionForm } from "@/components/forms/action-form";
 import { AdminHeader, Empty, Flash, Pager, Panel, Table, fmtDate } from "@/components/admin/ui";
+import { readFlash } from "@/lib/flash";
 import { Badge, Button } from "@/components/ui/primitives";
 import { db } from "@/lib/db";
 import { env } from "@/lib/env";
@@ -42,7 +43,7 @@ export default async function EmailAdminPage({ searchParams }: Props) {
   return (
     <>
       <AdminHeader title="Email" description="Email settings, templates and a log of every email the system tried to send." />
-      <Flash ok={sp.ok} error={sp.error} />
+      <Flash {...readFlash(sp)} />
 
       <Panel title="Email settings" className="mt-6">
         <div

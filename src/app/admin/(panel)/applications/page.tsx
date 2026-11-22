@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { AdminHeader, Empty, Flash, Pager, Table, fmtDate, membershipTone, smallInput, smallLabel, statusTone } from "@/components/admin/ui";
+import { readFlash } from "@/lib/flash";
 import { MoreFilters } from "@/components/admin/more-filters";
 import { Badge, buttonClass } from "@/components/ui/primitives";
 import { requireAdmin } from "@/lib/auth/guard";
@@ -42,7 +43,7 @@ export default async function ApplicationsPage({ searchParams }: { searchParams:
           </a>
         }
       />
-      <Flash ok={one("ok")} />
+      <Flash ok={readFlash(sp).ok} />
 
       <form className="mt-6 grid gap-3 rounded-lg border border-ink-200 bg-white p-4 shadow-sm sm:grid-cols-2 lg:grid-cols-6" role="search">
         <div className="lg:col-span-2">

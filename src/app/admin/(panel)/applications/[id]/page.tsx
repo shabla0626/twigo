@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { AdminHeader, Dl, Flash, Panel, fmtDate, membershipTone, smallInput, smallLabel, statusTone } from "@/components/admin/ui";
+import { readFlash } from "@/lib/flash";
 import { Badge, buttonClass } from "@/components/ui/primitives";
 import { db } from "@/lib/db";
 import { requireAdmin } from "@/lib/auth/guard";
@@ -54,8 +55,7 @@ export default async function ApplicationDetail({ params, searchParams }: Props)
           ) : null
         }
       />
-      <Flash ok={sp.ok} />
-      <Flash error={sp.error} />
+      <Flash {...readFlash(sp)} />
 
       <div className="mt-6 grid gap-6 lg:grid-cols-[1fr_22rem]">
         <div className="space-y-6">

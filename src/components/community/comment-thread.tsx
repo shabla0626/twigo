@@ -2,6 +2,7 @@ import { addCommentAction, deleteCommentAction, editCommentAction } from "@/app/
 import type { CommentNode } from "@/server/community/comments";
 import { ActionForm } from "../forms/action-form";
 import { cn } from "../ui/primitives";
+import { QuickAction } from "./quick-action";
 import { ReportButton } from "./report-button";
 import { MemberAvatar, TextBody, Time } from "./ui";
 
@@ -78,13 +79,7 @@ function Comment({ c, viewerId, target, canPost }: { c: CommentNode; viewerId: s
                       </ActionForm>
                     </div>
                   </details>
-                  <form action={deleteCommentAction}>
-                    <input type="hidden" name="id" value={c.id} />
-                    <input type="hidden" name="path" value={target.path} />
-                    <button type="submit" className="rounded-full px-2 py-1 text-ink-600 hover:bg-ink-50">
-                      Delete
-                    </button>
-                  </form>
+                  <QuickAction action={deleteCommentAction} fields={{ id: c.id, path: target.path }} label="Delete" buttonClassName="rounded-full px-2 py-1 text-ink-600 hover:bg-ink-50" />
                 </>
               )}
               {!mine && <ReportButton targetType="COMMENT" targetId={c.id} />}

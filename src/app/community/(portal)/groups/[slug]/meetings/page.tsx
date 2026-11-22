@@ -4,7 +4,9 @@ import { IconVideo } from "@/components/community/icons";
 import { MembersOnly } from "@/components/community/members-only";
 import { StartMeetingForm } from "@/components/community/start-meeting";
 import { Panel, Time } from "@/components/community/ui";
+import { QuickAction } from "@/components/community/quick-action";
 import { Button } from "@/components/ui/primitives";
+import { readFlash } from "@/lib/flash";
 import { groupMeetingNow, loadGroupPage } from "@/server/community/group-page";
 import { meetingHistory } from "@/server/community/meetings";
 import { endMeetingAction, joinMeetingAction, startMeetingAction } from "../../../../actions";
@@ -14,7 +16,7 @@ type Props = { params: Promise<{ slug: string }>; searchParams: Promise<Record<s
 /** Meetings. They are held in Google Meet; this site only shares the link with the group. */
 export default async function MeetingsPage({ params, searchParams }: Props) {
   const { slug } = await params;
-  const { error } = await searchParams;
+  const { error } = readFlash(await searchParams);
   const { user, group, isMember, isCoordinator, isOpen } = await loadGroupPage(slug);
   if (!isMember) return <MembersOnly groupId={group.id} what="Meetings" canJoin={isOpen} />;
   const [current, history] = await Promise.all([groupMeetingNow(group.id), meetingHistory(group.id, user.id)]);
@@ -46,13 +48,7 @@ export default async function MeetingsPage({ params, searchParams }: Props) {
               </Button>
             </form>
             {canEnd && (
-              <form action={endMeetingAction}>
-                <input type="hidden" name="groupId" value={group.id} />
-                <input type="hidden" name="meetingId" value={current.id} />
-                <Button type="submit" variant="secondary" size="lg">
-                  End meeting
-                </Button>
-              </form>
+              <QuickAction action={endMeetingAction} fields={{ groupId: group.id, meetingId: current.id }} label="End meeting" variant="secondary" size="lg" />
             )}
           </div>
           <div className="mt-5 rounded-xl bg-white/80 p-4 text-sm leading-6 text-ink-700">
