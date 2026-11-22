@@ -7,14 +7,16 @@ import { audit } from "@/lib/audit";
 import { authenticate, completeSecondFactor } from "@/lib/auth/service";
 import { getSession } from "@/lib/auth/guard";
 import { clearSessionCookie, createSession, readSessionToken, revokeSessionByToken, setSessionCookie, userAgent } from "@/lib/auth/session";
+import { safeNext } from "@/lib/auth/safe-next";
 import { clientIp, hashIp } from "@/lib/security";
 import { activateAccount, requestPasswordReset, resetPassword } from "@/server/accounts";
 import { changeUnverifiedEmail, registerAccount, resendVerificationByEmail, sendVerificationEmail, verifyEmailToken } from "@/server/onboarding";
 
 /** Only same-site relative paths are accepted as redirect targets. */
-function safeNext(raw: FormDataEntryValue | null): string {
-  const v = typeof raw === "string" ? raw : "";
-  return v.startsWith("/") && !v.startsWith("//") && !v.startsWith("/\\") && !v.startsWith("/login") ? v : "";
+/** A page inside this site to return to after signing in (never the sign-in pages themselves). */
+function nextAfterSignIn(raw: FormDataEntryValue | null): string {
+  const v = safeNext(raw);
+  return v.startsWith("/login") ? "" : v;
 }
 
 /** Everyone passes through /continue, which decides the right page from the account's real state. */
@@ -34,7 +36,7 @@ export async function loginAction(_prev: FormState, fd: FormData): Promise<FormS
   const res = await authenticate(parsed.data.email, parsed.data.password, await ctx());
   if (!res.ok) return { error: res.error };
   await setSessionCookie(res.token, res.expiresAt);
-  const next = safeNext(fd.get("next"));
+  const next = nextAfterSignIn(fd.get("next"));
   if (res.stage === "mfa") redirect(`/login/verify${next ? `?next=${encodeURIComponent(next)}` : ""}`);
   redirect(continueUrl(next));
 }
@@ -51,7 +53,7 @@ export async function verifyMfaAction(_prev: FormState, fd: FormData): Promise<F
     return { error: res.error };
   }
   await setSessionCookie(res.token, res.expiresAt);
-  redirect(continueUrl(safeNext(fd.get("next"))));
+  redirect(continueUrl(nextAfterSignIn(fd.get("next"))));
 }
 
 export async function logoutAction() {

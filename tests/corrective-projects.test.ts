@@ -63,9 +63,9 @@ describe("P1-6: compensation records cannot disappear as a side effect", () => {
   it("an administrator is refused by the delete actions; nothing is deleted", async () => {
     const { admin, participant, project } = await projectWithAssignment({ agreement: false });
     await signIn(admin.id, "ADMIN");
-    expect(await outcome(deleteProjectAction(form({ id: project.id, confirm: "DELETE" })))).toContain("Forbidden");
-    expect(await outcome(removeParticipantAction(form({ id: participant.id, confirm: "REMOVE" })))).toContain("Forbidden");
-    expect(await outcome(removeCompensationAction(form({ projectId: project.id, assignmentId: "x", confirm: "REMOVE" })))).toContain("Forbidden");
+    expect(await outcome(deleteProjectAction(form({ id: project.id, confirm: "DELETE" })))).toContain("REDIRECT:/admin/no-access");
+    expect(await outcome(removeParticipantAction(form({ id: participant.id, confirm: "REMOVE" })))).toContain("REDIRECT:/admin/no-access");
+    expect(await outcome(removeCompensationAction(form({ projectId: project.id, assignmentId: "x", confirm: "REMOVE" })))).toContain("REDIRECT:/admin/no-access");
     expect([await db.project.count(), await db.participant.count(), await db.projectAssignment.count()]).toEqual([1, 1, 1]);
   });
 

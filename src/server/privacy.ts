@@ -18,7 +18,17 @@ export async function exportUserData(userId: string) {
       participant: { select: { id: true, applicantId: true, status: true, joinedAt: true, hoursPerWeek: true, preferredCategories: true } },
     },
   });
-  const applicant = user.participant ? await exportApplicantCore(user.participant.applicantId, false) : null;
+  // The application is found through the account itself (people who were not, or not
+  // yet, accepted have no participant record), then through the older participant link.
+  const applicantId = (await db.applicant.findUnique({ where: { userId }, select: { id: true } }))?.id ?? user.participant?.applicantId ?? null;
+  const applicant = applicantId ? await exportApplicantCore(applicantId, false) : null;
+  // The person's own compensation agreements are their data too.
+  const compensation = user.participant
+    ? await db.compensationAgreement.findMany({
+        where: { assignment: { participantId: user.participant.id } },
+        select: { terms: true, basis: true, amountMinor: true, currency: true, status: true, agreedAt: true, documentRef: true, createdAt: true, updatedAt: true, assignment: { select: { status: true, project: { select: { title: true } } } } },
+      })
+    : [];
   const [ideas, comments, endorsements, memberships, messages, notifications, files, sessions, reports] = await Promise.all([
     db.businessIdea.findMany({ where: { authorId: userId }, omit: { authorId: true } }),
     db.comment.findMany({ where: { authorId: userId }, select: { id: true, ideaId: true, discussionId: true, body: true, createdAt: true, editedAt: true, deletedAt: true } }),
@@ -35,6 +45,7 @@ export async function exportUserData(userId: string) {
     notice: "Deleted messages and comments are listed with their deletion date; their text is purged after the retention period.",
     account: user,
     application: applicant,
+    compensationAgreements: compensation,
     ideas,
     endorsements,
     comments,
@@ -68,7 +79,7 @@ async function exportApplicantCore(applicantId: string, includeAdminNotes: boole
 export async function exportApplicantData(applicantId: string) {
   const applicant = await exportApplicantCore(applicantId, true);
   if (!applicant) return null;
-  const user = await db.user.findFirst({ where: { participant: { applicantId } }, select: { id: true } });
+  const user = await db.user.findFirst({ where: { OR: [{ applicant: { id: applicantId } }, { participant: { applicantId } }] }, select: { id: true } });
   return {
     exportedAt: new Date().toISOString(),
     applicant,
@@ -77,7 +88,9 @@ export async function exportApplicantData(applicantId: string) {
 }
 
 export async function applicationsCsv(filter: { status?: ApplicationStatus } = {}) {
-  const where: Prisma.ApplicationWhereInput = filter.status ? { status: filter.status } : {};
+  // Unfinished drafts are the applicant's private work: they are never exported.
+  const where: Prisma.ApplicationWhereInput = filter.status && filter.status !== "DRAFT" ? { status: filter.status } : { status: { not: "DRAFT" } };
+  if (filter.status === "DRAFT") where.id = "none";
   const rows = await db.application.findMany({
     where,
     orderBy: { createdAt: "desc" },
@@ -90,7 +103,7 @@ export async function applicationsCsv(filter: { status?: ApplicationStatus } = {
   return toCsv(
     ["Submitted", "Status", "Name", "Email", "Country", "Region", "Time zone", "Occupation", "Experience", "Interests", "Hours/week", "Schedule", "Willing to learn"],
     rows.map((r) => [
-      r.createdAt,
+      r.submittedAt ?? r.createdAt,
       r.status,
       r.applicant.fullName,
       r.applicant.email,

@@ -296,11 +296,11 @@ describe("member access guard", () => {
   it("ADMIN cannot use owner-only permissions; members cannot open admin", async () => {
     const admin = await createUser({ email: "adm@example.test", role: "ADMIN", totp: true });
     await signIn(admin.id, "ADMIN");
-    await expect(requireAdmin("compensation.view")).rejects.toThrow(/Forbidden/);
+    await expect(requireAdmin("compensation.view")).rejects.toThrow("REDIRECT:/admin/no-access");
     await expect(requireAdmin("moderation.act")).resolves.toBeTruthy();
     const m = await createMember("Tia");
     await signIn(m.id);
-    await expect(requireAdmin()).rejects.toThrow(/Forbidden/);
+    await expect(requireAdmin()).rejects.toThrow("REDIRECT:/community");
   });
 });
 

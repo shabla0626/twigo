@@ -6,6 +6,7 @@ import { ActionForm } from "@/components/forms/action-form";
 import { Field, FormAlert, Input } from "@/components/forms/fields";
 import { PasswordInput } from "@/components/forms/password-input";
 import { getSession } from "@/lib/auth/guard";
+import { safeNext } from "@/lib/auth/safe-next";
 import { loginAction } from "../actions";
 
 export const metadata: Metadata = { title: "Sign in" };
@@ -15,7 +16,7 @@ type Props = { searchParams: Promise<Record<string, string | undefined>> };
 export default async function LoginPage({ searchParams }: Props) {
   const sp = await searchParams;
   const s = await getSession();
-  if (s && s.user.status === "ACTIVE") redirect(sp.next ? `/continue?next=${encodeURIComponent(sp.next)}` : "/continue");
+  if (s && s.user.status === "ACTIVE") redirect(safeNext(sp.next) ? `/continue?next=${encodeURIComponent(safeNext(sp.next))}` : "/continue");
   const name = brand().name;
   return (
     <>

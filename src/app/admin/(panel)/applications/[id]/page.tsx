@@ -9,7 +9,7 @@ import { localInboxUrl } from "@/lib/email";
 import { EMAIL_STATUS_INFO } from "@/lib/email/status";
 import { TEMPLATES } from "@/lib/email/templates";
 import { APPLICATION_STATUSES, EXPERIENCE_LEVELS, MEMBERSHIP_LABELS, WORK_CATEGORIES } from "@/lib/labels";
-import { ADMIN_TRANSITIONS, STATUS_EMAIL, getApplication } from "@/server/admin/applications";
+import { ADMIN_TRANSITIONS, STATUS_EMAIL, getApplication, hasOtherOpenApplication } from "@/server/admin/applications";
 import { addNoteAction, changeStatusAction, deleteApplicantAction, requestAccountAction } from "../../../actions/applications";
 
 type Props = { params: Promise<{ id: string }>; searchParams: Promise<Record<string, string | undefined>> };
@@ -28,7 +28,9 @@ export default async function ApplicationDetail({ params, searchParams }: Props)
   const emails = await db.emailDelivery.findMany({ where: { applicationId: id }, orderBy: { createdAt: "desc" }, take: 10 });
   const primary = a.skills.filter((s) => s.kind === "PRIMARY").map((s) => s.skill.label);
   const secondary = a.skills.filter((s) => s.kind === "SECONDARY").map((s) => s.skill.label);
-  const next = ADMIN_TRANSITIONS[app.status];
+  // A declined application cannot be re-opened once the person has started a new one.
+  const superseded = app.status === "DECLINED" && (await hasOtherOpenApplication(app.applicantId, app.id));
+  const next = superseded ? [] : ADMIN_TRANSITIONS[app.status];
   const others = next.filter((s) => s !== "ACCEPTED");
   const canReview = can(admin.role, "applications.review");
   const inbox = localInboxUrl();

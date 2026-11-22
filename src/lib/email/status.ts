@@ -90,3 +90,12 @@ export function isValidSender(from: string): boolean {
 export function isLocalHost(host: string) {
   return ["127.0.0.1", "localhost", "::1", "[::1]"].includes(host.trim().toLowerCase());
 }
+
+/**
+ * True when email goes to the LOCAL TEST inbox (captured on this computer, not
+ * delivered). That only exists in development. In production a mail server on
+ * the same machine is a real relay, and its emails are real deliveries.
+ */
+export function isLocalTestMail(host: string) {
+  return process.env.NODE_ENV !== "production" && isLocalHost(host);
+}

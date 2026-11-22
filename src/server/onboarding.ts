@@ -162,8 +162,14 @@ export async function verifyEmailToken(token: string): Promise<VerifyResult> {
     if (!t.email) return { ok: false as const, error: "This link is not valid." };
     const taken = await tx.user.findUnique({ where: { email: t.email } });
     if (taken) return { ok: false as const, error: "That email address is already in use." };
+    // The application record carries the address too, and addresses are unique there. If an
+    // earlier application of someone else already uses the new address, changing it would fail
+    // inside the database and undo everything, so it is refused here with a clear answer.
+    // (An earlier application without an account has no userId: it must count as "someone else" too.)
+    const clash = await tx.applicant.findFirst({ where: { email: t.email, OR: [{ userId: null }, { userId: { not: user.id } }] }, select: { id: true } });
+    if (clash) return { ok: false as const, error: "That email address is already used by an earlier application. Your address was not changed. Please contact the organization." };
     await tx.user.update({ where: { id: user.id }, data: { email: t.email, emailVerifiedAt: new Date() } });
-    await tx.applicant.updateMany({ where: { userId: user.id }, data: { email: t.email } }).catch(() => {});
+    await tx.applicant.updateMany({ where: { userId: user.id }, data: { email: t.email } });
     return { ok: true as const, kind: "change" as const, userId: user.id };
   });
   if (res.ok) await audit(res.userId, res.kind === "registration" ? "account.email_verified" : "account.email_changed", "User", res.userId);

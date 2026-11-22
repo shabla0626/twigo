@@ -7,8 +7,7 @@ import { exportApplicantData } from "@/server/privacy";
 export const dynamic = "force-dynamic";
 
 export async function GET(_req: Request, { params }: { params: Promise<{ id: string }> }) {
-  const admin = await requireAdmin("data.export").catch(() => null);
-  if (!admin) return new NextResponse("Forbidden", { status: 403 });
+  const admin = await requireAdmin("data.export");
   const { id } = await params;
   const app = await db.application.findUnique({ where: { id }, select: { applicantId: true } });
   const data = app ? await exportApplicantData(app.applicantId) : null;

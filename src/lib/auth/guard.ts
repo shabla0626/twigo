@@ -9,13 +9,6 @@ import { destinationFor } from "./destination";
 import { readSessionToken } from "./session";
 import { lookupSession, type SessionInfo, type SessionUser } from "./session-core";
 
-export class ForbiddenError extends Error {
-  constructor(message = "Forbidden") {
-    super(message);
-    this.name = "ForbiddenError";
-  }
-}
-
 /** Current fully authenticated session (no pending 2FA), regardless of account status. */
 export const getSession = cache(async (): Promise<SessionInfo | null> => {
   const s = await lookupSession(db, await readSessionToken());
@@ -42,16 +35,24 @@ export async function requireUser(next?: string): Promise<SessionUser> {
 
 export type AdminContext = SessionUser;
 
+/** Where an administrator lands when their role does not include a page or action. */
+export const NO_ACCESS_PAGE = "/admin/no-access";
+
 /**
  * Administrators (OWNER / ADMIN). Enforces two-factor enrollment when
  * ADMIN_REQUIRE_2FA is on (default). Use in every admin page and action.
+ *
+ * A refusal is never shown as an error page: someone who is not an
+ * administrator is sent to their own start page, and an administrator whose
+ * role lacks the permission is sent to a page that says so. Either way the
+ * page or action stops here and nothing is changed.
  */
 export async function requireAdmin(permission: Permission = "admin.access"): Promise<AdminContext> {
   const user = await getCurrentUser();
   if (!user) loginRedirect("/admin");
-  if (!isAdminRole(user.role)) throw new ForbiddenError();
+  if (!isAdminRole(user.role)) redirect(await destinationFor(user));
   if (env().ADMIN_REQUIRE_2FA && !user.totpEnabled) redirect("/account/security?required=2fa");
-  if (!can(user.role, permission)) throw new ForbiddenError();
+  if (!can(user.role, permission)) redirect(NO_ACCESS_PAGE);
   return user;
 }
 

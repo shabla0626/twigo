@@ -6,7 +6,7 @@ import { db } from "@/lib/db";
 import { env } from "@/lib/env";
 import { requireAdmin } from "@/lib/auth/guard";
 import { can } from "@/lib/auth/permissions";
-import { emailConfigProblem, smtpSettings } from "@/lib/email";
+import { emailConfigProblem, localInboxUrl, smtpSettings } from "@/lib/email";
 import { EMAIL_STATUS_INFO, RETRYABLE } from "@/lib/email/status";
 import { TEMPLATES, TEMPLATE_KEYS } from "@/lib/email/templates";
 import { checkEmailConnectionAction, retryEmailAction, sendTestToMeAction } from "../../actions/community";
@@ -30,6 +30,7 @@ export default async function EmailAdminPage({ searchParams }: Props) {
   const retriedOk = new Set(retried.filter((r) => EMAIL_STATUS_INFO[r.status].sent).map((r) => r.retryOfId));
   const customized = new Map(custom.map((c) => [c.key, c.updatedAt]));
   const s = smtpSettings();
+  const inbox = localInboxUrl();
   const problem = emailConfigProblem();
   const webhook = Boolean(env().RESEND_WEBHOOK_SECRET);
 
@@ -45,7 +46,7 @@ export default async function EmailAdminPage({ searchParams }: Props) {
           {problem
             ? problem.message
             : s.local
-              ? "Using the LOCAL TEST mail server. Emails are captured on this computer (open http://127.0.0.1:8025 to read them) and are NOT delivered to real inboxes."
+              ? `Using the LOCAL TEST mail server. Emails are captured on this computer${inbox ? ` (open ${inbox} to read them)` : ""} and are NOT delivered to real inboxes.`
               : `Sending through ${s.provider}. “Accepted by provider” means the provider took the message; “Delivered” appears only when the provider confirms it${webhook ? "" : " (delivery tracking is off until RESEND_WEBHOOK_SECRET is set)"}.`}
         </div>
         <dl className="mt-4 grid gap-x-8 gap-y-2 text-sm sm:grid-cols-2">

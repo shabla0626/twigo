@@ -43,7 +43,6 @@ const ADMIN: Permission[] = [
   "admin.access",
   "applications.view",
   "applications.review",
-  "applications.export",
   "participants.manage",
   "projects.manage",
   "members.view",

@@ -1,6 +1,7 @@
 import { GroupChat } from "@/components/community/chat";
 import { MembersOnly } from "@/components/community/members-only";
 import { db } from "@/lib/db";
+import { ACTIVE_MEMBER } from "@/lib/auth/member-where";
 import { groupChannel, loadGroupPage } from "@/server/community/group-page";
 
 export default async function ChatPage({ params }: { params: Promise<{ slug: string }> }) {
@@ -10,7 +11,7 @@ export default async function ChatPage({ params }: { params: Promise<{ slug: str
   const [channel, memberships] = await Promise.all([
     groupChannel(group.id),
     db.groupMembership.findMany({
-      where: { groupId: group.id, status: "ACTIVE" },
+      where: { groupId: group.id, status: "ACTIVE", user: ACTIVE_MEMBER },
       orderBy: { joinedAt: "asc" },
       select: { user: { select: { id: true, role: true, profile: { select: { displayName: true } } } } },
     }),

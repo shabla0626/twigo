@@ -105,13 +105,77 @@ export type EndorseResult =
   | { ok: true; endorsed: boolean; groupCreated: { slug: string } | null; count: number }
   | { ok: false; error: string };
 
+type CreatedGroup = { id: string; slug: string; name: string; memberIds: string[]; authorId: string | null };
+
 /**
- * Endorses an idea. When the number of distinct ACTIVE endorsers other than
- * the author reaches the configured threshold, exactly one research group is
- * created in the same transaction.
+ * Something that happens after the main change was saved (a notification, an
+ * audit entry). If it fails, the failure is logged and the next step still
+ * runs; it never turns a saved change into an error for the person.
+ */
+async function afterSaved(label: string, step: () => Promise<unknown>) {
+  try {
+    await step();
+  } catch (err) {
+    logger.error("idea.followup_failed", { label, err });
+  }
+}
+
+/**
+ * The ONE place that decides how much support an idea has. Must run inside a
+ * transaction that holds the idea's row lock.
  *
- * Concurrency: the idea row is locked with SELECT ... FOR UPDATE, so
- * simultaneous endorsements are processed one after another; the unique
+ * Only supporters who are active members right now count (not the author, not
+ * people whose account is suspended or whose community access is paused or
+ * removed). That number is stored on the idea, so the number shown to members
+ * is always the number used for the decision. When it reaches the threshold
+ * and the idea is still open, the research group is created.
+ */
+async function evaluateIdea(tx: Prisma.TransactionClient, idea: { id: string; authorId: string | null; status: string }, threshold: number): Promise<{ count: number; group: CreatedGroup | null }> {
+  const eligible = await tx.ideaEndorsement.findMany({
+    where: { ideaId: idea.id, user: ACTIVE_MEMBER, ...(idea.authorId ? { userId: { not: idea.authorId } } : {}) },
+    orderBy: { createdAt: "asc" },
+    select: { userId: true },
+  });
+  await tx.businessIdea.update({ where: { id: idea.id }, data: { endorsementCount: eligible.length } });
+  let group: CreatedGroup | null = null;
+  if (idea.status === "OPEN" && eligible.length >= threshold) {
+    const existing = await tx.researchGroup.findUnique({ where: { ideaId: idea.id }, select: { id: true } });
+    if (!existing) group = await createGroupFromIdea(tx, idea.id, eligible.map((e) => e.userId));
+  }
+  return { count: eligible.length, group };
+}
+
+/** Audit entry and notifications for an automatically created group (after the transaction committed). */
+async function announceGroupCreated(g: CreatedGroup, ideaId: string, title: string, threshold: number) {
+  await afterSaved("audit group.auto_created", () => audit(null, "group.auto_created", "ResearchGroup", g.id, { ideaId, threshold, initialMembers: g.memberIds.length }));
+  if (g.authorId) {
+    await afterSaved("notify author", () =>
+      notify([g.authorId!], {
+        type: "IDEA_GROUP_CREATED",
+        title: `Your idea “${title}” has attracted enough support. A research group has been created.`,
+        body: "You coordinate the group. This means the idea is ready to investigate together, not that its success is proven.",
+        link: `/community/groups/${g.slug}`,
+      }),
+    );
+  }
+  await afterSaved("notify founding members", () =>
+    notify(
+      g.memberIds,
+      {
+        type: "GROUP_MEMBERSHIP",
+        title: `You are a founding member of “${g.name}”`,
+        body: "Your support helped create this research group to investigate the idea. You can leave the group at any time.",
+        link: `/community/groups/${g.slug}`,
+      },
+      { exclude: g.authorId ?? undefined },
+    ),
+  );
+}
+
+/**
+ * Endorses an idea. Concurrency-safe: the idea row is locked FOR UPDATE, so
+ * simultaneous endorsements are processed one after another and exactly one
+ * group can be created when the threshold is reached. The database unique
  * constraint on ResearchGroup.ideaId is a second, absolute guard.
  */
 export async function endorseIdea(userId: string, ideaId: string): Promise<EndorseResult> {
@@ -119,7 +183,6 @@ export async function endorseIdea(userId: string, ideaId: string): Promise<Endor
   const endorser = await db.user.findFirst({ where: { id: userId, ...ACTIVE_MEMBER }, select: { id: true } });
   if (!endorser) return { ok: false, error: "Only active members can support ideas." };
 
-  const created: { group: { id: string; slug: string; name: string; memberIds: string[]; authorId: string | null } | null } = { group: null };
   let authorId: string | null = null;
   let title = "";
   let newlyEndorsed = false;
@@ -138,65 +201,67 @@ export async function endorseIdea(userId: string, ideaId: string): Promise<Endor
 
     const inserted = await tx.ideaEndorsement.createMany({ data: [{ ideaId, userId }], skipDuplicates: true });
     newlyEndorsed = inserted.count === 1;
-    const count = await tx.ideaEndorsement.count({ where: { ideaId } });
-    await tx.businessIdea.update({ where: { id: ideaId }, data: { endorsementCount: count, lastActivityAt: new Date() } });
-
-    const eligible = await tx.ideaEndorsement.findMany({
-      where: { ideaId, user: ACTIVE_MEMBER, ...(idea.authorId ? { userId: { not: idea.authorId } } : {}) },
-      orderBy: { createdAt: "asc" },
-      select: { userId: true },
-    });
-    if (eligible.length >= threshold) {
-      const existing = await tx.researchGroup.findUnique({ where: { ideaId }, select: { id: true } });
-      if (!existing) {
-        created.group = await createGroupFromIdea(tx, ideaId, eligible.map((e) => e.userId));
-      }
-    }
-    return { ok: true as const, count };
+    await tx.businessIdea.update({ where: { id: ideaId }, data: { lastActivityAt: new Date() } });
+    const evaluated = await evaluateIdea(tx, idea, threshold);
+    return { ok: true as const, ...evaluated };
   });
 
   if (!outcome.ok) return outcome;
 
-  // Notifications are sent after the transaction committed.
+  // Follow-up steps run after the transaction committed; none of them can undo or hide the saved support.
   if (newlyEndorsed && authorId) {
-    await notify([authorId], {
-      type: "IDEA_ENDORSED",
-      title: `Your idea “${title}” has a new supporter`,
-      link: `/community/ideas/${ideaId}`,
-      dedupeKey: `endorse:${ideaId}`,
-    });
-  }
-  const g = created.group;
-  if (g) {
-    await audit(null, "group.auto_created", "ResearchGroup", g.id, { ideaId, threshold, initialMembers: g.memberIds.length });
-    if (g.authorId)
-      await notify([g.authorId], {
-        type: "IDEA_GROUP_CREATED",
-        title: `Your idea “${title}” has attracted enough support. A research group has been created.`,
-        body: "You coordinate the group. This means the idea is ready to investigate together, not that its success is proven.",
-        link: `/community/groups/${g.slug}`,
-      });
-    await notify(
-      g.memberIds,
-      {
-        type: "GROUP_MEMBERSHIP",
-        title: `You are a founding member of “${g.name}”`,
-        body: "Your support helped create this research group to investigate the idea. You can leave the group at any time.",
-        link: `/community/groups/${g.slug}`,
-      },
-      { exclude: g.authorId ?? undefined },
+    await afterSaved("notify idea author", () =>
+      notify([authorId!], {
+        type: "IDEA_ENDORSED",
+        title: `Your idea “${title}” has a new supporter`,
+        link: `/community/ideas/${ideaId}`,
+        dedupeKey: `endorse:${ideaId}`,
+      }),
     );
   }
+  const g = outcome.group;
+  if (g) await announceGroupCreated(g, ideaId, title, threshold);
   return { ok: true, endorsed: true, groupCreated: g ? { slug: g.slug } : null, count: outcome.count };
 }
 
 /** Withdraws an endorsement. If a group already exists it is NOT affected. */
 export async function withdrawEndorsement(userId: string, ideaId: string) {
+  const threshold = await getSetting("community.endorsementThreshold");
   return db.$transaction(async (tx) => {
-    await tx.$queryRaw`SELECT "id" FROM "BusinessIdea" WHERE "id" = ${ideaId} FOR UPDATE`;
+    const locked = await tx.$queryRaw<{ id: string; authorId: string | null; status: string }[]>`
+      SELECT "id", "authorId", "status"::text AS "status" FROM "BusinessIdea" WHERE "id" = ${ideaId} FOR UPDATE`;
     const res = await tx.ideaEndorsement.deleteMany({ where: { ideaId, userId } });
-    const count = await tx.ideaEndorsement.count({ where: { ideaId } });
-    await tx.businessIdea.update({ where: { id: ideaId }, data: { endorsementCount: count } });
+    // Withdrawing can only lower the number, so no group can form here; a formed group stays.
+    const count = locked[0] ? (await evaluateIdea(tx, { ...locked[0], status: "CLOSED" }, threshold)).count : 0;
     return { ok: true as const, removed: res.count === 1, count };
   });
+}
+
+/**
+ * Re-checks open ideas after something changed who counts as a supporter:
+ * someone's account or community access changed (`userId`), or the threshold
+ * setting changed (no argument = every open idea). Stored numbers are brought
+ * up to date, and a group is created for any idea that now has enough support.
+ */
+export async function reevaluateIdeas(userId?: string): Promise<{ checked: number; groupsCreated: number }> {
+  const threshold = await getSetting("community.endorsementThreshold");
+  const ideas = await db.businessIdea.findMany({
+    where: { status: "OPEN", ...(userId ? { endorsements: { some: { userId } } } : {}) },
+    select: { id: true },
+  });
+  let groupsCreated = 0;
+  for (const { id } of ideas) {
+    const result = await db.$transaction(async (tx) => {
+      const locked = await tx.$queryRaw<{ id: string; authorId: string | null; status: string; title: string }[]>`
+        SELECT "id", "authorId", "status"::text AS "status", "title" FROM "BusinessIdea" WHERE "id" = ${id} FOR UPDATE`;
+      const idea = locked[0];
+      if (!idea || idea.status !== "OPEN") return null;
+      return { title: idea.title, ...(await evaluateIdea(tx, idea, threshold)) };
+    });
+    if (result?.group) {
+      groupsCreated++;
+      await announceGroupCreated(result.group, id, result.title, threshold);
+    }
+  }
+  return { checked: ideas.length, groupsCreated };
 }

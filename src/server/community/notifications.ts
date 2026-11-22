@@ -3,6 +3,7 @@ import type { NotificationType, Prisma } from "@prisma/client";
 import { db } from "@/lib/db";
 import { siteUrl } from "@/lib/env";
 import { deliverTemplate } from "@/lib/email";
+import { ACTIVE_MEMBER } from "@/lib/auth/member-where";
 import { logger } from "@/lib/logger";
 import { publishRealtime } from "@/lib/realtime-events";
 
@@ -44,7 +45,8 @@ export async function notify(userIds: string[], input: NotifyInput, opts: { excl
   const client = opts.tx ?? db;
   const prefs = await client.notificationPreference.findMany({ where: { userId: { in: recipients }, type: input.type } });
   const prefMap = new Map(prefs.map((p) => [p.userId, p]));
-  const active = await client.user.findMany({ where: { id: { in: recipients }, status: "ACTIVE" }, select: { id: true, email: true, name: true } });
+  // Only people who can open the community right now are notified (a paused or removed member must not receive group activity).
+  const active = await client.user.findMany({ where: { id: { in: recipients }, ...ACTIVE_MEMBER }, select: { id: true, email: true, name: true } });
 
   for (const u of active) {
     const p = prefMap.get(u.id);
@@ -63,7 +65,15 @@ export async function notify(userIds: string[], input: NotifyInput, opts: { excl
             data: { count: 1, readAt: null, title: input.title, body: input.body ?? null, link: input.link ?? null, createdAt: new Date() },
           });
         } else {
-          await client.notification.create({ data: { userId: u.id, type: input.type, title: input.title, body: input.body ?? null, link: input.link ?? null, dedupeKey: input.dedupeKey } });
+          try {
+            await client.notification.create({ data: { userId: u.id, type: input.type, title: input.title, body: input.body ?? null, link: input.link ?? null, dedupeKey: input.dedupeKey } });
+          } catch (err) {
+            // Two events for the same person and subject arrived at the same moment and the
+            // other one created the row first: count this one onto it instead of failing.
+            if ((err as { code?: string }).code !== "P2002") throw err;
+            await client.notification.update({ where: { userId_dedupeKey: { userId: u.id, dedupeKey: input.dedupeKey } }, data: { count: { increment: 1 }, title: input.title, body: input.body ?? null } });
+            isNew = false;
+          }
         }
       } else {
         await client.notification.create({ data: { userId: u.id, type: input.type, title: input.title, body: input.body ?? null, link: input.link ?? null } });

@@ -6,6 +6,7 @@ import type { NotificationType } from "@prisma/client";
 import type { FormState } from "@/components/forms/action-form";
 import { audit } from "@/lib/audit";
 import { getSession, isRecentlyAuthenticated, requireUser } from "@/lib/auth/guard";
+import { safeNext } from "@/lib/auth/safe-next";
 import { clearSessionCookie, revokeSessionById, revokeUserSessions } from "@/lib/auth/session";
 import {
   beginTotpSetup,
@@ -26,16 +27,11 @@ async function current() {
   return s;
 }
 
-function safeNext(v: FormDataEntryValue | null) {
-  const s = typeof v === "string" ? v : "";
-  return s.startsWith("/") && !s.startsWith("//") ? s : "/account";
-}
-
 export async function confirmIdentityAction(_prev: FormState, fd: FormData): Promise<FormState> {
   const s = await current();
   const res = await confirmIdentity(s.user.id, s.sessionId, String(fd.get("password") ?? ""), String(fd.get("code") ?? "") || undefined);
   if (!res.ok) return { error: res.error };
-  redirect(safeNext(fd.get("next")));
+  redirect(safeNext(fd.get("next"), "/account"));
 }
 
 export async function changePasswordAction(_prev: FormState, fd: FormData): Promise<FormState> {

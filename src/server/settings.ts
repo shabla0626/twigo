@@ -40,5 +40,11 @@ export async function saveSetting(ownerId: string, key: SettingKey, raw: unknown
   });
   cache.delete(key);
   await audit(ownerId, "settings.changed", "OrgSetting", key, { from: prior, to: parsed.data as number | null });
-  return { ok: true as const };
+  // A different threshold changes which ideas have enough support: re-check them now.
+  if (key === "community.endorsementThreshold" && prior !== parsed.data) {
+    const { reevaluateIdeas } = await import("./community/ideas");
+    const res = await reevaluateIdeas();
+    return { ok: true as const, groupsCreated: res.groupsCreated };
+  }
+  return { ok: true as const, groupsCreated: 0 };
 }

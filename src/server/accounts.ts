@@ -315,6 +315,12 @@ async function staffRuleError(actorId: string, target: { role: UserRole }, verb:
   return actor?.role === "OWNER" ? null : `Only the owner can ${verb} administrators.`;
 }
 
+/** Whether this person counts as a supporter may have changed: bring the ideas they supported up to date. */
+async function recheckSupport(userId: string) {
+  const { reevaluateIdeas } = await import("./community/ideas");
+  await reevaluateIdeas(userId);
+}
+
 async function endAccess(userId: string) {
   await revokeUserSessions(userId);
   await publishRealtime(db, { t: "user.revoked", userId });
@@ -362,6 +368,7 @@ export async function setMembership(actorId: string, userId: string, to: Communi
   if (to === "SUSPENDED") await groups.reassignCoordinatorsOf(userId);
   else if (to === "REVOKED") await groups.leaveAllGroups(userId);
   else await groups.fillVacantCoordinators(userId);
+  await recheckSupport(userId);
   await audit(actorId, `membership.${to.toLowerCase()}`, "User", userId, { from: target.membershipStatus });
   if (opts.notify) {
     await deliverTemplate(
@@ -385,6 +392,7 @@ export async function suspendUser(actorId: string, userId: string, reason: strin
   // A suspended person cannot act as coordinator: their groups get a new one now.
   const { reassignCoordinatorsOf } = await import("./community/groups");
   await reassignCoordinatorsOf(userId);
+  await recheckSupport(userId);
   await audit(actorId, "member.suspended", "User", userId);
   return { ok: true };
 }
@@ -401,6 +409,7 @@ export async function reactivateUser(actorId: string, userId: string): Promise<R
   await db.user.update({ where: { id: userId }, data: { status, suspendedAt: null, suspendedReason: null, deactivatedAt: null } });
   const { fillVacantCoordinators } = await import("./community/groups");
   await fillVacantCoordinators(userId);
+  await recheckSupport(userId);
   await audit(actorId, "member.reactivated", "User", userId);
   return { ok: true };
 }
@@ -422,6 +431,7 @@ export async function deactivateUser(actorId: string, userId: string): Promise<R
   const { leaveAllGroups } = await import("./community/groups");
   await leaveAllGroups(userId);
   await endAccess(userId);
+  await recheckSupport(userId);
   await audit(actorId, actorId === userId ? "member.self_deactivated" : "member.deactivated", "User", userId);
   return { ok: true };
 }

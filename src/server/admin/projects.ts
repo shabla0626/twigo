@@ -1,5 +1,6 @@
 import "server-only";
 import type { AgreementStatus, AssignmentStatus, MilestoneStatus, Prisma, ProjectStatus, WorkCategory } from "@prisma/client";
+import { ACTIVE_MEMBER } from "@/lib/auth/member-where";
 import { db } from "@/lib/db";
 import { audit } from "@/lib/audit";
 import { parseSkillList } from "@/lib/validation/application";
@@ -144,6 +145,9 @@ export async function addAssignment(
     where: { projectId_participantId: { projectId: input.projectId, participantId: input.participantId } },
   });
   if (exists) return { ok: false, error: "This participant is already assigned to the project." };
+  // Someone whose account is suspended, or whose community access is paused or removed, is not given new project work.
+  const assignable = await db.participant.findFirst({ where: { id: input.participantId, ...ASSIGNABLE }, select: { id: true } });
+  if (!assignable) return { ok: false, error: "This person cannot be assigned right now (inactive participant record, suspended account, or no community access)." };
   if (input.roleId) {
     const role = await db.projectRole.findFirst({ where: { id: input.roleId, projectId: input.projectId } });
     if (!role) return { ok: false, error: "Role does not belong to this project." };
@@ -214,9 +218,12 @@ export async function saveCompensation(
   return rec;
 }
 
+/** Active participant records whose person (if they have an account) can take part right now. */
+const ASSIGNABLE = { status: "ACTIVE", OR: [{ user: null }, { user: ACTIVE_MEMBER }] } satisfies Prisma.ParticipantWhereInput;
+
 export async function assignableParticipants() {
   return db.participant.findMany({
-    where: { status: "ACTIVE" },
+    where: ASSIGNABLE,
     orderBy: { applicant: { fullName: "asc" } },
     select: { id: true, applicant: { select: { fullName: true } }, skillsSummary: true },
   });

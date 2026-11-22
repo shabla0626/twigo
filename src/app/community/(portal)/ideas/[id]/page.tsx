@@ -41,7 +41,8 @@ export default async function IdeaPage({ params, searchParams }: Props) {
   if (!idea) notFound();
   const [comments, threshold] = await Promise.all([commentTree({ ideaId: idea.id }), getSetting("community.endorsementThreshold")]);
   const isAuthor = idea.authorId === user.id;
-  const eligible = idea.endorsements.length;
+  // The stored number counts only supporters who are active members right now: the same number the group decision uses.
+  const eligible = idea.endorsementCount;
   const remaining = Math.max(0, threshold - eligible);
   const status = ideaStatus({ status: idea.status, endorsementCount: eligible, group: idea.group }, threshold);
 

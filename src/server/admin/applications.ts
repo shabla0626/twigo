@@ -101,6 +101,14 @@ export const ADMIN_TRANSITIONS: Record<ApplicationStatus, ApplicationStatus[]> =
   WITHDRAWN: [],
 };
 
+const REOPEN_BLOCKED = "This applicant has already started a new application, so the declined one cannot be re-opened. Review the new application instead.";
+
+/** True when the applicant has another application that is still open (a person may only have one). */
+export async function hasOtherOpenApplication(applicantId: string, exceptId: string, tx: Prisma.TransactionClient = db): Promise<boolean> {
+  const other = await tx.application.findFirst({ where: { applicantId, id: { not: exceptId }, status: { notIn: ["DECLINED", "WITHDRAWN"] } }, select: { id: true } });
+  return Boolean(other);
+}
+
 /** The email that matches a decision (sent only when the administrator asks for it). */
 export const STATUS_EMAIL: Partial<Record<ApplicationStatus, TemplateKey>> = {
   INTERVIEW_REQUESTED: "interview_invitation",
@@ -147,6 +155,8 @@ export async function updateApplicationStatus(
     if (app.status === to && to === "ACCEPTED") return { ok: true as const, from: app.status, membership: "already" as const, app };
     if (!ADMIN_TRANSITIONS[app.status].includes(to))
       return { ok: false as const, error: `An application that is “${app.status.replace(/_/g, " ").toLowerCase()}” cannot be changed to “${to.replace(/_/g, " ").toLowerCase()}”.` };
+    // Re-opening a declined application would give the person two open applications.
+    if (app.status === "DECLINED" && (await hasOtherOpenApplication(app.applicantId, id, tx))) return { ok: false as const, error: REOPEN_BLOCKED };
     const now = new Date();
     await tx.application.update({
       where: { id },

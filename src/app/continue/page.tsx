@@ -2,6 +2,7 @@ import { redirect } from "next/navigation";
 import { getSession } from "@/lib/auth/guard";
 import { destinationFor } from "@/lib/auth/destination";
 import { isAdminRole } from "@/lib/auth/permissions";
+import { safeNext } from "@/lib/auth/safe-next";
 
 export const dynamic = "force-dynamic";
 
@@ -19,7 +20,7 @@ export default async function ContinuePage({ searchParams }: Props) {
   if (!s || s.user.status !== "ACTIVE") redirect("/login");
   const user = s.user;
   const dest = await destinationFor(user);
-  const next = sp.next && sp.next.startsWith("/") && !sp.next.startsWith("//") && !sp.next.startsWith("/\\") ? sp.next : "";
+  const next = safeNext(sp.next);
   const allowed =
     user.emailVerified &&
     ((next.startsWith("/admin") && isAdminRole(user.role)) ||

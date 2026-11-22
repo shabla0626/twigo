@@ -41,9 +41,10 @@ async function uniqueGroupSlug(tx: Prisma.TransactionClient, name: string) {
 export async function createGroupFromIdea(tx: Prisma.TransactionClient, ideaId: string, endorserIds: string[]) {
   const idea = await tx.businessIdea.findUniqueOrThrow({
     where: { id: ideaId },
-    select: { id: true, title: true, summary: true, description: true, category: true, authorId: true, author: { select: { status: true } } },
+    select: { id: true, title: true, summary: true, description: true, category: true, authorId: true },
   });
-  const authorActive = Boolean(idea.authorId && idea.author?.status === "ACTIVE");
+  // The author coordinates only if they can take part right now (same rule as everywhere else).
+  const authorActive = Boolean(idea.authorId && (await tx.user.findFirst({ where: { id: idea.authorId, ...ACTIVE_MEMBER }, select: { id: true } })));
   const coordinatorId = authorActive ? idea.authorId! : endorserIds[0]!;
   const memberIds = [...new Set([...(authorActive ? [idea.authorId!] : []), ...endorserIds])];
 
@@ -66,8 +67,9 @@ export async function createGroupFromIdea(tx: Prisma.TransactionClient, ideaId: 
   return { id: group.id, slug: group.slug, name: group.name, memberIds, authorId: authorActive ? idea.authorId : coordinatorId };
 }
 
+/** The number shown as "members": people in the group who can take part right now. */
 async function refreshMemberCount(groupId: string, tx: Prisma.TransactionClient = db) {
-  const count = await tx.groupMembership.count({ where: { groupId, status: "ACTIVE" } });
+  const count = await tx.groupMembership.count({ where: { groupId, status: "ACTIVE", user: ACTIVE_MEMBER } });
   await tx.researchGroup.update({ where: { id: groupId }, data: { memberCount: count } });
   return count;
 }
@@ -134,7 +136,7 @@ export async function getGroupOverview(slug: string) {
     include: {
       idea: { select: { id: true, title: true, summary: true, status: true, author: { select: { id: true, profile: { select: { displayName: true } } } } } },
       memberships: {
-        where: { status: "ACTIVE" },
+        where: { status: "ACTIVE", user: ACTIVE_MEMBER },
         orderBy: [{ role: "asc" }, { joinedAt: "asc" }],
         select: { role: true, joinedAt: true, founding: true, user: { select: { id: true, role: true, profile: { select: { displayName: true, headline: true } } } } },
       },
@@ -306,33 +308,31 @@ export async function leaveAllGroups(userId: string) {
 }
 
 /**
- * Someone's account was suspended, or their community access was paused: they
- * keep their place in their groups, but cannot act. Every group they coordinate
- * gets a new coordinator at once (or is flagged for administrators when nobody
- * else is eligible). Call this AFTER the account change has been saved.
+ * Brings a person's groups up to date after their account or community access
+ * changed (suspended, paused, restored). In every group they belong to: the
+ * member count is recounted, and the coordinator rule is applied (a coordinator
+ * who can no longer act is replaced at once; a group without coordinator gets
+ * one when somebody eligible is there). Call it AFTER the change was saved.
  */
-export async function reassignCoordinatorsOf(userId: string) {
-  const rows = await db.groupMembership.findMany({ where: { userId, status: "ACTIVE", role: "COORDINATOR" }, select: { groupId: true } });
+async function syncGroupsOf(userId: string, why: keyof typeof SUCCESSION_REASON) {
+  const rows = await db.groupMembership.findMany({ where: { userId, status: "ACTIVE", group: { status: { not: "ARCHIVED" } } }, select: { groupId: true } });
   for (const { groupId } of rows) {
-    const outcome = await withGroupLock(groupId, (tx) => ensureCoordinator(tx, groupId));
-    await announceSuccession(groupId, outcome, "unavailable");
+    const outcome = await withGroupLock(groupId, async (tx) => {
+      await refreshMemberCount(groupId, tx);
+      return ensureCoordinator(tx, groupId);
+    });
+    await announceSuccession(groupId, outcome, why);
   }
 }
 
-/**
- * Someone regained access. They return as an ordinary member (the coordinator
- * role is never given back automatically). Groups of theirs that were left
- * without any coordinator get one again by the normal succession rule.
- */
+/** Account suspended or community access paused: the person keeps their place, but cannot act or count. */
+export async function reassignCoordinatorsOf(userId: string) {
+  await syncGroupsOf(userId, "unavailable");
+}
+
+/** Access regained: the person returns as an ordinary member (the coordinator role is never given back automatically). */
 export async function fillVacantCoordinators(userId: string) {
-  const rows = await db.groupMembership.findMany({
-    where: { userId, status: "ACTIVE", group: { status: { not: "ARCHIVED" } } },
-    select: { groupId: true },
-  });
-  for (const { groupId } of rows) {
-    const outcome = await withGroupLock(groupId, (tx) => ensureCoordinator(tx, groupId));
-    await announceSuccession(groupId, outcome, "vacant");
-  }
+  await syncGroupsOf(userId, "vacant");
 }
 
 /** Coordinator removes a disruptive member (audited). */

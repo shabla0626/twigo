@@ -215,12 +215,14 @@ export async function retryEmailAction(fd: FormData) {
 export async function saveSettingsAction(_p: FormState, fd: FormData): Promise<FormState> {
   const owner = await requireAdmin("settings.manage");
   if (!(await isRecentlyAuthenticated())) return { error: "Confirm your identity first (Account → Confirm identity)." };
+  let groupsCreated = 0;
   for (const key of Object.keys(SETTINGS) as SettingKey[]) {
     if (!fd.has(key)) continue;
     const res = await saveSetting(owner.id, key, str(fd, key).trim());
     if (!res.ok) return { error: res.error };
+    groupsCreated += res.groupsCreated;
   }
-  return { ok: "Settings saved." };
+  return { ok: groupsCreated ? `Settings saved. ${groupsCreated} research group${groupsCreated === 1 ? " was" : "s were"} created for ideas that now have enough supporters.` : "Settings saved." };
 }
 
 export async function setRoleAction(fd: FormData) {

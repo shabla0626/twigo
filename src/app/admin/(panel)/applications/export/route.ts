@@ -9,8 +9,8 @@ export const dynamic = "force-dynamic";
 
 /** CSV export of applications (formula-injection safe). */
 export async function GET(req: NextRequest) {
-  const admin = await requireAdmin("applications.export").catch(() => null);
-  if (!admin) return new NextResponse("Forbidden", { status: 403 });
+  // Owner only: this file takes every applicant's details out of the system at once.
+  const admin = await requireAdmin("applications.export");
   const s = req.nextUrl.searchParams.get("status");
   const status = s && s in APPLICATION_STATUSES ? (s as ApplicationStatus) : undefined;
   const csv = await applicationsCsv({ status });

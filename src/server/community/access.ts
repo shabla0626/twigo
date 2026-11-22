@@ -1,6 +1,7 @@
 import "server-only";
 import type { GroupMembership, ResearchGroup } from "@prisma/client";
 import { db } from "@/lib/db";
+import { ACTIVE_MEMBER } from "@/lib/auth/member-where";
 
 export class AccessError extends Error {
   constructor(message = "You do not have access to this.") {
@@ -57,8 +58,8 @@ export async function requireCoordinator(groupId: string, userId: string): Promi
   return a;
 }
 
-/** Ids of active members of a group (for notifications). */
+/** Ids of the group's members who can take part right now (for notifications). */
 export async function activeMemberIds(groupId: string): Promise<string[]> {
-  const rows = await db.groupMembership.findMany({ where: { groupId, status: "ACTIVE", user: { status: "ACTIVE" } }, select: { userId: true } });
+  const rows = await db.groupMembership.findMany({ where: { groupId, status: "ACTIVE", user: ACTIVE_MEMBER }, select: { userId: true } });
   return rows.map((r) => r.userId);
 }

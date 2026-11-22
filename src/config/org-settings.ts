@@ -10,7 +10,7 @@ import { z } from "zod";
 export const SETTINGS = {
   "community.endorsementThreshold": {
     label: "Endorsements needed to create a research group",
-    help: "Distinct active members other than the author. Default 2.",
+    help: "Distinct active members other than the author. Default 2. Saving a lower number immediately creates groups for open ideas that already have that many supporters.",
     schema: z.coerce.number().int().min(1).max(50),
     default: 2 as number,
   },

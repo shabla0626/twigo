@@ -6,7 +6,7 @@ import { brand } from "@/config/brand";
 import { db } from "../db";
 import { env } from "../env";
 import { logger } from "../logger";
-import { SECRET_TEMPLATES, classifySmtpError, isLocalHost, isValidSender } from "./status";
+import { SECRET_TEMPLATES, classifySmtpError, isLocalTestMail, isValidSender } from "./status";
 import { TEMPLATES, renderTemplate, type EmailMessage, type TemplateKey } from "./templates";
 
 /**
@@ -32,8 +32,8 @@ export function smtpSettings() {
     user: e.SMTP_USER,
     hasPassword: Boolean(e.SMTP_PASSWORD),
     from: e.EMAIL_FROM,
-    local: isLocalHost(e.SMTP_HOST),
-    provider: /resend\.com$/i.test(e.SMTP_HOST) ? "Resend" : isLocalHost(e.SMTP_HOST) ? "Local test mail server" : e.SMTP_HOST ? "SMTP" : "None",
+    local: isLocalTestMail(e.SMTP_HOST),
+    provider: /resend\.com$/i.test(e.SMTP_HOST) ? "Resend" : isLocalTestMail(e.SMTP_HOST) ? "Local test mail server" : e.SMTP_HOST ? "SMTP" : "None",
   };
 }
 
