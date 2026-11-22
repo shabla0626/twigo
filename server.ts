@@ -78,6 +78,14 @@ async function main() {
     const { launchProblems } = await import("./src/ops/launch-checks");
     const found = await launchProblems(db);
     if (found.length) refuseToStart("the database is not ready for production", found);
+    // Passages that still wait for legally reviewed text are shown publicly as highlighted placeholders.
+    const { TEXT_PLACEHOLDERS } = await import("./src/config/launch-placeholders");
+    if (TEXT_PLACEHOLDERS.length) {
+      log("launch.placeholders_remaining", {
+        warning: `${TEXT_PLACEHOLDERS.length} passage(s) on the public legal pages still show a placeholder instead of reviewed text`,
+        passages: TEXT_PLACEHOLDERS.map((p) => p.what),
+      });
+    }
   }
 
   const app = next({ dev, hostname, port, webpack: true });

@@ -1,3 +1,4 @@
+import { liveMeeting } from "@/server/community/meetings";
 import Link from "next/link";
 import type { IdeaCategory } from "@prisma/client";
 import { IdeaCard } from "@/components/community/cards";
@@ -38,7 +39,7 @@ export default async function BusinessIdeasPage({ searchParams }: Props) {
     myGroups(user.id),
     listGroups({ sort: "new", take: 4 }),
     db.groupMeeting.findMany({
-      where: { endedAt: null, group: { suspendedAt: null, memberships: { some: { userId: user.id, status: "ACTIVE" } } } },
+      where: { ...liveMeeting(), group: { suspendedAt: null, memberships: { some: { userId: user.id, status: "ACTIVE" } } } },
       select: { id: true, kind: true, title: true, group: { select: { slug: true, name: true } } },
       take: 3,
     }),
@@ -84,7 +85,7 @@ export default async function BusinessIdeasPage({ searchParams }: Props) {
                 >
                   <IconVideo className="h-5 w-5 shrink-0" />
                   <span className="min-w-0 flex-1">
-                    A {m.kind === "VOICE" ? "voice" : "video"} meeting is happening now in <strong>{m.group.name}</strong>
+                    A meeting is happening now in <strong>{m.group.name}</strong>
                   </span>
                   <span className="font-semibold underline">Join</span>
                 </Link>

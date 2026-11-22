@@ -4,7 +4,7 @@ import { Reveal } from "./reveal";
 
 const STAGES: { glyph: GlyphName; title: string; body: string; tone: string }[] = [
   { glyph: "briefcase", title: "Actual customer revenue", body: "A customer pays for work that was delivered and accepted.", tone: "bg-sky-100 text-sky-800" },
-  { glyph: "clipboard", title: "Project expenses", body: "Direct costs of delivering that project are covered first.", tone: "bg-amber-100 text-amber-800" },
+  { glyph: "clipboard", title: "Agreed expenses and fees", body: "Project expenses and any organizational fee, as agreed in writing before the work began. Nothing else is deducted.", tone: "bg-amber-100 text-amber-800" },
   { glyph: "chart", title: "Agreed arrangements", body: "What remains is shared under the written agreement made before work began.", tone: "bg-violet-100 text-violet-800" },
   { glyph: "search", title: "Individual contributions", body: "Work performed, time, complexity, responsibility and quality.", tone: "bg-emerald-100 text-emerald-800" },
   { glyph: "globe", title: "Fair distribution", body: "Each participant is paid according to their agreed terms.", tone: "bg-accent-100 text-accent-800" },
@@ -43,7 +43,7 @@ export function RevenueFlow() {
           <div className="flex-1 bg-accent-300" />
         </div>
         <div className="mt-2 flex justify-between text-xs font-medium text-ink-600">
-          <span>Project expenses</span>
+          <span>Agreed expenses and fees</span>
           <span>Available for agreed compensation</span>
         </div>
         <div className="ml-[22%] mt-3 flex h-3 gap-1">

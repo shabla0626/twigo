@@ -1,5 +1,6 @@
 "use server";
 
+import { brand } from "@/config/brand";
 import path from "node:path";
 import { redirect } from "next/navigation";
 import type { UserRole } from "@prisma/client";
@@ -195,7 +196,7 @@ export async function sendTestToMeAction(): Promise<FormState> {
   const admin = await requireAdmin("email.send");
   const res = await deliver({
     to: admin.email,
-    subject: "Test email from the CoWork admin panel",
+    subject: `Test email from the ${brand().name} admin panel`,
     text: "This is a test email sent from the Email page of the admin panel. If you can read it in your inbox, email delivery works.\n\nYou can ignore this message.",
     sentById: admin.id,
   });

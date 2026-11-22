@@ -1,3 +1,4 @@
+import { liveMeeting } from "@/server/community/meetings";
 import { GroupCard } from "@/components/community/cards";
 import { EmptyState, PageTitle } from "@/components/community/ui";
 import { ButtonLink } from "@/components/ui/primitives";
@@ -11,7 +12,7 @@ export default async function MyGroupsPage() {
   const user = await requireMember();
   const mine = await myGroups(user.id);
   const live = new Set(
-    (await db.groupMeeting.findMany({ where: { endedAt: null, groupId: { in: mine.map((m) => m.group.id) } }, select: { groupId: true } })).map((m) => m.groupId),
+    (await db.groupMeeting.findMany({ where: { ...liveMeeting(), groupId: { in: mine.map((m) => m.group.id) } }, select: { groupId: true } })).map((m) => m.groupId),
   );
   return (
     <>

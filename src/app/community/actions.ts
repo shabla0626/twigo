@@ -279,7 +279,7 @@ export async function deleteDiscussionAction(fd: FormData) {
 export async function startMeetingAction(_p: FormState, fd: FormData): Promise<FormState> {
   const user = await requireMember();
   return guarded(async () => {
-    const parsed = meetingSchema.safeParse(fields(fd, ["kind", "title", "joinUrl"]));
+    const parsed = meetingSchema.safeParse(fields(fd, ["title", "joinUrl"]));
     if (!parsed.success) return { fieldErrors: parsed.error.flatten().fieldErrors };
     const res = await startMeeting(user.id, str(fd, "groupId"), parsed.data);
     if (!res.ok) return { error: res.error };

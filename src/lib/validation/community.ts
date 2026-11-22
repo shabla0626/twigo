@@ -88,7 +88,8 @@ export const chatMessageSchema = z.object({
 });
 
 export const meetingSchema = z.object({
-  kind: z.enum(["VOICE", "VIDEO"]),
+  // Older forms sent "VOICE" or "VIDEO"; both are the same thing (one Google Meet link).
+  kind: z.enum(["VOICE", "VIDEO"]).optional(),
   title: optText(120),
   joinUrl: z
     .string()

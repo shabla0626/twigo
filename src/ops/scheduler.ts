@@ -51,7 +51,7 @@ export function startScheduler(db: PrismaClient, opts: { databaseUrl: string; st
     try {
       await withJobLock(opts.databaseUrl, LOCKS.housekeeping, async () => {
         const res = await runHousekeeping(db, { storageDir: opts.storageDir });
-        if (res.unsentAttachments) opts.log("job.housekeeping", res);
+        if (res.unsentAttachments || res.meetingsEnded) opts.log("job.housekeeping", res);
       });
       await withJobLock(opts.databaseUrl, LOCKS.retention, async () => {
         if (await ranRecently(db, "retention", 23 * HOUR)) return;

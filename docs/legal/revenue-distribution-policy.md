@@ -9,6 +9,20 @@
 - Compensation is agreed in writing before work begins.
 - Income is not guaranteed.
 
+## Founder decision of 22 November 2026 (published on the "Pay & Fairness" page)
+- **No fixed organizational commission or retention percentage** is set at this stage.
+- **All realized business revenue is disclosed** to the participants of the project it
+  belongs to.
+- **Project expenses, any organizational fee, and compensation arrangements are agreed
+  explicitly, in writing, before commercial work begins.**
+- **Distribution reflects actual contributions** and those previously agreed arrangements.
+- **No undisclosed deductions, no mandatory investments, no membership fees, no guaranteed
+  income.**
+
+This answers decision 3 below in principle ("no fixed share; any fee is agreed per
+project"). The remaining points are still open and need legal and tax advice. The public
+wording has not been reviewed by a lawyer yet.
+
 ## Decisions needed
 1. **What is distributed:** gross project revenue, revenue after direct costs, or profit?
 2. **Order of deductions:** direct project costs, payment fees, taxes, organization

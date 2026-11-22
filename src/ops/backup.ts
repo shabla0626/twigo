@@ -270,7 +270,7 @@ export async function restoreBackup(opts: RestoreOptions): Promise<RestoreResult
     for await (const line of readBackupLines(opts.file, opts.encryptionKey)) {
       if (!manifest) {
         manifest = JSON.parse(line) as Manifest;
-        if (manifest.type !== "manifest") throw new Error("Not a CoWork backup file.");
+        if (manifest.type !== "manifest") throw new Error("This is not a backup file made by this site.");
         continue;
       }
       if (!current) {

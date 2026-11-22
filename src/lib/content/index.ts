@@ -24,6 +24,10 @@ export const getSiteContent = cache(async (): Promise<SiteContentMap> => {
       if (parsed.success) merged[key] = parsed.data;
       else logger.warn("content.invalid_override", { key });
     }
+    // The organization's name has ONE source: the ORG_NAME setting (an organization-wide,
+    // owner-controlled setting). A name saved earlier with the website content is ignored,
+    // so the site, the sign-in pages and all emails always show the same name.
+    (merged.company as SiteContentMap["company"]) = { ...(merged.company as SiteContentMap["company"]), name: base.company.name };
     return merged as SiteContentMap;
   } catch (err) {
     // The public site must render even if the database is unavailable.

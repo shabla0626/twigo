@@ -70,6 +70,8 @@ exits without serving anything when:
 * `ENCRYPTION_KEY` is missing/short or equals `AUTH_SECRET`, or `AUTH_SECRET` still has
   the development value;
 * `SMTP_HOST`, `EMAIL_FROM` or `ORG_CONTACT_EMAIL` is empty;
+* `ORG_LEGAL_NAME` or `ORG_JURISDICTION` is empty (the Privacy Notice and the Terms would
+  show a placeholder instead of who is responsible);
 * `BACKUP_ENCRYPTION_KEY` is missing (at least 16 characters);
 * `ADMIN_REQUIRE_2FA` is turned off;
 * `TRUSTED_PROXY_HOPS` is not set explicitly;

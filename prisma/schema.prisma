@@ -977,6 +977,9 @@ model StoredFile {
 }
 
 /// Meeting metadata only. Audio and video are never recorded or stored.
+/// A group has at most ONE meeting in progress (endedAt IS NULL). Enforced by the
+/// partial unique index "GroupMeeting_one_active_per_group", created in the
+/// migration 20261122230000 (Prisma cannot express a partial index here).
 model GroupMeeting {
   id          String      @id @default(cuid())
   groupId     String

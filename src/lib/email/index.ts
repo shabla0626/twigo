@@ -89,7 +89,8 @@ function failure(err: unknown): Extract<SendResult, { status: "failed" }> {
 }
 
 /** Header that ties a sent message to its EmailDelivery row (for provider delivery reports). */
-export const DELIVERY_HEADER = "X-CoWork-Delivery-Id";
+/** Carries our own delivery id, so a provider's delivery report can be matched to the exact message. */
+export const DELIVERY_HEADER = "X-Delivery-Id";
 
 export async function sendEmail(message: EmailMessage, deliveryId?: string): Promise<SendResult> {
   const problem = emailConfigProblem();

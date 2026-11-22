@@ -509,19 +509,18 @@ test("14–15. real-time chat between independent sessions, persistent after rel
   await expect(c.getByTestId("chat-messages").getByText("Yes! I will list local competitors.")).toBeVisible();
 });
 
-test("16–18. members start and join voice and video meetings (Google Meet links)", async () => {
+test("16–18. members start and join meetings (Google Meet links)", async () => {
   const a = sessions.A!.page;
   const c = sessions.C!.page;
-  for (const [kind, url] of [
-    ["VOICE", "https://meet.google.com/abc-defg-hij"],
-    ["VIDEO", "https://meet.google.com/xyz-uvwx-rst"],
+  for (const [round, url] of [
+    [1, "https://meet.google.com/abc-defg-hij"],
+    [2, "https://meet.google.com/xyz-uvwx-rst"],
   ] as const) {
-    const label = kind === "VOICE" ? "Start Voice Meeting" : "Start Video Meeting";
     await a.goto(`${groupUrl}/meetings`);
     await a.getByLabel("Paste the Google Meet link").fill(url);
-    await a.getByRole("button", { name: label }).click();
+    await a.getByRole("button", { name: "Start Meeting" }).click();
     await expect(a.getByText("In progress", { exact: true })).toBeVisible();
-    await expect(a.getByRole("heading", { name: kind === "VOICE" ? "Voice meeting" : "Video meeting" })).toBeVisible();
+    await expect(a.getByRole("heading", { name: "Meeting", exact: true })).toBeVisible();
     // Other members see it on the group overview and on the Meetings tab.
     await c.goto(groupUrl);
     await expect(c.getByText(/meeting is happening now/)).toBeVisible();
@@ -531,9 +530,9 @@ test("16–18. members start and join voice and video meetings (Google Meet link
     const [req] = await Promise.all([c.waitForRequest((r) => r.url().startsWith(url)).catch(() => null), c.getByRole("button", { name: "Join Meeting" }).click()]);
     expect(req?.url().startsWith(url)).toBe(true);
     await a.goto(`${groupUrl}/meetings`);
-    if (kind === "VOICE") await a11y(a, "meeting in progress");
+    if (round === 1) await a11y(a, "meeting in progress");
     await a.getByRole("button", { name: "End meeting" }).click();
-    await expect(a.getByRole("button", { name: "Start Video Meeting" })).toBeVisible();
+    await expect(a.getByRole("button", { name: "Start Meeting" })).toBeVisible();
   }
 });
 

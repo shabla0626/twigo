@@ -4,7 +4,7 @@ import { useActionState } from "react";
 import type { FormAction, FormState } from "../forms/action-form";
 import { FormAlert, Input } from "../forms/fields";
 import { Button } from "../ui/primitives";
-import { IconPhone, IconVideo } from "./icons";
+import { IconVideo } from "./icons";
 
 /**
  * Three plain steps: create a Google Meet link, paste it, then start a video
@@ -54,14 +54,14 @@ export function StartMeetingForm({ groupId, action }: { groupId: string; action:
           <div className="min-w-0 flex-1">
             <p className="font-medium text-ink-950">Start the meeting</p>
             <div className="mt-2 flex flex-wrap gap-2">
-              <Button type="submit" name="kind" value="VIDEO" disabled={pending}>
-                <IconVideo className="h-5 w-5" /> Start Video Meeting
-              </Button>
-              <Button type="submit" name="kind" value="VOICE" variant="secondary" disabled={pending}>
-                <IconPhone className="h-5 w-5" /> Start Voice Meeting
+              <Button type="submit" disabled={pending}>
+                <IconVideo className="h-5 w-5" /> Start Meeting
               </Button>
             </div>
-            <p className="mt-2 text-sm text-ink-600">Everyone in the group is notified and can join from this page.</p>
+            <p className="mt-2 text-sm text-ink-600">
+              Everyone in the group is notified and can join from this page. The call itself happens in Google Meet; there, each person chooses whether to
+              use the camera or voice only.
+            </p>
           </div>
         </li>
       </ol>

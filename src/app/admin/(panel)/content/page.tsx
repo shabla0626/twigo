@@ -36,7 +36,15 @@ function Editor({ k, c }: { k: ContentKey; c: SiteContentMap }) {
     case "company":
       return (
         <>
-          <TextField name="name" label="Organization display name" value={c.company.name} max={80} />
+          <input type="hidden" name="name" value={c.company.name} />
+          <div>
+            <p className={smallLabel}>Organization name</p>
+            <p className="mt-1 text-sm text-ink-900">{c.company.name}</p>
+            <p className="mt-1 text-xs text-ink-600">
+              Set once for the whole site, the sign-in pages and all emails with the ORG_NAME setting on the server (owner only), so it is the same
+              everywhere. It cannot be changed here.
+            </p>
+          </div>
           <TextField name="tagline" label="Tagline" value={c.company.tagline} max={160} />
           <TextField name="mission" label="Mission statement" value={c.company.mission} rows={4} max={600} />
         </>

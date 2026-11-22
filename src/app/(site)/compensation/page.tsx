@@ -78,8 +78,11 @@ export default function CompensationPage() {
                 items={[
                   "No membership fee is required, ever.",
                   "No initial financial contribution or investment is required.",
-                  "Compensation terms are agreed in writing before project work begins.",
-                  "Distribution rules for each project are documented and shared with the people they apply to.",
+                  "The revenue a customer pays for a project is disclosed to the people who work on that project.",
+                  "Project expenses, any organizational fee, and each person's compensation are agreed in writing before commercial work begins.",
+                  "There is no fixed organizational percentage.",
+                  "What is distributed follows actual contributions and those agreements.",
+                  "There are no undisclosed deductions.",
                   "Compensation is paid from actual customer revenue for the project.",
                   "Each participant's compensation terms are private between them and the organization.",
                 ]}

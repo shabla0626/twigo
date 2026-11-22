@@ -134,6 +134,20 @@ Prisma-compatible) and webpack. IPv6 loopback connections are blocked on that ma
 so the dev server binds to 127.0.0.1. Stop the database before `npm ci` and the dev
 server before `npm run build` (Windows file locks).
 
+## Environments (keep them apart)
+
+| Environment | Database | What it is for |
+| --- | --- | --- |
+| Development | `cowork` on this computer | The working copy. It may contain test people, test projects and a development owner account. **It is never taken to production.** |
+| Demonstration | `cowork_demo` | Fictional people for showing the site (`npm run demo:seed`) |
+| Automated tests | `cowork_test`, `cowork_e2e` | Emptied and refilled by the tests |
+| Production | created empty at launch | One legitimate owner and default settings, then real people only |
+
+Production is started from an empty database (`docs/DEPLOYMENT.md`, section 6). The server
+refuses a production start when an owner or administrator has a test address, so a
+development database cannot become the live one by mistake. Version control, safety
+copies and rollback are described in `docs/DEPLOYMENT.md`, section 11.
+
 ## Testing
 
 * `npm test`: 103 Vitest tests (unit + PostgreSQL integration), including permissions,

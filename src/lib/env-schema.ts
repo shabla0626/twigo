@@ -97,6 +97,9 @@ export function startupProblems(raw: Record<string, string | undefined>, e: Env)
   if (!e.SMTP_HOST) problems.push("SMTP_HOST must be set (email confirmation and password reset cannot work without email)");
   if (!e.EMAIL_FROM) problems.push("EMAIL_FROM must be set (the sender address of all emails)");
   if (!e.ORG_CONTACT_EMAIL) problems.push("ORG_CONTACT_EMAIL must be set (the public contact address)");
+  // Without these the Privacy Notice and the Terms would show a placeholder instead of who is responsible.
+  if (!e.ORG_LEGAL_NAME) problems.push("ORG_LEGAL_NAME must be set (the legal name shown in the Privacy Notice and the Terms)");
+  if (!e.ORG_JURISDICTION) problems.push("ORG_JURISDICTION must be set (the governing law shown in the Privacy Notice and the Terms)");
   if (e.BACKUP_ENCRYPTION_KEY.length < 16) problems.push("BACKUP_ENCRYPTION_KEY must be set (at least 16 characters); backups contain personal data");
   if (!e.ADMIN_REQUIRE_2FA) problems.push("ADMIN_REQUIRE_2FA must not be turned off");
   if (raw.TRUSTED_PROXY_HOPS === undefined || raw.TRUSTED_PROXY_HOPS === "")

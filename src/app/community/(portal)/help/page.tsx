@@ -18,7 +18,7 @@ const QUESTIONS: [string, string][] = [
   ],
   ["Can I join or leave groups freely?", "Yes. Join any active group from Explore Groups, and leave at any time from the group page. Leaving a group does not close your account."],
   [
-    "How do voice and video meetings work?",
+    "How do meetings work?",
     "Meetings run in Google Meet. Anyone in the group can start one by pasting a Google Meet link; the group is notified and members join from the Meetings tab. Mute, camera and leave buttons are at the bottom of the Google Meet window. Meetings are not recorded by this site.",
   ],
   ["Who can see what I post?", "Ideas, comments and group discussions are visible to all approved members. Group chat, meetings and shared research are visible only to that group’s current members. Whenever someone joins or leaves a group, a line in its chat says so."],
@@ -36,7 +36,7 @@ export default async function HelpPage() {
     ["Propose an idea", "Share a business opportunity in a few sentences."],
     ["Discuss and support", `Members comment and support the ideas they want to investigate. When ${threshold} members other than the author support an idea, a research group is created automatically.`],
     ["Join a group", "Explore groups and join the ones that interest you. Your groups are under My Groups."],
-    ["Work together", "Chat, meet by voice or video, and collect research to test whether the idea can work."],
+    ["Work together", "Chat, meet through Google Meet, and collect research to test whether the idea can work."],
     ["Turn it into a project", "When a group has a credible plan, it asks the organization for review. Paid work only starts after written agreements."],
   ];
   return (

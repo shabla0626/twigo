@@ -251,6 +251,7 @@ async function ensureCoordinator(tx: Prisma.TransactionClient, groupId: string):
   const remaining = await tx.groupMembership.count({ where: { groupId, status: "ACTIVE" } });
   if (remaining === 0) {
     await tx.researchGroup.update({ where: { id: groupId }, data: { status: "ARCHIVED", archivedAt: new Date(), adminManaged: true } });
+    await tx.groupMeeting.updateMany({ where: { groupId, endedAt: null }, data: { endedAt: new Date() } });
     return { promoted: null, archived: true, flagged: true };
   }
   await tx.researchGroup.update({ where: { id: groupId }, data: { adminManaged: true } });
@@ -422,6 +423,8 @@ export async function adminSetGroupState(adminId: string, groupId: string, actio
           ? { suspendedAt: new Date(), suspendedReason: reason?.slice(0, 500) || null }
           : { suspendedAt: null, suspendedReason: null };
   await db.researchGroup.update({ where: { id: groupId }, data });
+  // A group that is archived or suspended has no meeting in progress.
+  if (action === "archive" || action === "suspend") await db.groupMeeting.updateMany({ where: { groupId, endedAt: null }, data: { endedAt: new Date() } });
   if (action === "reopen") {
     const outcome = await withGroupLock(groupId, async (tx) => {
       const members = await tx.groupMembership.count({ where: { groupId, status: "ACTIVE" } });

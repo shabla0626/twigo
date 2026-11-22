@@ -18,6 +18,8 @@ const GOOD: Record<string, string> = {
   SMTP_HOST: "smtp.provider.net",
   EMAIL_FROM: "no-reply@organization.org",
   ORG_CONTACT_EMAIL: "hello@organization.org",
+  ORG_LEGAL_NAME: "Organization Example LLC",
+  ORG_JURISDICTION: "State of Example, USA",
   BACKUP_ENCRYPTION_KEY: "backup-key-0123456789",
   TRUSTED_PROXY_HOPS: "1",
 };
@@ -40,6 +42,8 @@ describe("P1-8: production settings are checked before the site starts", () => {
     expect(problems({ SMTP_HOST: undefined })[0]).toContain("SMTP_HOST");
     expect(problems({ EMAIL_FROM: undefined })[0]).toContain("EMAIL_FROM");
     expect(problems({ ORG_CONTACT_EMAIL: undefined })[0]).toContain("ORG_CONTACT_EMAIL");
+    expect(problems({ ORG_LEGAL_NAME: undefined })[0]).toContain("ORG_LEGAL_NAME");
+    expect(problems({ ORG_JURISDICTION: undefined })[0]).toContain("ORG_JURISDICTION");
     expect(problems({ BACKUP_ENCRYPTION_KEY: undefined })[0]).toContain("BACKUP_ENCRYPTION_KEY");
     expect(problems({ ADMIN_REQUIRE_2FA: "false" })[0]).toContain("ADMIN_REQUIRE_2FA");
     expect(problems({ TRUSTED_PROXY_HOPS: undefined })[0]).toContain("TRUSTED_PROXY_HOPS");
@@ -57,7 +61,7 @@ describe("P1-8: production settings are checked before the site starts", () => {
   });
 
   it("the local test switch works only with a local site address and never hides wrong secrets", () => {
-    const local = { LOCAL_PRODUCTION_TEST: "1", SITE_URL: "http://127.0.0.1:3210", SMTP_HOST: undefined, BACKUP_ENCRYPTION_KEY: undefined, TRUSTED_PROXY_HOPS: undefined };
+    const local = { LOCAL_PRODUCTION_TEST: "1", SITE_URL: "http://127.0.0.1:3210", SMTP_HOST: undefined, BACKUP_ENCRYPTION_KEY: undefined, TRUSTED_PROXY_HOPS: undefined, ORG_LEGAL_NAME: undefined, ORG_JURISDICTION: undefined };
     expect(problems(local)).toEqual([]);
     expect(problems({ ...local, ENCRYPTION_KEY: "short" })[0]).toContain("ENCRYPTION_KEY");
     // Left switched on by mistake on a real site: refused, and the strict checks are not skipped silently.

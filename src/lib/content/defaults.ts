@@ -53,7 +53,7 @@ export function defaultContent(org: { name: string; contactEmail: string }): Sit
         },
         {
           q: "How is compensation determined?",
-          a: "Before each project begins, the people involved agree in writing on the scope of work, responsibilities and compensation terms. Compensation reflects the work actually performed, time invested, complexity and responsibility, quality of deliverables and the previously agreed terms, and it is paid from actual customer revenue for that project.",
+          a: "Before each project begins, the people involved agree in writing on the scope of work, responsibilities and compensation terms. Compensation reflects the work actually performed, time invested, complexity and responsibility, quality of deliverables and the previously agreed terms. The revenue a customer pays for a project is disclosed to the people who work on it. Project expenses and any organizational fee are agreed in writing beforehand as well; there is no fixed organizational percentage and there are no undisclosed deductions. Compensation is paid from actual customer revenue, after the customer has paid.",
         },
         {
           q: "Is income guaranteed?",

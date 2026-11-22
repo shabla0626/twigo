@@ -31,12 +31,14 @@ type ProviderEvent = {
   data?: { email_id?: string; to?: string[] | string; subject?: string; headers?: { name?: string; value?: string }[] | Record<string, string> };
 };
 
-const DELIVERY_HEADER = "x-cowork-delivery-id";
+// The current header name, and the one used before the organization's name was removed
+// from it (emails sent earlier may still be reported with the old one).
+const DELIVERY_HEADERS = ["x-delivery-id", "x-cowork-delivery-id"];
 
 function deliveryIdFrom(headers: NonNullable<ProviderEvent["data"]>["headers"]): string | null {
   if (!headers) return null;
-  if (Array.isArray(headers)) return headers.find((h) => h.name?.toLowerCase() === DELIVERY_HEADER)?.value ?? null;
-  const key = Object.keys(headers).find((k) => k.toLowerCase() === DELIVERY_HEADER);
+  if (Array.isArray(headers)) return headers.find((h) => DELIVERY_HEADERS.includes(h.name?.toLowerCase() ?? ""))?.value ?? null;
+  const key = Object.keys(headers).find((k) => DELIVERY_HEADERS.includes(k.toLowerCase()));
   return key ? headers[key]! : null;
 }
 

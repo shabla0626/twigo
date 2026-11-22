@@ -28,6 +28,16 @@ export async function purgeUnsentAttachments(db: PrismaClient, storageDir: strin
   return stale.length;
 }
 
-export async function runHousekeeping(db: PrismaClient, opts: { storageDir: string; now?: number }): Promise<{ unsentAttachments: number }> {
-  return { unsentAttachments: await purgeUnsentAttachments(db, opts.storageDir, opts.now) };
+/** Same limit as MEETING_MAX_HOURS in src/server/community/meetings.ts (kept here so this file has no framework imports). */
+const MEETING_MAX_HOURS = 4;
+
+/** Meetings nobody ended are marked as ended once they are past the limit. */
+export async function expireMeetings(db: PrismaClient, now = Date.now()): Promise<number> {
+  // Times are stored as UTC without a zone, so the cut-off is computed here, not with the database's now().
+  const cutoff = new Date(now - MEETING_MAX_HOURS * HOUR);
+  return db.$executeRaw`UPDATE "GroupMeeting" SET "endedAt" = "startedAt" + make_interval(hours => ${MEETING_MAX_HOURS}::int) WHERE "endedAt" IS NULL AND "startedAt" < ${cutoff}`;
+}
+
+export async function runHousekeeping(db: PrismaClient, opts: { storageDir: string; now?: number }): Promise<{ unsentAttachments: number; meetingsEnded: number }> {
+  return { unsentAttachments: await purgeUnsentAttachments(db, opts.storageDir, opts.now), meetingsEnded: await expireMeetings(db) };
 }

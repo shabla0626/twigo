@@ -57,7 +57,7 @@ export default async function GroupOverviewPage({ params, searchParams }: Props)
         {meeting && (
           <Link href={`${base}/meetings`} className="flex items-center gap-3 rounded-2xl bg-emerald-50 p-4 text-sm font-medium text-emerald-950 ring-1 ring-emerald-200 hover:bg-emerald-100">
             <IconVideo className="h-5 w-5 shrink-0" />
-            <span className="flex-1">A {meeting.kind === "VOICE" ? "voice" : "video"} meeting is happening now.</span>
+            <span className="flex-1">A meeting is happening now.</span>
             <span className="underline">Join</span>
           </Link>
         )}

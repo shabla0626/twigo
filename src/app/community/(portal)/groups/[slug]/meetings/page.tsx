@@ -1,5 +1,6 @@
+import { MEETING_MAX_HOURS, isPastLimit, mayEndMeeting } from "@/server/community/meetings";
 import { FormAlert } from "@/components/forms/fields";
-import { IconPhone, IconVideo } from "@/components/community/icons";
+import { IconVideo } from "@/components/community/icons";
 import { MembersOnly } from "@/components/community/members-only";
 import { StartMeetingForm } from "@/components/community/start-meeting";
 import { Panel, Time } from "@/components/community/ui";
@@ -10,14 +11,16 @@ import { endMeetingAction, joinMeetingAction, startMeetingAction } from "../../.
 
 type Props = { params: Promise<{ slug: string }>; searchParams: Promise<Record<string, string | undefined>> };
 
-/** Voice and video meetings (held in Google Meet). */
+/** Meetings. They are held in Google Meet; this site only shares the link with the group. */
 export default async function MeetingsPage({ params, searchParams }: Props) {
   const { slug } = await params;
   const { error } = await searchParams;
   const { user, group, isMember, isCoordinator, isOpen } = await loadGroupPage(slug);
   if (!isMember) return <MembersOnly groupId={group.id} what="Meetings" canJoin={isOpen} />;
   const [current, history] = await Promise.all([groupMeetingNow(group.id), meetingHistory(group.id, user.id)]);
-  const Icon = current?.kind === "VOICE" ? IconPhone : IconVideo;
+  const Icon = IconVideo;
+  // After the first hour anyone in the group may end a meeting its starter forgot.
+  const canEnd = current ? mayEndMeeting(current, user.id, isCoordinator) : false;
   return (
     <div className="max-w-3xl space-y-6">
       {error && <FormAlert tone="error">{error}</FormAlert>}
@@ -29,7 +32,7 @@ export default async function MeetingsPage({ params, searchParams }: Props) {
           </p>
           <h2 id="live-h" className="mt-1 flex items-center gap-2 text-xl font-semibold text-ink-950">
             <Icon className="h-6 w-6 text-emerald-700" />
-            {current.title || (current.kind === "VOICE" ? "Voice meeting" : "Video meeting")}
+            {current.title || "Meeting"}
           </h2>
           <p className="mt-1 text-sm text-ink-700">
             Started by {current.startedBy?.profile?.displayName ?? "a member"} · <Time date={current.startedAt} />
@@ -42,7 +45,7 @@ export default async function MeetingsPage({ params, searchParams }: Props) {
                 <Icon className="h-5 w-5" /> Join Meeting
               </Button>
             </form>
-            {(current.startedById === user.id || isCoordinator) && (
+            {canEnd && (
               <form action={endMeetingAction}>
                 <input type="hidden" name="groupId" value={group.id} />
                 <input type="hidden" name="meetingId" value={current.id} />
@@ -57,7 +60,7 @@ export default async function MeetingsPage({ params, searchParams }: Props) {
             <p>
               Use the buttons at the bottom of the Google Meet window to <strong>mute or unmute</strong>, turn your <strong>camera on or off</strong>, and{" "}
               <strong>leave</strong> the call. Joining with voice only is fine.
-              {current.startedById === user.id || isCoordinator ? " When everyone has left, press “End meeting” here." : ""}
+              {canEnd ? " When everyone has left, press “End meeting” here." : ""} A meeting is shown as in progress for at most {MEETING_MAX_HOURS} hours.
             </p>
           </div>
         </section>
@@ -76,10 +79,10 @@ export default async function MeetingsPage({ params, searchParams }: Props) {
             {history.map((m) => (
               <li key={m.id} className="flex flex-wrap justify-between gap-2 py-2.5">
                 <span className="text-ink-800">
-                  {m.title || (m.kind === "VOICE" ? "Voice meeting" : "Video meeting")} · started by {m.startedBy?.profile?.displayName ?? "a member"}
+                  {m.title || "Meeting"} · started by {m.startedBy?.profile?.displayName ?? "a member"}
                 </span>
                 <span className="text-ink-500">
-                  <Time date={m.startedAt} /> · {m._count.attendance} joined · {m.endedAt ? "ended" : "in progress"}
+                  <Time date={m.startedAt} /> · {m._count.attendance} joined · {m.endedAt || isPastLimit(m.startedAt) ? "ended" : "in progress"}
                 </span>
               </li>
             ))}
