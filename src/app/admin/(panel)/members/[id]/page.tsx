@@ -1,3 +1,5 @@
+import { APPLICATION_STATUSES } from "@/lib/labels";
+import { accountTypeLabel } from "@/server/admin/members";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { AdminHeader, Dl, Flash, Panel, fmtDate, membershipTone, smallInput, smallLabel } from "@/components/admin/ui";
@@ -33,6 +35,20 @@ export default async function MemberAdminDetail({ params, searchParams }: Props)
   });
   if (!u) notFound();
   const reportsAgainst = await db.contentReport.count({ where: { targetType: "USER", targetId: u.id } });
+  const latestApplication = u.applicant?.applications[0] ?? null;
+  // One plain sentence: can this person use the member community right now, and if not, why not.
+  const inShort =
+    u.status !== "ACTIVE"
+      ? "This account cannot sign in."
+      : !u.emailVerifiedAt
+        ? "This person can sign in, but must confirm their email address before anything else."
+        : u.role !== "MEMBER"
+          ? "Staff account: it can use the admin area and the member community."
+          : u.membershipStatus === "ACTIVE"
+            ? "This person can use the member community."
+            : u.membershipStatus === "NONE"
+              ? "This person can sign in and see their application, but cannot enter the member community (not approved yet)."
+              : `This person can sign in, but their community access is ${u.membershipStatus === "SUSPENDED" ? "paused" : "removed"}.`;
   const canSuspend = can(admin.role, "members.suspend") && u.id !== admin.id && (u.role === "MEMBER" || admin.role === "OWNER");
   return (
     <>
@@ -41,17 +57,64 @@ export default async function MemberAdminDetail({ params, searchParams }: Props)
           ← All members
         </Link>
       </p>
-      <AdminHeader title={u.profile?.displayName ?? u.name} description={<><Badge>{STATUS[u.status]}</Badge> · {u.role === "MEMBER" ? "Member" : u.role === "OWNER" ? "Owner" : "Administrator"}</>} />
+      <AdminHeader title={u.profile?.displayName ?? u.name} description={accountTypeLabel(u.role)} />
       <Flash ok={sp.ok} error={sp.error} />
       <div className="mt-6 grid gap-6 lg:grid-cols-[1fr_20rem]">
         <div className="space-y-6">
-          <Panel title="Account">
+          <Panel title="Where this person stands">
+            {/* The four facts that decide what a person can do, each named for what it is. */}
+            <dl className="grid gap-4 sm:grid-cols-2">
+              <div>
+                <dt className="text-xs font-semibold uppercase tracking-wide text-ink-500">1. Account</dt>
+                <dd className="mt-1 text-sm">
+                  <Badge tone={u.status === "ACTIVE" ? "success" : u.status === "SUSPENDED" ? "danger" : "neutral"}>{STATUS[u.status]}</Badge>
+                  <span className="ml-2 text-ink-600">{u.status === "ACTIVE" ? "can sign in" : "cannot sign in"}</span>
+                </dd>
+              </div>
+              <div>
+                <dt className="text-xs font-semibold uppercase tracking-wide text-ink-500">2. Email address</dt>
+                <dd className="mt-1 text-sm">
+                  <Badge tone={u.emailVerifiedAt ? "success" : "warn"}>{u.emailVerifiedAt ? "Confirmed" : "Not confirmed"}</Badge>
+                </dd>
+              </div>
+              <div>
+                <dt className="text-xs font-semibold uppercase tracking-wide text-ink-500">3. Application</dt>
+                <dd className="mt-1 text-sm">
+                  {latestApplication && latestApplication.status !== "DRAFT" ? (
+                    <Link href={`/admin/applications/${latestApplication.id}`} className="text-accent-700 hover:underline">
+                      {APPLICATION_STATUSES[latestApplication.status]} · open
+                    </Link>
+                  ) : u.role !== "MEMBER" ? (
+                    <span className="text-ink-600">Not needed (staff)</span>
+                  ) : (
+                    <span className="text-ink-600">{latestApplication ? "Started, not submitted" : "None"}</span>
+                  )}
+                </dd>
+              </div>
+              <div>
+                <dt className="text-xs font-semibold uppercase tracking-wide text-ink-500">4. Community access</dt>
+                <dd className="mt-1 text-sm">
+                  {u.role !== "MEMBER" ? <Badge>Staff</Badge> : <Badge tone={membershipTone[u.membershipStatus]}>{MEMBERSHIP_LABELS[u.membershipStatus]}</Badge>}
+                </dd>
+              </div>
+            </dl>
+            <p className="mt-4 border-t border-ink-100 pt-3 text-sm text-ink-700">
+              <strong>In short:</strong> {inShort}
+            </p>
+            {u.participant && (
+              <p className="mt-2 text-sm">
+                <Link href={`/admin/participants/${u.participant.id}`} className="text-accent-700 hover:underline">
+                  Project record (availability, assignments)
+                </Link>
+              </p>
+            )}
+          </Panel>
+          <Panel title="Account details">
             <Dl
               items={[
                 ["Name", u.name],
                 ["Email", u.email],
                 ["Email confirmed", u.emailVerifiedAt ? fmtDate(u.emailVerifiedAt, true) : "Not yet"],
-                ["Community access", <Badge key="m" tone={membershipTone[u.membershipStatus]}>{MEMBERSHIP_LABELS[u.membershipStatus]}</Badge>],
                 ["Created", fmtDate(u.createdAt, true)],
                 ["Last sign-in", fmtDate(u.lastLoginAt, true)],
                 ["Two-step verification", u.totpEnabledAt ? "On" : "Off"],

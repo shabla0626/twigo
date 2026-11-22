@@ -4,10 +4,12 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useRef } from "react";
 
-export type NavItem = { href: string; label: string; exact?: boolean; section: string };
+/** `also`: further pages that belong to this entry (they are shown as tabs on the page). */
+export type NavItem = { href: string; label: string; exact?: boolean; section: string; also?: string[] };
 
 function isActive(path: string, i: NavItem) {
-  return i.exact ? path === i.href : path === i.href || path.startsWith(`${i.href}/`);
+  if (i.exact) return path === i.href;
+  return [i.href, ...(i.also ?? [])].some((h) => path === h || path.startsWith(`${h}/`));
 }
 
 function Groups({ items, path }: { items: NavItem[]; path: string }) {

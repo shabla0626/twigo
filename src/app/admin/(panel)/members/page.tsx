@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { MEMBERSHIP_LABELS } from "@/lib/labels";
-import type { AccountStatus, Prisma } from "@prisma/client";
+import type { AccountStatus, CommunityMembership } from "@prisma/client";
+import { MEMBER_LISTS, accountTypeLabel, memberListWhere, type MemberList } from "@/server/admin/members";
 import { AdminHeader, Empty, Flash, Table, fmtDate, smallInput } from "@/components/admin/ui";
 import { Badge, buttonClass } from "@/components/ui/primitives";
 import { db } from "@/lib/db";
@@ -15,11 +16,12 @@ export default async function MembersAdminPage({ searchParams }: Props) {
   await requireAdmin("members.view");
   const sp = await searchParams;
   const status = sp.status && sp.status in ACCOUNT_STATUS_LABELS ? (sp.status as AccountStatus) : undefined;
+  const access = sp.access && sp.access in MEMBERSHIP_LABELS ? (sp.access as CommunityMembership) : undefined;
+  const show: MemberList = sp.show && sp.show in MEMBER_LISTS ? (sp.show as MemberList) : "members";
   const q = sp.q?.trim().slice(0, 100);
-  const where: Prisma.UserWhereInput = {
-    ...(status ? { status } : {}),
-    ...(q ? { OR: [{ email: { contains: q, mode: "insensitive" } }, { name: { contains: q, mode: "insensitive" } }, { profile: { displayName: { contains: q, mode: "insensitive" } } }] } : {}),
-  };
+  const where = memberListWhere({ show, status, access, q });
+  const lists = Object.keys(MEMBER_LISTS) as MemberList[];
+  const listCounts = await Promise.all(lists.map((l) => db.user.count({ where: memberListWhere({ show: l }) })));
   const [users, counts] = await Promise.all([
     db.user.findMany({
       where,
@@ -31,24 +33,37 @@ export default async function MembersAdminPage({ searchParams }: Props) {
         _count: { select: { memberships: { where: { status: "ACTIVE" } }, ideas: true } },
       },
     }),
-    db.user.groupBy({ by: ["status"], _count: true }),
+    db.user.groupBy({ by: ["status"], where: memberListWhere({ show }), _count: true }),
   ]);
   const count = (s: AccountStatus) => counts.find((c) => c.status === s)?._count ?? 0;
   return (
     <>
-      <AdminHeader title="Members" description="Accounts of approved members and administrators. Invitations are sent from an accepted application." />
+      <AdminHeader title={MEMBER_LISTS[show].label} description={`${MEMBER_LISTS[show].description} ${users.length} shown.`} />
       <Flash ok={sp.ok} error={sp.error} />
-      <div className="mt-6 flex flex-wrap items-center gap-2">
-        <Link href="/admin/members" className={buttonClass(!status ? "primary" : "secondary", "sm")}>
-          All
-        </Link>
-        {(Object.keys(ACCOUNT_STATUS_LABELS) as AccountStatus[]).map((s) => (
-          <Link key={s} href={`/admin/members?status=${s}`} className={buttonClass(status === s ? "primary" : "secondary", "sm")}>
-            {ACCOUNT_STATUS_LABELS[s]} ({count(s)})
+      <div className="mt-6 flex flex-wrap items-center gap-2" role="group" aria-label="Which accounts to show">
+        {lists.map((l, i) => (
+          <Link key={l} href={`/admin/members?show=${l}`} aria-current={show === l ? "page" : undefined} className={buttonClass(show === l ? "primary" : "secondary", "sm")}>
+            {MEMBER_LISTS[l].label} ({listCounts[i]})
           </Link>
         ))}
+      </div>
+      <div className="mt-3 flex flex-wrap items-center gap-2 text-sm">
+        <span className="text-ink-600">Account:</span>
+        <Link href={`/admin/members?show=${show}`} className={`rounded px-2 py-1 ${!status ? "bg-ink-200 font-medium" : "hover:bg-ink-100"}`}>
+          any
+        </Link>
+        {(Object.keys(ACCOUNT_STATUS_LABELS) as AccountStatus[])
+          .filter((s) => count(s) > 0 || status === s)
+          .map((s) => (
+            <Link key={s} href={`/admin/members?show=${show}&status=${s}`} className={`rounded px-2 py-1 ${status === s ? "bg-ink-200 font-medium" : "hover:bg-ink-100"}`}>
+              {ACCOUNT_STATUS_LABELS[s].toLowerCase()} ({count(s)})
+            </Link>
+          ))}
+        {access && <span className="rounded bg-ink-200 px-2 py-1 font-medium">community access: {MEMBERSHIP_LABELS[access].toLowerCase()}</span>}
         <form className="ml-auto flex gap-2" action="/admin/members">
+          <input type="hidden" name="show" value={show} />
           {status && <input type="hidden" name="status" value={status} />}
+          {access && <input type="hidden" name="access" value={access} />}
           <label htmlFor="q" className="sr-only">
             Search
           </label>
@@ -57,7 +72,7 @@ export default async function MembersAdminPage({ searchParams }: Props) {
         </form>
       </div>
       <div className="mt-4">
-        <Table head={["Name", "Email", "Role", "Account", "Community access", "Groups", "Ideas", "Last sign-in", "2FA"]} empty={!users.length && <Empty>No accounts match.</Empty>}>
+        <Table head={["Name", "Email", "Account type", "Account", "Community access", "Groups", "Ideas", "Last sign-in", "2FA"]} empty={!users.length && <Empty>No accounts match.</Empty>}>
           {users.map((u) => (
             <tr key={u.id}>
               <td className="px-4 py-3">
@@ -66,7 +81,7 @@ export default async function MembersAdminPage({ searchParams }: Props) {
                 </Link>
               </td>
               <td className="px-4 py-3 text-ink-700">{u.email}</td>
-              <td className="px-4 py-3">{u.role === "MEMBER" ? "Member" : u.role === "OWNER" ? "Owner" : "Admin"}</td>
+              <td className="px-4 py-3">{accountTypeLabel(u.role)}</td>
               <td className="px-4 py-3">
                 <Badge tone={TONE[u.status]}>{ACCOUNT_STATUS_LABELS[u.status]}</Badge>
                 {!u.emailVerifiedAt && <span className="mt-1 block text-xs text-ink-500">email not confirmed</span>}
