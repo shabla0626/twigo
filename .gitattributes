@@ -1,0 +1,10 @@
+# Keep line endings stable on every computer (the project uses LF).
+* text=auto eol=lf
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.webp binary
+*.gif binary
+*.ico binary
+*.woff2 binary
+*.gz binary

@@ -1,0 +1,151 @@
+// Group chat persistence and authorization. Used by the Socket.IO server,
+// so no `server-only` / `next/*` imports. Every function re-checks access.
+import type { Prisma, PrismaClient } from "@prisma/client";
+import { hasCommunityAccess } from "../lib/auth/session-core";
+
+export type ChatAuthor = { id: string; name: string };
+export type ChatMessageDTO = {
+  id: string;
+  channelId: string;
+  clientId: string | null;
+  body: string;
+  deleted: boolean;
+  editedAt: string | null;
+  createdAt: string;
+  author: ChatAuthor | null;
+  replyTo: { id: string; authorName: string; excerpt: string } | null;
+  attachments: { id: string; name: string; mimeType: string; size: number }[];
+};
+
+export type ChannelAccess = { channelId: string; groupId: string; groupSlug: string; canPost: boolean };
+
+/** Active org member + active group member + group not suspended. Archived groups are read-only. */
+export async function channelAccess(db: PrismaClient, userId: string, channelId: string): Promise<ChannelAccess | null> {
+  const ch = await db.groupChannel.findUnique({
+    where: { id: channelId },
+    select: { id: true, group: { select: { id: true, slug: true, status: true, suspendedAt: true } } },
+  });
+  if (!ch || ch.group.suspendedAt) return null;
+  const [m, user] = await Promise.all([
+    db.groupMembership.findUnique({ where: { groupId_userId: { groupId: ch.group.id, userId } }, select: { status: true } }),
+    db.user.findUnique({ where: { id: userId }, select: { status: true, role: true, emailVerifiedAt: true, membershipStatus: true } }),
+  ]);
+  if (m?.status !== "ACTIVE" || !user || !hasCommunityAccess({ status: user.status, role: user.role, emailVerified: Boolean(user.emailVerifiedAt), membership: user.membershipStatus })) return null;
+  return { channelId: ch.id, groupId: ch.group.id, groupSlug: ch.group.slug, canPost: ch.group.status !== "ARCHIVED" };
+}
+
+const include = {
+  author: { select: { id: true, profile: { select: { displayName: true } } } },
+  replyTo: { select: { id: true, body: true, deletedAt: true, author: { select: { profile: { select: { displayName: true } } } } } },
+  attachments: { where: { deletedAt: null }, select: { id: true, originalName: true, mimeType: true, size: true } },
+} satisfies Prisma.ChatMessageInclude;
+
+type Row = Prisma.ChatMessageGetPayload<{ include: typeof include }>;
+
+export function toDTO(m: Row): ChatMessageDTO {
+  const deleted = Boolean(m.deletedAt);
+  return {
+    id: m.id,
+    channelId: m.channelId,
+    clientId: m.clientId,
+    body: deleted ? "" : m.body,
+    deleted,
+    editedAt: m.editedAt?.toISOString() ?? null,
+    createdAt: m.createdAt.toISOString(),
+    author: m.author ? { id: m.author.id, name: m.author.profile?.displayName ?? "Member" } : null,
+    replyTo: m.replyTo
+      ? {
+          id: m.replyTo.id,
+          authorName: m.replyTo.author?.profile?.displayName ?? "Member",
+          excerpt: m.replyTo.deletedAt ? "(deleted message)" : m.replyTo.body.slice(0, 140),
+        }
+      : null,
+    attachments: deleted ? [] : m.attachments.map((a) => ({ id: a.id, name: a.originalName, mimeType: a.mimeType, size: a.size })),
+  };
+}
+
+export async function history(db: PrismaClient, channelId: string, before?: string | null, take = 50) {
+  let cursorDate: Date | undefined;
+  if (before) {
+    const ref = await db.chatMessage.findUnique({ where: { id: before }, select: { createdAt: true, channelId: true } });
+    if (ref && ref.channelId === channelId) cursorDate = ref.createdAt;
+  }
+  const rows = await db.chatMessage.findMany({
+    where: { channelId, ...(cursorDate ? { createdAt: { lt: cursorDate } } : {}) },
+    orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+    take: take + 1,
+    include,
+  });
+  const page = rows.slice(0, take).reverse();
+  return { messages: page.map((r) => toDTO(r)), hasMore: rows.length > take };
+}
+
+export type SendInput = { channelId: string; body: string; clientId: string; replyToId?: string | null; attachmentIds: string[] };
+export type SendResult = { ok: true; message: ChatMessageDTO; duplicate: boolean } | { ok: false; error: string };
+
+export async function sendMessage(db: PrismaClient, userId: string, access: ChannelAccess, input: SendInput): Promise<SendResult> {
+  if (!access.canPost) return { ok: false, error: "This group is archived; chat is read-only." };
+  if (!input.body && input.attachmentIds.length === 0) return { ok: false, error: "Write a message or attach a file." };
+
+  // Idempotent resend after a reconnect: same author + clientId returns the stored message.
+  const existing = await db.chatMessage.findUnique({ where: { authorId_clientId: { authorId: userId, clientId: input.clientId } }, include });
+  if (existing) return { ok: true, message: toDTO(existing), duplicate: true };
+
+  let replyToId: string | null = null;
+  if (input.replyToId) {
+    const r = await db.chatMessage.findUnique({ where: { id: input.replyToId }, select: { channelId: true } });
+    if (r?.channelId === access.channelId) replyToId = input.replyToId;
+  }
+  if (input.attachmentIds.length) {
+    const files = await db.storedFile.findMany({
+      where: { id: { in: input.attachmentIds }, ownerId: userId, scope: "CHAT_ATTACHMENT", groupId: access.groupId, messageId: null, deletedAt: null },
+      select: { id: true },
+    });
+    if (files.length !== new Set(input.attachmentIds).size) return { ok: false, error: "An attachment is missing. Please upload it again." };
+  }
+  try {
+    const created = await db.$transaction(async (tx) => {
+      const m = await tx.chatMessage.create({ data: { channelId: access.channelId, authorId: userId, clientId: input.clientId, body: input.body, replyToId } });
+      if (input.attachmentIds.length) await tx.storedFile.updateMany({ where: { id: { in: input.attachmentIds } }, data: { messageId: m.id } });
+      await tx.researchGroup.update({ where: { id: access.groupId }, data: { lastActivityAt: new Date() } });
+      await tx.channelReadState.upsert({
+        where: { channelId_userId: { channelId: access.channelId, userId } },
+        create: { channelId: access.channelId, userId, lastReadAt: m.createdAt },
+        update: { lastReadAt: m.createdAt },
+      });
+      return tx.chatMessage.findUniqueOrThrow({ where: { id: m.id }, include });
+    });
+    return { ok: true, message: toDTO(created), duplicate: false };
+  } catch (err) {
+    // A concurrent duplicate resend hit the unique constraint.
+    const again = await db.chatMessage.findUnique({ where: { authorId_clientId: { authorId: userId, clientId: input.clientId } }, include });
+    if (again) return { ok: true, message: toDTO(again), duplicate: true };
+    throw err;
+  }
+}
+
+export async function editMessage(db: PrismaClient, userId: string, access: ChannelAccess, messageId: string, body: string) {
+  if (!access.canPost) return { ok: false as const, error: "This group is archived." };
+  const m = await db.chatMessage.findUnique({ where: { id: messageId } });
+  if (!m || m.channelId !== access.channelId || m.authorId !== userId || m.deletedAt) return { ok: false as const, error: "You can only edit your own messages." };
+  if (!body) return { ok: false as const, error: "A message cannot be empty." };
+  const updated = await db.chatMessage.update({ where: { id: messageId }, data: { body, editedAt: new Date() }, include });
+  return { ok: true as const, message: toDTO(updated) };
+}
+
+/** Soft delete. Content is hidden at once and purged after the retention period. */
+export async function deleteMessage(db: PrismaClient, userId: string, access: ChannelAccess, messageId: string) {
+  const m = await db.chatMessage.findUnique({ where: { id: messageId } });
+  if (!m || m.channelId !== access.channelId || m.authorId !== userId || m.deletedAt) return { ok: false as const, error: "You can only delete your own messages." };
+  const updated = await db.chatMessage.update({ where: { id: messageId }, data: { deletedAt: new Date() }, include });
+  await db.storedFile.updateMany({ where: { messageId }, data: { deletedAt: new Date() } });
+  return { ok: true as const, message: toDTO(updated) };
+}
+
+export async function markChannelRead(db: PrismaClient, userId: string, channelId: string) {
+  await db.channelReadState.upsert({
+    where: { channelId_userId: { channelId, userId } },
+    create: { channelId, userId, lastReadAt: new Date() },
+    update: { lastReadAt: new Date() },
+  });
+}

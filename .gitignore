@@ -1,0 +1,59 @@
+node_modules/
+.next/
+/out/
+/coverage/
+.pgdata/
+*.log
+.env
+.env.local
+.env.*.local
+.env.test
+next-env.d.ts
+*.tsbuildinfo
+/backups/
+/storage/
+test-results/
+playwright-report/
+.dev-mail/
+.next-e2e/
+.next-demo/
+.next-perf/
+.e2e-mail/
+.e2e-storage/
+
+.demo-storage/
+
+# ---- Added for version control (Stage 0) ----
+# Secrets and local settings (only .env.example is tracked)
+.env.*
+!.env.example
+# Database files, backups and exports, wherever they are written
+*.cwbak
+*.cwbak.gz
+*.cwbak.enc
+*.sql
+# ...except the migration files, which are source code
+!prisma/migrations/**/*.sql
+*.dump
+*.pgdump
+# Keys and certificates
+*.pem
+*.key
+*.p12
+*.pfx
+# Uploaded files and captured test email (personal data)
+.e2e-storage/
+.demo-storage/
+.e2e-mail/
+.dev-mail/
+# Personal-data exports saved from the admin area or account page
+*-export-*.json
+data-export*.json
+# Editor and system files
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+# Claude Code local settings (launch.json is tracked)
+.claude/settings.local.json
+.claude/worktrees/

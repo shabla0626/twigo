@@ -1,0 +1,1174 @@
+// Prisma schema for the remote collaborative company platform.
+// Private data (applicants, participants, compensation) is only ever read
+// by authenticated admin server code. No public endpoint selects from these
+// tables except the published-project summary fields.
+
+generator client {
+  provider   = "prisma-client-js"
+  // Rust-free client: queries run through the node-postgres driver adapter.
+  // No native query-engine DLL is generated (it crashes on some Windows
+  // builds and gets locked by running processes).
+  engineType = "client"
+  // Loads related records (user + profile, group + members, ...) in ONE SQL
+  // query with JOINs instead of one query per relation: fewer database round trips.
+  previewFeatures = ["relationJoins"]
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ---------------------------------------------------------------- enums
+
+/// Organization-wide role. Permissions per role are defined in src/lib/auth/permissions.ts.
+enum UserRole {
+  OWNER
+  ADMIN
+  MEMBER
+}
+
+enum AccountStatus {
+  INVITED // legacy: invitation sent before self-registration existed; no password yet
+  ACTIVE
+  SUSPENDED // temporarily blocked by an administrator (cannot sign in)
+  DEACTIVATED // closed by the member or an administrator
+}
+
+/// Access to the private member community. Separate from the account itself:
+/// an applicant has an ACTIVE account but no membership until approved.
+enum CommunityMembership {
+  NONE // not approved (yet)
+  ACTIVE // approved member: may use the community
+  SUSPENDED // community access paused by an administrator
+  REVOKED // community access removed by an administrator
+}
+
+enum TokenKind {
+  INVITE
+  VERIFY_EMAIL
+  RESET_PASSWORD
+}
+
+enum ApplicationStatus {
+  DRAFT // started, not yet submitted (applicant can continue)
+  SUBMITTED // submitted, waiting for review
+  UNDER_REVIEW
+  INTERVIEW_REQUESTED
+  ACCEPTED // membership granted to the linked account
+  WAITLISTED
+  DECLINED
+  WITHDRAWN // withdrawn by the applicant
+}
+
+enum ExperienceLevel {
+  NONE // No formal professional experience
+  ENTRY // Less than 2 years
+  INTERMEDIATE
+  EXPERIENCED
+  EXPERT
+}
+
+enum WorkCategory {
+  TECHNOLOGY
+  AI_DATA
+  RESEARCH
+  MARKETING_BUSINESS
+  CUSTOMER_SUPPORT
+  ADMIN_OPERATIONS
+  GENERAL_REMOTE
+}
+
+enum RemoteExperience {
+  NONE
+  SOME
+  EXTENSIVE
+}
+
+enum ContactMethod {
+  EMAIL
+  PHONE
+  VIDEO_CALL
+  MESSAGING_APP
+}
+
+enum SkillKind {
+  PRIMARY
+  SECONDARY
+}
+
+enum ParticipantStatus {
+  ACTIVE
+  PAUSED
+  INACTIVE
+}
+
+enum ProjectStatus {
+  PLANNING
+  SEEKING_PARTICIPANTS
+  READY
+  ACTIVE
+  COMPLETED
+  CANCELLED
+}
+
+enum AssignmentStatus {
+  PROPOSED
+  ACTIVE
+  COMPLETED
+  WITHDRAWN
+}
+
+enum MilestoneStatus {
+  PENDING
+  IN_PROGRESS
+  DONE
+}
+
+enum AgreementStatus {
+  DRAFT
+  AGREED
+  SETTLED
+  VOID
+}
+
+enum InquiryCategory {
+  PARTICIPANT
+  BUSINESS
+  GENERAL
+}
+
+enum InquiryStatus {
+  OPEN
+  RESPONDED
+  CLOSED
+}
+
+// ---------------------------------------------------------------- accounts
+
+/// Single identity for administrators and members (formerly AdminUser).
+model User {
+  id                    String              @id @default(cuid())
+  email                 String              @unique // stored lower-cased
+  name                  String
+  passwordHash          String?
+  role                  UserRole            @default(MEMBER)
+  status                AccountStatus       @default(INVITED)
+  emailVerifiedAt       DateTime?
+  passwordChangedAt     DateTime?
+  failedLogins          Int                 @default(0)
+  lockedUntil           DateTime?
+  lastLoginAt           DateTime?
+  // TOTP two-factor authentication (secrets encrypted with ENCRYPTION_KEY).
+  totpSecretEnc         String?
+  totpPendingEnc        String?
+  totpEnabledAt         DateTime?
+  participantId         String?             @unique
+  // Community membership (see MembershipStatus) and who changed it last.
+  membershipStatus      CommunityMembership @default(NONE)
+  membershipChangedAt   DateTime?
+  membershipChangedById String?
+  // Consent given when the account was created (self-registration).
+  termsAcceptedAt       DateTime?
+  termsVersion          String?
+  suspendedAt           DateTime?
+  suspendedReason       String?
+  deactivatedAt         DateTime?
+  createdAt             DateTime            @default(now())
+  updatedAt             DateTime            @updatedAt
+
+  participant       Participant?             @relation(fields: [participantId], references: [id], onDelete: SetNull)
+  applicant         Applicant?
+  notes             ApplicationNote[]
+  auditLogs         AuditLog[]
+  sessions          Session[]
+  tokens            AccountToken[]
+  recoveryCodes     RecoveryCode[]
+  profile           MemberProfile?
+  ideas             BusinessIdea[]
+  endorsements      IdeaEndorsement[]
+  comments          Comment[]
+  discussions       GroupDiscussion[]
+  memberships       GroupMembership[]
+  announcements     GroupAnnouncement[]
+  messages          ChatMessage[]
+  readStates        ChannelReadState[]
+  files             StoredFile[]
+  meetingsStarted   GroupMeeting[]
+  attendance        MeetingAttendance[]
+  researchNotes     ResearchNote[]
+  tasksAssigned     ResearchTask[]           @relation("TaskAssignee")
+  tasksCreated      ResearchTask[]           @relation("TaskCreator")
+  decisions         GroupDecision[]
+  links             GroupLink[]
+  notifications     Notification[]
+  notificationPrefs NotificationPreference[]
+  reports           ContentReport[]          @relation("Reporter")
+  reportsResolved   ContentReport[]          @relation("Resolver")
+  emailsSent        EmailDelivery[]
+
+  @@index([role, status])
+  @@index([membershipStatus])
+}
+
+model Session {
+  id            String    @id @default(cuid())
+  tokenHash     String    @unique // SHA-256 of the cookie value
+  userId        String
+  // True between the password check and the second factor.
+  mfaPending    Boolean   @default(false)
+  mfaVerifiedAt DateTime?
+  reauthAt      DateTime? // last password/2FA confirmation for sensitive actions
+  ipHash        String?
+  userAgent     String?
+  createdAt     DateTime  @default(now())
+  lastSeenAt    DateTime  @default(now())
+  expiresAt     DateTime
+  revokedAt     DateTime?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([expiresAt])
+}
+
+/// Single-use, expiring tokens. Only the SHA-256 hash is stored.
+model AccountToken {
+  id          String    @id @default(cuid())
+  userId      String
+  kind        TokenKind
+  tokenHash   String    @unique
+  email       String? // target address for VERIFY_EMAIL
+  expiresAt   DateTime
+  usedAt      DateTime?
+  createdById String?
+  createdAt   DateTime  @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, kind])
+}
+
+model RecoveryCode {
+  id        String    @id @default(cuid())
+  userId    String
+  codeHash  String
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+/// Member-facing profile. Only these fields are ever shown to other members.
+model MemberProfile {
+  userId       String         @id
+  displayName  String
+  headline     String?
+  intro        String?
+  location     String? // general area only, e.g. "Ohio" or "Pacific Northwest"
+  timeZone     String?
+  skills       String[]
+  experience   String?
+  interests    String?
+  hoursPerWeek Int?
+  availability String?
+  categories   WorkCategory[]
+  photoFileId  String?        @unique
+  showLocation Boolean        @default(true)
+  showTimeZone Boolean        @default(true)
+  showHours    Boolean        @default(true)
+  createdAt    DateTime       @default(now())
+  updatedAt    DateTime       @updatedAt
+
+  user  User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  photo StoredFile? @relation("ProfilePhoto", fields: [photoFileId], references: [id], onDelete: SetNull)
+}
+
+/// Owner-controlled organization settings (thresholds, retention periods, ...).
+model OrgSetting {
+  key         String   @id
+  value       Json
+  updatedAt   DateTime @updatedAt
+  updatedById String?
+}
+
+// ---------------------------------------------------------------- applicants
+
+model Applicant {
+  id               String        @id @default(cuid())
+  // The account this applicant belongs to (null for applications made before accounts existed).
+  userId           String?       @unique
+  email            String        @unique // stored lower-cased
+  fullName         String
+  country          String?
+  region           String?
+  timeZone         String?
+  preferredContact ContactMethod @default(EMAIL)
+  occupation       String?
+  education        String?
+  profileUrl       String? // portfolio or LinkedIn
+  createdAt        DateTime      @default(now())
+  updatedAt        DateTime      @updatedAt
+
+  applications Application[]
+  skills       ApplicantSkill[]
+  participant  Participant?
+  user         User?            @relation(fields: [userId], references: [id], onDelete: SetNull)
+}
+
+model Application {
+  id                    String            @id @default(cuid())
+  applicantId           String
+  status                ApplicationStatus @default(DRAFT)
+  // Which step of the form the applicant reached (drafts can be resumed).
+  draftStep             Int               @default(1)
+  experienceLevel       ExperienceLevel?
+  relevantExperience    String?
+  remoteExperience      RemoteExperience?
+  preferredProjectTypes String?
+  motivation            String?
+  contribution          String?
+  desiredWork           String?
+  additionalComments    String?
+  willingToLearn        Boolean           @default(true)
+  // Consent record (set on submission)
+  privacyNoticeVersion  String?
+  acknowledgedAt        DateTime?
+  submittedAt           DateTime?
+  // Last status change, and the decision (accept/decline) with who made it.
+  statusChangedAt       DateTime?
+  decidedAt             DateTime?
+  decidedById           String?
+  // Interview details written for the applicant (shown on their status page).
+  interviewDetails      String?
+  // Delivery state of notifications (only set when provider confirmed)
+  adminNotifiedAt       DateTime?
+  confirmationSentAt    DateTime?
+  // Abuse tracking: salted hash of IP, never the raw IP.
+  ipHash                String?
+  reviewedAt            DateTime?
+  createdAt             DateTime          @default(now())
+  updatedAt             DateTime          @updatedAt
+
+  applicant       Applicant         @relation(fields: [applicantId], references: [id], onDelete: Cascade)
+  workPreferences WorkPreference[]
+  availability    Availability?
+  notes           ApplicationNote[]
+  participant     Participant?
+
+  @@index([status, createdAt])
+  @@index([experienceLevel])
+  @@index([applicantId])
+}
+
+model Skill {
+  id        String   @id @default(cuid())
+  name      String   @unique // normalized lower-case
+  label     String // display form
+  createdAt DateTime @default(now())
+
+  applicants ApplicantSkill[]
+  roles      ProjectRoleSkill[]
+}
+
+model ApplicantSkill {
+  applicantId String
+  skillId     String
+  kind        SkillKind
+  createdAt   DateTime  @default(now())
+
+  applicant Applicant @relation(fields: [applicantId], references: [id], onDelete: Cascade)
+  skill     Skill     @relation(fields: [skillId], references: [id], onDelete: Cascade)
+
+  @@id([applicantId, skillId])
+  @@index([skillId])
+}
+
+model WorkPreference {
+  applicationId String
+  category      WorkCategory
+
+  application Application @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+
+  @@id([applicationId, category])
+  @@index([category])
+}
+
+model Availability {
+  id            String   @id @default(cuid())
+  applicationId String   @unique
+  hoursPerWeek  Int
+  schedule      String? // e.g. "Weekday evenings, weekends"
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  application Application @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+
+  @@index([hoursPerWeek])
+}
+
+model ApplicationNote {
+  id            String   @id @default(cuid())
+  applicationId String
+  authorId      String?
+  body          String
+  createdAt     DateTime @default(now())
+
+  application Application @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+  author      User?       @relation(fields: [authorId], references: [id], onDelete: SetNull)
+
+  @@index([applicationId, createdAt])
+}
+
+// ---------------------------------------------------------------- participants
+
+model Participant {
+  id                  String            @id @default(cuid())
+  applicantId         String            @unique
+  applicationId       String?           @unique
+  status              ParticipantStatus @default(ACTIVE)
+  hoursPerWeek        Int?
+  availabilityNotes   String?
+  preferredCategories WorkCategory[]
+  skillsSummary       String?
+  internalNotes       String?
+  joinedAt            DateTime          @default(now())
+  updatedAt           DateTime          @updatedAt
+
+  applicant   Applicant           @relation(fields: [applicantId], references: [id], onDelete: Cascade)
+  application Application?        @relation(fields: [applicationId], references: [id], onDelete: SetNull)
+  assignments ProjectAssignment[]
+  user        User?
+
+  @@index([status])
+}
+
+// ---------------------------------------------------------------- projects
+
+model Project {
+  id              String        @id @default(cuid())
+  title           String
+  slug            String        @unique
+  summary         String // internal summary
+  description     String?
+  category        WorkCategory?
+  status          ProjectStatus @default(PLANNING)
+  // Public opportunity listing (only these fields are ever shown publicly)
+  isPublished     Boolean       @default(false)
+  // Set when an administrator approves a research group for project work.
+  researchGroupId String?       @unique
+  publicSummary   String?
+  startDate       DateTime?
+  targetDate      DateTime?
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+
+  roles         ProjectRole[]
+  assignments   ProjectAssignment[]
+  milestones    ProjectMilestone[]
+  researchGroup ResearchGroup?      @relation(fields: [researchGroupId], references: [id], onDelete: SetNull)
+
+  @@index([status])
+  @@index([isPublished])
+}
+
+model ProjectRole {
+  id               String   @id @default(cuid())
+  projectId        String
+  title            String
+  responsibilities String?
+  openings         Int      @default(1)
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  project     Project             @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  skills      ProjectRoleSkill[]
+  assignments ProjectAssignment[]
+
+  @@index([projectId])
+}
+
+model ProjectRoleSkill {
+  roleId  String
+  skillId String
+
+  role  ProjectRole @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  skill Skill       @relation(fields: [skillId], references: [id], onDelete: Cascade)
+
+  @@id([roleId, skillId])
+}
+
+model ProjectAssignment {
+  id               String           @id @default(cuid())
+  projectId        String
+  participantId    String
+  roleId           String?
+  responsibilities String?
+  status           AssignmentStatus @default(PROPOSED)
+  createdAt        DateTime         @default(now())
+  updatedAt        DateTime         @updatedAt
+
+  project      Project                @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  participant  Participant            @relation(fields: [participantId], references: [id], onDelete: Cascade)
+  role         ProjectRole?           @relation(fields: [roleId], references: [id], onDelete: SetNull)
+  compensation CompensationAgreement?
+
+  @@unique([projectId, participantId])
+  @@index([participantId])
+}
+
+model ProjectMilestone {
+  id          String          @id @default(cuid())
+  projectId   String
+  title       String
+  dueDate     DateTime?
+  status      MilestoneStatus @default(PENDING)
+  completedAt DateTime?
+  sortOrder   Int             @default(0)
+  createdAt   DateTime        @default(now())
+  updatedAt   DateTime        @updatedAt
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@index([projectId, sortOrder])
+}
+
+// PRIVATE: only visible to authenticated administrators.
+model CompensationAgreement {
+  id           String          @id @default(cuid())
+  assignmentId String          @unique
+  // Free-text description of agreed terms (basis, rate/share, conditions).
+  terms        String
+  // Optional structured fields; amounts in minor units to avoid float errors.
+  basis        String? // e.g. "fixed", "hourly", "revenue share"
+  amountMinor  Int?
+  currency     String?         @db.VarChar(3)
+  status       AgreementStatus @default(DRAFT)
+  agreedAt     DateTime?
+  documentRef  String? // reference to the signed written agreement
+  createdAt    DateTime        @default(now())
+  updatedAt    DateTime        @updatedAt
+
+  assignment ProjectAssignment @relation(fields: [assignmentId], references: [id], onDelete: Cascade)
+}
+
+// ---------------------------------------------------------------- site
+
+model ContactInquiry {
+  id           String          @id @default(cuid())
+  name         String
+  email        String
+  category     InquiryCategory
+  subject      String
+  message      String
+  organization String?
+  timeline     String?
+  status       InquiryStatus   @default(OPEN)
+  ipHash       String?
+  createdAt    DateTime        @default(now())
+  updatedAt    DateTime        @updatedAt
+
+  @@index([status, createdAt])
+}
+
+model SiteContent {
+  key       String   @id
+  value     Json
+  updatedAt DateTime @updatedAt
+  updatedBy String?
+}
+
+model AuditLog {
+  id         String   @id @default(cuid())
+  actorId    String?
+  action     String // e.g. "application.status_changed"
+  entityType String
+  entityId   String?
+  metadata   Json?
+  createdAt  DateTime @default(now())
+
+  actor User? @relation(fields: [actorId], references: [id], onDelete: SetNull)
+
+  @@index([entityType, entityId])
+  @@index([createdAt])
+}
+
+// ---------------------------------------------------------------- community
+
+enum IdeaCategory {
+  SOFTWARE_TECH
+  AI_DATA
+  ONLINE_SERVICES
+  CONTENT_MEDIA
+  ECOMMERCE
+  LOCAL_SERVICES
+  CONSULTING_RESEARCH
+  EDUCATION_TRAINING
+  MARKETING_SALES
+  OTHER
+}
+
+enum IdeaStatus {
+  OPEN // published, gathering discussion and endorsements
+  GROUP_FORMED // a research group was created from this idea
+  CLOSED // closed by the author
+  REMOVED // removed by moderation
+}
+
+enum GroupStatus {
+  FORMING
+  RESEARCHING
+  VALIDATING
+  PLANNING
+  READY_FOR_REVIEW
+  APPROVED_FOR_PROJECT
+  ARCHIVED
+}
+
+enum GroupRole {
+  COORDINATOR
+  MEMBER
+}
+
+enum MembershipStatus {
+  ACTIVE
+  LEFT
+  REMOVED
+}
+
+enum MeetingKind {
+  VOICE
+  VIDEO
+}
+
+enum ResearchSection {
+  CONCEPT
+  MARKET
+  CUSTOMERS
+  REVENUE
+  SKILLS
+  RISKS
+  SOLUTIONS
+  PLAN
+  GENERAL
+}
+
+enum TaskStatus {
+  TODO
+  IN_PROGRESS
+  DONE
+}
+
+enum FileScope {
+  PROFILE_PHOTO
+  CHAT_ATTACHMENT
+  GROUP_FILE
+  IDEA_ATTACHMENT
+}
+
+enum NotificationType {
+  IDEA_COMMENT
+  COMMENT_REPLY
+  IDEA_ENDORSED
+  IDEA_GROUP_CREATED
+  GROUP_MEMBERSHIP
+  GROUP_ANNOUNCEMENT
+  MEETING_STARTED
+  GROUP_STATUS
+  GROUP_DECISION
+  COORDINATOR_ASSIGNED
+  DISCUSSION_REPLY
+  ADMIN_MESSAGE
+}
+
+enum ReportTarget {
+  IDEA
+  COMMENT
+  DISCUSSION
+  MESSAGE
+  GROUP
+  USER
+}
+
+enum ReportReason {
+  FRAUD
+  HARASSMENT
+  SPAM
+  FEE_OR_INVESTMENT_REQUEST
+  UNAUTHORIZED_SOLICITATION
+  ILLEGAL_ACTIVITY
+  PRIVACY_VIOLATION
+  OTHER
+}
+
+enum ReportStatus {
+  OPEN
+  ACTIONED
+  DISMISSED
+}
+
+enum EmailStatus {
+  CAPTURED_LOCALLY // sent to the LOCAL test mail server: never reaches a real inbox
+  NOT_CONFIGURED // no email provider configured; nothing was sent
+  SERVER_UNAVAILABLE // could not connect to the SMTP server (stopped, wrong host/port, network)
+  AUTH_FAILED // the SMTP server rejected the username/password (API key)
+  SENDER_REJECTED // invalid or unverified sender address / domain
+  RECIPIENT_REJECTED // the provider refused the recipient address
+  FAILED // any other sending error
+  ACCEPTED // the provider accepted the message (NOT proof of inbox delivery)
+  DELIVERED // the provider confirmed delivery to the recipient's mail server (webhook)
+  DELIVERY_FAILED // the provider reported a bounce or failure after accepting (webhook)
+}
+
+model BusinessIdea {
+  id               String       @id @default(cuid())
+  authorId         String?
+  title            String
+  summary          String
+  description      String?
+  problem          String?
+  proposal         String?
+  customers        String?
+  revenueModel     String?
+  skillsNeeded     String?
+  timeEstimate     String?
+  links            String[]
+  category         IdeaCategory
+  status           IdeaStatus   @default(OPEN)
+  endorsementCount Int          @default(0)
+  commentCount     Int          @default(0)
+  lastActivityAt   DateTime     @default(now())
+  editedAt         DateTime?
+  removedAt        DateTime?
+  removedReason    String?
+  createdAt        DateTime     @default(now())
+  updatedAt        DateTime     @updatedAt
+
+  author       User?             @relation(fields: [authorId], references: [id], onDelete: SetNull)
+  endorsements IdeaEndorsement[]
+  comments     Comment[]
+  group        ResearchGroup?
+  files        StoredFile[]
+
+  @@index([status, createdAt])
+  @@index([category])
+  @@index([endorsementCount])
+  @@index([lastActivityAt])
+  @@index([authorId])
+}
+
+model IdeaEndorsement {
+  ideaId    String
+  userId    String
+  createdAt DateTime @default(now())
+
+  idea BusinessIdea @relation(fields: [ideaId], references: [id], onDelete: Cascade)
+  user User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([ideaId, userId])
+  @@index([userId])
+}
+
+/// Threaded comment on an idea or on a group discussion (exactly one is set).
+model Comment {
+  id           String    @id @default(cuid())
+  authorId     String?
+  ideaId       String?
+  discussionId String?
+  parentId     String?
+  depth        Int       @default(0)
+  body         String
+  editedAt     DateTime?
+  deletedAt    DateTime?
+  removedAt    DateTime?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  author     User?            @relation(fields: [authorId], references: [id], onDelete: SetNull)
+  idea       BusinessIdea?    @relation(fields: [ideaId], references: [id], onDelete: Cascade)
+  discussion GroupDiscussion? @relation(fields: [discussionId], references: [id], onDelete: Cascade)
+  parent     Comment?         @relation("CommentReplies", fields: [parentId], references: [id], onDelete: Cascade)
+  replies    Comment[]        @relation("CommentReplies")
+
+  @@index([ideaId, createdAt])
+  @@index([discussionId, createdAt])
+  @@index([parentId])
+}
+
+model ResearchGroup {
+  id              String        @id @default(cuid())
+  slug            String        @unique
+  name            String
+  purpose         String?
+  description     String?
+  category        IdeaCategory?
+  ideaId          String?       @unique
+  status          GroupStatus   @default(FORMING)
+  memberCount     Int           @default(0)
+  // No eligible coordinator remained: administrators manage the group.
+  adminManaged    Boolean       @default(false)
+  suspendedAt     DateTime?
+  suspendedReason String?
+  archivedAt      DateTime?
+  approvedAt      DateTime?
+  approvedById    String?
+  lastActivityAt  DateTime      @default(now())
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+
+  idea          BusinessIdea?       @relation(fields: [ideaId], references: [id], onDelete: SetNull)
+  memberships   GroupMembership[]
+  announcements GroupAnnouncement[]
+  discussions   GroupDiscussion[]
+  channels      GroupChannel[]
+  meetings      GroupMeeting[]
+  notes         ResearchNote[]
+  tasks         ResearchTask[]
+  decisions     GroupDecision[]
+  links         GroupLink[]
+  files         StoredFile[]
+  project       Project?
+
+  @@index([status, lastActivityAt])
+  @@index([category])
+}
+
+model GroupMembership {
+  id       String           @id @default(cuid())
+  groupId  String
+  userId   String
+  role     GroupRole        @default(MEMBER)
+  status   MembershipStatus @default(ACTIVE)
+  founding Boolean          @default(false) // author or endorser when the group was created
+  joinedAt DateTime         @default(now())
+  leftAt   DateTime?
+
+  group ResearchGroup @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  user  User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([groupId, userId])
+  @@index([userId, status])
+  @@index([groupId, status, joinedAt])
+}
+
+model GroupAnnouncement {
+  id        String   @id @default(cuid())
+  groupId   String
+  authorId  String?
+  title     String
+  body      String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  group  ResearchGroup @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  author User?         @relation(fields: [authorId], references: [id], onDelete: SetNull)
+
+  @@index([groupId, createdAt])
+}
+
+/// Community-visible discussion thread on a group page.
+model GroupDiscussion {
+  id             String    @id @default(cuid())
+  groupId        String
+  authorId       String?
+  title          String
+  body           String
+  commentCount   Int       @default(0)
+  lastActivityAt DateTime  @default(now())
+  editedAt       DateTime?
+  deletedAt      DateTime?
+  removedAt      DateTime?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  group    ResearchGroup @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  author   User?         @relation(fields: [authorId], references: [id], onDelete: SetNull)
+  comments Comment[]
+
+  @@index([groupId, lastActivityAt])
+}
+
+model GroupChannel {
+  id        String   @id @default(cuid())
+  groupId   String
+  name      String
+  isDefault Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  group      ResearchGroup      @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  messages   ChatMessage[]
+  readStates ChannelReadState[]
+
+  @@unique([groupId, name])
+}
+
+model ChatMessage {
+  id        String    @id @default(cuid())
+  channelId String
+  authorId  String?
+  // Client-generated id: makes resends after a reconnect idempotent.
+  clientId  String?
+  body      String
+  replyToId String?
+  editedAt  DateTime?
+  deletedAt DateTime?
+  createdAt DateTime  @default(now())
+
+  channel     GroupChannel  @relation(fields: [channelId], references: [id], onDelete: Cascade)
+  replyTo     ChatMessage?  @relation("MessageReplies", fields: [replyToId], references: [id], onDelete: SetNull)
+  replies     ChatMessage[] @relation("MessageReplies")
+  author      User?         @relation(fields: [authorId], references: [id], onDelete: SetNull)
+  attachments StoredFile[]
+
+  @@unique([authorId, clientId])
+  @@index([channelId, createdAt])
+}
+
+model ChannelReadState {
+  channelId  String
+  userId     String
+  lastReadAt DateTime @default(now())
+
+  channel GroupChannel @relation(fields: [channelId], references: [id], onDelete: Cascade)
+  user    User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([channelId, userId])
+  @@index([userId])
+}
+
+/// Uploaded file kept in private storage (never under /public).
+model StoredFile {
+  id           String    @id @default(cuid())
+  ownerId      String?
+  scope        FileScope
+  groupId      String?
+  messageId    String?
+  ideaId       String?
+  originalName String
+  mimeType     String
+  size         Int
+  sha256       String
+  storageKey   String    @unique
+  deletedAt    DateTime?
+  createdAt    DateTime  @default(now())
+
+  owner        User?          @relation(fields: [ownerId], references: [id], onDelete: SetNull)
+  group        ResearchGroup? @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  message      ChatMessage?   @relation(fields: [messageId], references: [id], onDelete: SetNull)
+  idea         BusinessIdea?  @relation(fields: [ideaId], references: [id], onDelete: Cascade)
+  profilePhoto MemberProfile? @relation("ProfilePhoto")
+
+  @@index([groupId, createdAt])
+  @@index([messageId])
+  @@index([ownerId])
+}
+
+/// Meeting metadata only. Audio and video are never recorded or stored.
+model GroupMeeting {
+  id          String      @id @default(cuid())
+  groupId     String
+  kind        MeetingKind
+  provider    String      @default("google_meet")
+  joinUrl     String
+  title       String?
+  startedById String?
+  startedAt   DateTime    @default(now())
+  endedAt     DateTime?
+  endedById   String?
+
+  group      ResearchGroup       @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  startedBy  User?               @relation(fields: [startedById], references: [id], onDelete: SetNull)
+  attendance MeetingAttendance[]
+
+  @@index([groupId, startedAt])
+}
+
+model MeetingAttendance {
+  meetingId     String
+  userId        String
+  firstJoinedAt DateTime @default(now())
+  lastJoinedAt  DateTime @default(now())
+
+  meeting GroupMeeting @relation(fields: [meetingId], references: [id], onDelete: Cascade)
+  user    User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([meetingId, userId])
+}
+
+model ResearchNote {
+  id          String          @id @default(cuid())
+  groupId     String
+  section     ResearchSection
+  title       String
+  body        String
+  authorId    String?
+  updatedById String?
+  createdAt   DateTime        @default(now())
+  updatedAt   DateTime        @updatedAt
+
+  group  ResearchGroup @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  author User?         @relation(fields: [authorId], references: [id], onDelete: SetNull)
+
+  @@index([groupId, section])
+}
+
+model ResearchTask {
+  id          String     @id @default(cuid())
+  groupId     String
+  title       String
+  details     String?
+  status      TaskStatus @default(TODO)
+  assigneeId  String?
+  dueDate     DateTime?
+  createdById String?
+  completedAt DateTime?
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+
+  group     ResearchGroup @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  assignee  User?         @relation("TaskAssignee", fields: [assigneeId], references: [id], onDelete: SetNull)
+  createdBy User?         @relation("TaskCreator", fields: [createdById], references: [id], onDelete: SetNull)
+
+  @@index([groupId, status])
+}
+
+model GroupDecision {
+  id           String   @id @default(cuid())
+  groupId      String
+  title        String
+  decision     String
+  rationale    String?
+  decidedAt    DateTime @default(now())
+  recordedById String?
+  createdAt    DateTime @default(now())
+
+  group      ResearchGroup @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  recordedBy User?         @relation(fields: [recordedById], references: [id], onDelete: SetNull)
+
+  @@index([groupId, decidedAt])
+}
+
+model GroupLink {
+  id        String   @id @default(cuid())
+  groupId   String
+  url       String
+  title     String
+  addedById String?
+  createdAt DateTime @default(now())
+
+  group   ResearchGroup @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  addedBy User?         @relation(fields: [addedById], references: [id], onDelete: SetNull)
+
+  @@index([groupId])
+}
+
+model Notification {
+  id        String           @id @default(cuid())
+  userId    String
+  type      NotificationType
+  title     String
+  body      String?
+  link      String?
+  // Repeated events with the same key are coalesced into one notification.
+  dedupeKey String?
+  count     Int              @default(1)
+  readAt    DateTime?
+  createdAt DateTime         @default(now())
+  updatedAt DateTime         @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, dedupeKey])
+  @@index([userId, readAt, updatedAt])
+}
+
+model NotificationPreference {
+  userId String
+  type   NotificationType
+  inApp  Boolean          @default(true)
+  email  Boolean          @default(false)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([userId, type])
+}
+
+model ContentReport {
+  id           String       @id @default(cuid())
+  reporterId   String?
+  targetType   ReportTarget
+  targetId     String
+  groupId      String?
+  reason       ReportReason
+  details      String?
+  // Copy of the reported content at report time. This is the only way
+  // administrators see private group messages.
+  snapshot     String?
+  status       ReportStatus @default(OPEN)
+  resolvedById String?
+  resolution   String?
+  resolvedAt   DateTime?
+  createdAt    DateTime     @default(now())
+
+  reporter   User? @relation("Reporter", fields: [reporterId], references: [id], onDelete: SetNull)
+  resolvedBy User? @relation("Resolver", fields: [resolvedById], references: [id], onDelete: SetNull)
+
+  @@unique([reporterId, targetType, targetId])
+  @@index([status, createdAt])
+  @@index([targetType, targetId])
+}
+
+// ---------------------------------------------------------------- email & jobs
+
+model EmailTemplate {
+  key         String   @id
+  subject     String
+  body        String
+  updatedAt   DateTime @updatedAt
+  updatedById String?
+}
+
+model EmailDelivery {
+  id                String      @id @default(cuid())
+  to                String
+  templateKey       String?
+  subject           String
+  status            EmailStatus
+  providerMessageId String?
+  providerResponse  String?
+  error             String?
+  sentById          String?
+  applicationId     String?
+  userId            String?
+  // Message text, kept ONLY for emails without secret links, so a failed send can be retried safely.
+  body              String?
+  // When this row is a manual retry, the delivery it retried.
+  retryOfId         String?
+  // Latest provider event (e.g. "email.delivered", "email.bounced") reported by a verified webhook.
+  providerEvent     String?
+  providerEventAt   DateTime?
+  createdAt         DateTime    @default(now())
+
+  sentBy User? @relation(fields: [sentById], references: [id], onDelete: SetNull)
+
+  @@index([createdAt])
+  @@index([applicationId])
+  @@index([userId])
+  @@index([providerMessageId])
+  @@index([to, createdAt])
+}
+
+model JobRun {
+  id         String    @id @default(cuid())
+  job        String
+  dryRun     Boolean   @default(false)
+  startedAt  DateTime  @default(now())
+  finishedAt DateTime?
+  ok         Boolean?
+  summary    Json?
+  error      String?
+
+  @@index([job, startedAt])
+}

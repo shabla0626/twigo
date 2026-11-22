@@ -1,0 +1,48 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "web",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": [
+        "run",
+        "dev"
+      ],
+      "port": 3000,
+      "url": "http://127.0.0.1:3000"
+    },
+    {
+      "name": "prod",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": [
+        "start"
+      ],
+      "port": 3457,
+      "env": {
+        "PORT": "3457",
+        "HOST": "127.0.0.1",
+        "SITE_URL": "http://127.0.0.1:3457"
+      },
+      "url": "http://127.0.0.1:3457"
+    },
+    {
+      "name": "demo",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": [
+        "run",
+        "dev"
+      ],
+      "port": 3100,
+      "env": {
+        "PORT": "3100",
+        "HOST": "127.0.0.1",
+        "SITE_URL": "http://127.0.0.1:3100",
+        "DATABASE_URL": "postgresql://postgres:postgres@localhost:5433/cowork_demo?schema=public",
+        "STORAGE_DIR": ".demo-storage",
+        "JOBS_ENABLED": "false",
+        "NEXT_DIST_DIR": ".next-demo"
+      },
+      "url": "http://127.0.0.1:3100"
+    }
+  ]
+}

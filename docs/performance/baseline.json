@@ -1,0 +1,249 @@
+{
+  "label": "baseline",
+  "measuredAt": "2026-11-22T05:09:39.688Z",
+  "runs": 7,
+  "rows": [
+    {
+      "path": "/",
+      "who": "visitor",
+      "status": 200,
+      "medianMs": 25,
+      "p90Ms": 27,
+      "queries": 0,
+      "queryMs": 0,
+      "htmlKB": 86.7,
+      "jsKB": 575.9
+    },
+    {
+      "path": "/how-it-works",
+      "who": "visitor",
+      "status": 200,
+      "medianMs": 25,
+      "p90Ms": 29,
+      "queries": 0,
+      "queryMs": 0,
+      "htmlKB": 69,
+      "jsKB": 575.6
+    },
+    {
+      "path": "/join",
+      "who": "visitor",
+      "status": 200,
+      "medianMs": 26,
+      "p90Ms": 29,
+      "queries": 0,
+      "queryMs": 0,
+      "htmlKB": 21.4,
+      "jsKB": 561.2
+    },
+    {
+      "path": "/login",
+      "who": "visitor",
+      "status": 200,
+      "medianMs": 25,
+      "p90Ms": 28,
+      "queries": 0,
+      "queryMs": 0,
+      "htmlKB": 16.8,
+      "jsKB": 561.2
+    },
+    {
+      "path": "/application",
+      "who": "applicant",
+      "status": 200,
+      "medianMs": 37,
+      "p90Ms": 52,
+      "queries": 9,
+      "queryMs": 4.599999999999966,
+      "htmlKB": 19.6,
+      "jsKB": 557.4
+    },
+    {
+      "path": "/community",
+      "who": "member",
+      "status": 200,
+      "medianMs": 49,
+      "p90Ms": 76,
+      "queries": 24,
+      "queryMs": 59.900000000000546,
+      "htmlKB": 52.3,
+      "jsKB": 557.4
+    },
+    {
+      "path": "/community/ideas/:idea",
+      "who": "member",
+      "status": 200,
+      "medianMs": 38,
+      "p90Ms": 52,
+      "queries": 19,
+      "queryMs": 16.200000000000045,
+      "htmlKB": 52.4,
+      "jsKB": 560.7
+    },
+    {
+      "path": "/community/groups",
+      "who": "member",
+      "status": 200,
+      "medianMs": 32,
+      "p90Ms": 37,
+      "queries": 10,
+      "queryMs": 11.400000000000318,
+      "htmlKB": 35.7,
+      "jsKB": 557.4
+    },
+    {
+      "path": "/community/groups/mine",
+      "who": "member",
+      "status": 200,
+      "medianMs": 35,
+      "p90Ms": 35,
+      "queries": 14,
+      "queryMs": 12.200000000000045,
+      "htmlKB": 28.4,
+      "jsKB": 557.4
+    },
+    {
+      "path": "/community/groups/bookkeeping-help-for-small-local-shops",
+      "who": "member",
+      "status": 200,
+      "medianMs": 42,
+      "p90Ms": 45,
+      "queries": 33,
+      "queryMs": 30.399999999999636,
+      "htmlKB": 62.9,
+      "jsKB": 561.8
+    },
+    {
+      "path": "/community/groups/bookkeeping-help-for-small-local-shops/chat",
+      "who": "member",
+      "status": 200,
+      "medianMs": 37,
+      "p90Ms": 42,
+      "queries": 20,
+      "queryMs": 18.199999999999363,
+      "htmlKB": 32.6,
+      "jsKB": 615
+    },
+    {
+      "path": "/community/groups/bookkeeping-help-for-small-local-shops/research",
+      "who": "member",
+      "status": 200,
+      "medianMs": 44,
+      "p90Ms": 49,
+      "queries": 35,
+      "queryMs": 41.49999999999909,
+      "htmlKB": 84,
+      "jsKB": 562
+    },
+    {
+      "path": "/community/groups/bookkeeping-help-for-small-local-shops/meetings",
+      "who": "member",
+      "status": 200,
+      "medianMs": 36,
+      "p90Ms": 40,
+      "queries": 24,
+      "queryMs": 22.400000000000546,
+      "htmlKB": 35.7,
+      "jsKB": 565.7
+    },
+    {
+      "path": "/community/groups/bookkeeping-help-for-small-local-shops/discussions",
+      "who": "member",
+      "status": 200,
+      "medianMs": 36,
+      "p90Ms": 41,
+      "queries": 22,
+      "queryMs": 21.599999999999454,
+      "htmlKB": 40.8,
+      "jsKB": 560.8
+    },
+    {
+      "path": "/community/groups/bookkeeping-help-for-small-local-shops/discussions/:discussion",
+      "who": "member",
+      "status": 200,
+      "medianMs": 38,
+      "p90Ms": 39,
+      "queries": 22,
+      "queryMs": 16.500000000000455,
+      "htmlKB": 51.6,
+      "jsKB": 560.7
+    },
+    {
+      "path": "/community/notifications",
+      "who": "member",
+      "status": 200,
+      "medianMs": 29,
+      "p90Ms": 33,
+      "queries": 8,
+      "queryMs": 7.5,
+      "htmlKB": 26.9,
+      "jsKB": 557.4
+    },
+    {
+      "path": "/community/profile",
+      "who": "member",
+      "status": 200,
+      "medianMs": 32,
+      "p90Ms": 35,
+      "queries": 8,
+      "queryMs": 6.000000000000455,
+      "htmlKB": 44.4,
+      "jsKB": 562
+    },
+    {
+      "path": "/admin",
+      "who": "admin",
+      "status": 200,
+      "medianMs": 36,
+      "p90Ms": 46,
+      "queries": 16,
+      "queryMs": 52.90000000000009,
+      "htmlKB": 35.7,
+      "jsKB": 557.4
+    },
+    {
+      "path": "/admin/applications",
+      "who": "admin",
+      "status": 200,
+      "medianMs": 33,
+      "p90Ms": 38,
+      "queries": 11,
+      "queryMs": 8.700000000000728,
+      "htmlKB": 40.6,
+      "jsKB": 557.4
+    },
+    {
+      "path": "/admin/applications/:app",
+      "who": "admin",
+      "status": 200,
+      "medianMs": 34,
+      "p90Ms": 43,
+      "queries": 14,
+      "queryMs": 6.699999999999818,
+      "htmlKB": 62,
+      "jsKB": 557.4
+    },
+    {
+      "path": "/admin/members",
+      "who": "admin",
+      "status": 200,
+      "medianMs": 32,
+      "p90Ms": 36,
+      "queries": 6,
+      "queryMs": 5.200000000000273,
+      "htmlKB": 46.8,
+      "jsKB": 557.4
+    },
+    {
+      "path": "/admin/email",
+      "who": "admin",
+      "status": 200,
+      "medianMs": 31,
+      "p90Ms": 46,
+      "queries": 7,
+      "queryMs": 5.000000000000455,
+      "htmlKB": 58.2,
+      "jsKB": 560.8
+    }
+  ]
+}

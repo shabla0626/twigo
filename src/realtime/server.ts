@@ -1,0 +1,270 @@
+// Socket.IO server for group chat, presence, typing indicators and live
+// notification badges. Attached to the same HTTP server and origin as Next.js.
+//
+// Security model:
+// - Handshake: Origin must match SITE_URL; the session cookie is resolved in
+//   the database (revoked/expired/suspended sessions are refused).
+// - Every channel join and every send/edit/delete re-checks group membership
+//   in the database. Client-supplied user ids are never trusted.
+// - Server-side events (left group, suspended, revoked) arrive via Postgres
+//   LISTEN/NOTIFY and immediately remove sockets from rooms.
+import type { Server as HttpServer } from "node:http";
+import { Client } from "pg";
+import type { PrismaClient } from "@prisma/client";
+import { Server, type Socket } from "socket.io";
+import { z } from "zod";
+import { lookupSession, readCookie } from "../lib/auth/session-core";
+import { REALTIME_CHANNEL, type RealtimeEvent } from "../lib/realtime-events";
+import { chatMessageSchema } from "../lib/validation/community";
+import { channelAccess, deleteMessage, editMessage, history, markChannelRead, sendMessage } from "./chat-service";
+
+type SocketUser = { id: string; name: string };
+type Data = { user: SocketUser; channels: Map<string, string> /* channelId -> groupId */ };
+type Ack = (res: unknown) => void;
+
+// Simple per-user token buckets (single instance; see README for scaling).
+const buckets = new Map<string, { n: number; reset: number }>();
+function allow(key: string, limit: number, windowMs: number) {
+  const now = Date.now();
+  const b = buckets.get(key);
+  if (!b || b.reset < now) {
+    buckets.set(key, { n: 1, reset: now + windowMs });
+    return true;
+  }
+  if (b.n >= limit) return false;
+  b.n++;
+  return true;
+}
+
+const idSchema = z.object({ channelId: z.string().min(1).max(40) });
+const moreSchema = idSchema.extend({ before: z.string().max(40).nullish() });
+const editSchema = idSchema.extend({ messageId: z.string().min(1).max(40), body: z.string().max(4000).transform((s) => s.trim()) });
+const delSchema = idSchema.extend({ messageId: z.string().min(1).max(40) });
+
+function safeAck(ack: unknown): Ack {
+  return typeof ack === "function" ? (ack as Ack) : () => {};
+}
+
+export type RealtimeHandle = { io: Server; close: () => Promise<void> };
+
+export async function attachRealtime(httpServer: HttpServer, db: PrismaClient, opts: { siteUrl: string; databaseUrl: string; log?: (msg: string, meta?: object) => void }): Promise<RealtimeHandle> {
+  const log = opts.log ?? (() => {});
+  const allowedOrigin = new URL(opts.siteUrl).origin;
+  const io = new Server(httpServer, {
+    path: "/socket.io",
+    serveClient: false,
+    maxHttpBufferSize: 64 * 1024,
+    cors: { origin: allowedOrigin, credentials: true },
+    allowRequest: (req, cb) => {
+      // Protects against cross-site WebSocket hijacking.
+      const origin = req.headers.origin;
+      const host = req.headers.host;
+      const ok = !origin || origin === allowedOrigin || (host !== undefined && (origin === `http://${host}` || origin === `https://${host}`));
+      cb(null, ok);
+    },
+  });
+
+  // presence: channelId -> userId -> socket count
+  const presence = new Map<string, Map<string, number>>();
+  const presenceList = (channelId: string) => [...(presence.get(channelId)?.keys() ?? [])];
+  const presenceAdd = (channelId: string, userId: string) => {
+    const m = presence.get(channelId) ?? new Map<string, number>();
+    m.set(userId, (m.get(userId) ?? 0) + 1);
+    presence.set(channelId, m);
+  };
+  const presenceRemove = (channelId: string, userId: string) => {
+    const m = presence.get(channelId);
+    if (!m) return;
+    const n = (m.get(userId) ?? 1) - 1;
+    if (n <= 0) m.delete(userId);
+    else m.set(userId, n);
+    if (!m.size) presence.delete(channelId);
+  };
+
+  function leaveChannel(socket: Socket, channelId: string) {
+    const data = socket.data as Data;
+    if (!data.channels.has(channelId)) return;
+    data.channels.delete(channelId);
+    socket.leave(`channel:${channelId}`);
+    presenceRemove(channelId, data.user.id);
+    io.to(`channel:${channelId}`).emit("presence", { channelId, userIds: presenceList(channelId) });
+  }
+
+  io.use(async (socket, next) => {
+    try {
+      const token = readCookie(socket.handshake.headers.cookie);
+      const s = await lookupSession(db, token);
+      if (!s || s.mfaPending || !s.user.communityAccess || !s.user.displayName) return next(new Error("unauthorized"));
+      (socket.data as Data).user = { id: s.user.id, name: s.user.displayName };
+      (socket.data as Data).channels = new Map();
+      next();
+    } catch {
+      next(new Error("unauthorized"));
+    }
+  });
+
+  io.on("connection", (socket) => {
+    const data = socket.data as Data;
+    const user = data.user;
+    socket.join(`user:${user.id}`);
+
+    socket.on("channel:join", async (raw: unknown, ackRaw: unknown) => {
+      const ack = safeAck(ackRaw);
+      const p = idSchema.safeParse(raw);
+      if (!p.success) return ack({ ok: false, error: "invalid" });
+      const access = await channelAccess(db, user.id, p.data.channelId);
+      if (!access) return ack({ ok: false, error: "forbidden" });
+      if (!data.channels.has(access.channelId)) {
+        data.channels.set(access.channelId, access.groupId);
+        socket.join(`channel:${access.channelId}`);
+        socket.join(`group:${access.groupId}`);
+        presenceAdd(access.channelId, user.id);
+      }
+      const page = await history(db, access.channelId);
+      await markChannelRead(db, user.id, access.channelId);
+      io.to(`channel:${access.channelId}`).emit("presence", { channelId: access.channelId, userIds: presenceList(access.channelId) });
+      ack({ ok: true, canPost: access.canPost, ...page, presence: presenceList(access.channelId) });
+    });
+
+    socket.on("channel:leave", (raw: unknown) => {
+      const p = idSchema.safeParse(raw);
+      if (p.success) leaveChannel(socket, p.data.channelId);
+    });
+
+    socket.on("history:more", async (raw: unknown, ackRaw: unknown) => {
+      const ack = safeAck(ackRaw);
+      const p = moreSchema.safeParse(raw);
+      if (!p.success) return ack({ ok: false, error: "invalid" });
+      const access = await channelAccess(db, user.id, p.data.channelId);
+      if (!access) return ack({ ok: false, error: "forbidden" });
+      ack({ ok: true, ...(await history(db, access.channelId, p.data.before)) });
+    });
+
+    socket.on("message:send", async (raw: unknown, ackRaw: unknown) => {
+      const ack = safeAck(ackRaw);
+      const p = chatMessageSchema.safeParse(raw);
+      if (!p.success) return ack({ ok: false, error: p.error.issues[0]?.message ?? "Invalid message." });
+      if (!allow(`msg:${user.id}`, 20, 10_000)) return ack({ ok: false, error: "You are sending messages too quickly. Please slow down." });
+      const access = await channelAccess(db, user.id, p.data.channelId);
+      if (!access) {
+        leaveChannel(socket, p.data.channelId);
+        return ack({ ok: false, error: "You no longer have access to this chat.", revoked: true });
+      }
+      try {
+        const res = await sendMessage(db, user.id, access, p.data);
+        if (!res.ok) return ack(res);
+        if (!res.duplicate) io.to(`channel:${access.channelId}`).emit("message:new", res.message);
+        ack({ ok: true, message: res.message });
+      } catch (err) {
+        log("realtime.send_failed", { err: String(err) });
+        ack({ ok: false, error: "The message could not be saved. It will be retried." });
+      }
+    });
+
+    socket.on("message:edit", async (raw: unknown, ackRaw: unknown) => {
+      const ack = safeAck(ackRaw);
+      const p = editSchema.safeParse(raw);
+      if (!p.success) return ack({ ok: false, error: "Invalid edit." });
+      if (!allow(`edit:${user.id}`, 20, 10_000)) return ack({ ok: false, error: "Too many edits." });
+      const access = await channelAccess(db, user.id, p.data.channelId);
+      if (!access) return ack({ ok: false, error: "forbidden", revoked: true });
+      const res = await editMessage(db, user.id, access, p.data.messageId, p.data.body);
+      if (res.ok) io.to(`channel:${access.channelId}`).emit("message:updated", res.message);
+      ack(res);
+    });
+
+    socket.on("message:delete", async (raw: unknown, ackRaw: unknown) => {
+      const ack = safeAck(ackRaw);
+      const p = delSchema.safeParse(raw);
+      if (!p.success) return ack({ ok: false, error: "Invalid request." });
+      const access = await channelAccess(db, user.id, p.data.channelId);
+      if (!access) return ack({ ok: false, error: "forbidden", revoked: true });
+      const res = await deleteMessage(db, user.id, access, p.data.messageId);
+      if (res.ok) io.to(`channel:${access.channelId}`).emit("message:updated", res.message);
+      ack(res);
+    });
+
+    socket.on("typing", (raw: unknown) => {
+      const p = idSchema.safeParse(raw);
+      if (!p.success || !data.channels.has(p.data.channelId)) return;
+      if (!allow(`typing:${user.id}`, 10, 5_000)) return;
+      socket.to(`channel:${p.data.channelId}`).emit("typing", { channelId: p.data.channelId, userId: user.id, name: user.name });
+    });
+
+    socket.on("read", async (raw: unknown) => {
+      const p = idSchema.safeParse(raw);
+      if (!p.success || !data.channels.has(p.data.channelId)) return;
+      if (!allow(`read:${user.id}`, 30, 10_000)) return;
+      await markChannelRead(db, user.id, p.data.channelId).catch(() => {});
+    });
+
+    socket.on("disconnect", () => {
+      for (const channelId of [...data.channels.keys()]) leaveChannel(socket, channelId);
+    });
+  });
+
+  // ---- server-side events via LISTEN/NOTIFY
+  let listener: Client | null = null;
+  let closed = false;
+  const handle = async (ev: RealtimeEvent) => {
+    switch (ev.t) {
+      case "user.revoked":
+        io.in(`user:${ev.userId}`).disconnectSockets(true);
+        break;
+      case "group.access_revoked": {
+        const sockets = await io.in(`group:${ev.groupId}`).fetchSockets();
+        for (const remote of sockets) {
+          const d = remote.data as Data;
+          if (ev.userId && d.user.id !== ev.userId) continue;
+          const local = io.sockets.sockets.get(remote.id);
+          if (!local) continue;
+          for (const [channelId, groupId] of [...d.channels]) if (groupId === ev.groupId) leaveChannel(local, channelId);
+          local.leave(`group:${ev.groupId}`);
+          local.emit("access:revoked", { groupId: ev.groupId });
+        }
+        break;
+      }
+      case "notifications.changed": {
+        const count = await db.notification.count({ where: { userId: ev.userId, readAt: null } });
+        io.to(`user:${ev.userId}`).emit("notifications:count", { count });
+        break;
+      }
+      case "group.updated":
+        io.to(`group:${ev.groupId}`).emit("group:updated", { groupId: ev.groupId, what: ev.what });
+        break;
+    }
+  };
+
+  const connectListener = async () => {
+    if (closed) return;
+    const url = new URL(opts.databaseUrl);
+    url.searchParams.delete("schema");
+    const c = new Client({ connectionString: url.toString() });
+    c.on("notification", (msg) => {
+      if (msg.channel !== REALTIME_CHANNEL || !msg.payload) return;
+      try {
+        void handle(JSON.parse(msg.payload) as RealtimeEvent).catch((err) => log("realtime.event_failed", { err: String(err) }));
+      } catch {
+        /* ignore malformed payloads */
+      }
+    });
+    c.on("error", () => {
+      listener = null;
+      c.end().catch(() => {});
+      if (!closed) setTimeout(() => void connectListener().catch(() => {}), 2000);
+    });
+    await c.connect();
+    await c.query(`LISTEN ${REALTIME_CHANNEL}`);
+    listener = c;
+  };
+  await connectListener();
+
+  return {
+    io,
+    close: async () => {
+      closed = true;
+      await new Promise<void>((r) => io.close(() => r()));
+      await listener?.end().catch(() => {});
+    },
+  };
+}

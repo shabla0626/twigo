@@ -1,0 +1,106 @@
+import "server-only";
+import type { ReportReason, ReportTarget } from "@prisma/client";
+import { db } from "@/lib/db";
+import { audit } from "@/lib/audit";
+import { rateLimit } from "@/lib/rate-limit";
+import { groupAccess } from "./access";
+
+/**
+ * Files a report. A text snapshot of the reported content is stored so that
+ * administrators can review it. This snapshot is the ONLY way administrators
+ * see private group chat content; there is no other access path.
+ */
+export async function fileReport(reporterId: string, input: { targetType: ReportTarget; targetId: string; reason: ReportReason; details: string | null }) {
+  if (!rateLimit(`report:${reporterId}`, 20, 24 * 3600_000).ok) return { ok: false as const, error: "Too many reports today. Please contact the organization directly." };
+  const snap = await snapshot(reporterId, input.targetType, input.targetId);
+  if (!snap) return { ok: false as const, error: "That content is not available to you." };
+  try {
+    await db.contentReport.create({
+      data: { reporterId, targetType: input.targetType, targetId: input.targetId, groupId: snap.groupId, reason: input.reason, details: input.details, snapshot: snap.text.slice(0, 10_000) },
+    });
+  } catch {
+    return { ok: true as const, message: "You already reported this. The organization will review it." };
+  }
+  return { ok: true as const, message: "Thank you. The report was sent to the organization's moderators." };
+}
+
+/** Returns a snapshot only if the reporter can actually see the content. */
+async function snapshot(viewerId: string, type: ReportTarget, id: string): Promise<{ text: string; groupId: string | null } | null> {
+  switch (type) {
+    case "IDEA": {
+      const i = await db.businessIdea.findUnique({ where: { id } });
+      return i && i.status !== "REMOVED" ? { text: `${i.title}\n\n${i.summary}\n\n${i.description ?? ""}`, groupId: null } : null;
+    }
+    case "COMMENT": {
+      const c = await db.comment.findUnique({ where: { id }, include: { discussion: { select: { groupId: true } } } });
+      return c && !c.deletedAt && !c.removedAt ? { text: c.body, groupId: c.discussion?.groupId ?? null } : null;
+    }
+    case "DISCUSSION": {
+      const d = await db.groupDiscussion.findUnique({ where: { id } });
+      return d && !d.deletedAt && !d.removedAt ? { text: `${d.title}\n\n${d.body}`, groupId: d.groupId } : null;
+    }
+    case "MESSAGE": {
+      const m = await db.chatMessage.findUnique({ where: { id }, include: { channel: { select: { groupId: true } } } });
+      if (!m || m.deletedAt) return null;
+      const a = await groupAccess(m.channel.groupId, viewerId);
+      return a?.isMember ? { text: m.body, groupId: m.channel.groupId } : null;
+    }
+    case "GROUP": {
+      const g = await db.researchGroup.findUnique({ where: { id } });
+      return g ? { text: `${g.name}\n\n${g.purpose ?? ""}`, groupId: g.id } : null;
+    }
+    case "USER": {
+      const p = await db.memberProfile.findUnique({ where: { userId: id } });
+      return p ? { text: `${p.displayName}\n${p.headline ?? ""}\n\n${p.intro ?? ""}`, groupId: null } : null;
+    }
+  }
+}
+
+export async function listReports(status: "OPEN" | "ACTIONED" | "DISMISSED" = "OPEN") {
+  return db.contentReport.findMany({
+    where: { status },
+    orderBy: { createdAt: status === "OPEN" ? "asc" : "desc" },
+    take: 200,
+    include: { reporter: { select: { id: true, email: true, profile: { select: { displayName: true } } } }, resolvedBy: { select: { name: true } } },
+  });
+}
+
+/** Moderator action on reported content (audited). */
+export async function moderate(adminId: string, reportId: string, action: "remove" | "dismiss" | "suspend_author", note: string) {
+  const r = await db.contentReport.findUnique({ where: { id: reportId } });
+  if (!r || r.status !== "OPEN") return { ok: false as const, error: "Report not found or already handled." };
+  const now = new Date();
+  let authorId: string | null = null;
+  if (action !== "dismiss") {
+    switch (r.targetType) {
+      case "IDEA":
+        authorId = (await db.businessIdea.update({ where: { id: r.targetId }, data: { status: "REMOVED", removedAt: now, removedReason: note.slice(0, 300) } })).authorId;
+        break;
+      case "COMMENT":
+        authorId = (await db.comment.update({ where: { id: r.targetId }, data: { removedAt: now } })).authorId;
+        break;
+      case "DISCUSSION":
+        authorId = (await db.groupDiscussion.update({ where: { id: r.targetId }, data: { removedAt: now } })).authorId;
+        break;
+      case "MESSAGE":
+        authorId = (await db.chatMessage.update({ where: { id: r.targetId }, data: { deletedAt: now } })).authorId;
+        break;
+      case "GROUP":
+        await db.researchGroup.update({ where: { id: r.targetId }, data: { suspendedAt: now, suspendedReason: note.slice(0, 300) } });
+        break;
+      case "USER":
+        authorId = r.targetId;
+        break;
+    }
+  }
+  await db.contentReport.updateMany({
+    where: { targetType: r.targetType, targetId: r.targetId, status: "OPEN" },
+    data: { status: action === "dismiss" ? "DISMISSED" : "ACTIONED", resolvedById: adminId, resolvedAt: now, resolution: `${action}: ${note}`.slice(0, 1000) },
+  });
+  await audit(adminId, `moderation.${action}`, r.targetType, r.targetId, { reportId, reason: r.reason });
+  if (action === "suspend_author" && authorId) {
+    const { suspendUser } = await import("../accounts");
+    await suspendUser(adminId, authorId, `Moderation: ${note}`);
+  }
+  return { ok: true as const };
+}

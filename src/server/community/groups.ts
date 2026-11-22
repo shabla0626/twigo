@@ -1,0 +1,342 @@
+import "server-only";
+import type { GroupStatus, IdeaCategory, Prisma } from "@prisma/client";
+import { db } from "@/lib/db";
+import { ACTIVE_MEMBER } from "@/lib/auth/member-where";
+import { audit } from "@/lib/audit";
+import { publishRealtime } from "@/lib/realtime-events";
+import { activeMemberIds, groupAccess, requireCoordinator } from "./access";
+import { notify } from "./notifications";
+import { COORDINATOR_STATUSES, GROUP_STATUS_LABELS } from "./group-labels";
+
+export { GROUP_STATUS_LABELS, COORDINATOR_STATUSES };
+
+export function slugify(text: string): string {
+  return (
+    text
+      .toLowerCase()
+      .normalize("NFKD")
+      .replace(/[̀-ͯ]/g, "")
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/^-+|-+$/g, "")
+      .slice(0, 60) || "group"
+  );
+}
+
+async function uniqueGroupSlug(tx: Prisma.TransactionClient, name: string) {
+  // "mine" is a reserved path segment (/community/groups/mine).
+  const base = slugify(name) === "mine" ? "mine-group" : slugify(name);
+  for (let i = 0; i < 50; i++) {
+    const slug = i === 0 ? base : `${base}-${i + 1}`;
+    if (!(await tx.researchGroup.findUnique({ where: { slug }, select: { id: true } }))) return slug;
+  }
+  return `${base}-${Date.now().toString(36)}`;
+}
+
+/**
+ * Creates the research group for an idea. Must run inside the endorsement
+ * transaction that holds the idea row lock. The author becomes coordinator
+ * (or, if the author's account is gone or inactive, the first endorser).
+ */
+export async function createGroupFromIdea(tx: Prisma.TransactionClient, ideaId: string, endorserIds: string[]) {
+  const idea = await tx.businessIdea.findUniqueOrThrow({
+    where: { id: ideaId },
+    select: { id: true, title: true, summary: true, description: true, category: true, authorId: true, author: { select: { status: true } } },
+  });
+  const authorActive = Boolean(idea.authorId && idea.author?.status === "ACTIVE");
+  const coordinatorId = authorActive ? idea.authorId! : endorserIds[0]!;
+  const memberIds = [...new Set([...(authorActive ? [idea.authorId!] : []), ...endorserIds])];
+
+  const group = await tx.researchGroup.create({
+    data: {
+      slug: await uniqueGroupSlug(tx, idea.title),
+      name: idea.title,
+      purpose: idea.summary,
+      description: idea.description,
+      category: idea.category,
+      ideaId: idea.id,
+      memberCount: memberIds.length,
+      channels: { create: { name: "general", isDefault: true } },
+      memberships: {
+        create: memberIds.map((userId) => ({ userId, role: userId === coordinatorId ? "COORDINATOR" : "MEMBER", founding: true })),
+      },
+    },
+  });
+  await tx.businessIdea.update({ where: { id: idea.id }, data: { status: "GROUP_FORMED" } });
+  return { id: group.id, slug: group.slug, name: group.name, memberIds, authorId: authorActive ? idea.authorId : coordinatorId };
+}
+
+async function refreshMemberCount(groupId: string, tx: Prisma.TransactionClient = db) {
+  const count = await tx.groupMembership.count({ where: { groupId, status: "ACTIVE" } });
+  await tx.researchGroup.update({ where: { id: groupId }, data: { memberCount: count } });
+  return count;
+}
+
+const cardSelect = {
+  id: true,
+  slug: true,
+  name: true,
+  purpose: true,
+  category: true,
+  status: true,
+  memberCount: true,
+  lastActivityAt: true,
+  createdAt: true,
+  suspendedAt: true,
+  idea: { select: { title: true } },
+} satisfies Prisma.ResearchGroupSelect;
+
+export async function listGroups(opts: { q?: string; category?: IdeaCategory; status?: GroupStatus; sort?: "active" | "new" | "members"; cursor?: string; take?: number }) {
+  const take = Math.min(opts.take ?? 24, 50);
+  const where: Prisma.ResearchGroupWhereInput = {
+    suspendedAt: null,
+    ...(opts.status ? { status: opts.status } : { status: { not: "ARCHIVED" } }),
+    ...(opts.category ? { category: opts.category } : {}),
+    ...(opts.q ? { OR: [{ name: { contains: opts.q, mode: "insensitive" } }, { purpose: { contains: opts.q, mode: "insensitive" } }] } : {}),
+  };
+  const orderBy: Prisma.ResearchGroupOrderByWithRelationInput[] =
+    opts.sort === "new" ? [{ createdAt: "desc" }, { id: "desc" }] : opts.sort === "members" ? [{ memberCount: "desc" }, { id: "desc" }] : [{ lastActivityAt: "desc" }, { id: "desc" }];
+  const rows = await db.researchGroup.findMany({ where, orderBy, take: take + 1, ...(opts.cursor ? { cursor: { id: opts.cursor }, skip: 1 } : {}), select: cardSelect });
+  return { items: rows.slice(0, take), nextCursor: rows.length > take ? rows[take - 1]!.id : null };
+}
+
+/** Groups the member belongs to, with unread chat message counts. */
+export async function myGroups(userId: string) {
+  const memberships = await db.groupMembership.findMany({
+    where: { userId, status: "ACTIVE", group: { suspendedAt: null } },
+    orderBy: { group: { lastActivityAt: "desc" } },
+    select: { role: true, group: { select: { ...cardSelect, channels: { where: { isDefault: true }, select: { id: true } } } } },
+  });
+  const channelIds = memberships.flatMap((m) => m.group.channels.map((c) => c.id));
+  const reads = await db.channelReadState.findMany({ where: { userId, channelId: { in: channelIds } } });
+  const readMap = new Map(reads.map((r) => [r.channelId, r.lastReadAt]));
+  return Promise.all(
+    memberships.map(async (m) => {
+      const ch = m.group.channels[0];
+      const unread = ch
+        ? await db.chatMessage.count({
+            where: { channelId: ch.id, deletedAt: null, authorId: { not: userId }, createdAt: { gt: readMap.get(ch.id) ?? new Date(0) } },
+          })
+        : 0;
+      return { role: m.role, group: m.group, unread };
+    }),
+  );
+}
+
+/** Community-visible group information (no chat, files or research). */
+export async function getGroupOverview(slug: string) {
+  return db.researchGroup.findUnique({
+    where: { slug },
+    include: {
+      idea: { select: { id: true, title: true, summary: true, status: true, author: { select: { id: true, profile: { select: { displayName: true } } } } } },
+      memberships: {
+        where: { status: "ACTIVE" },
+        orderBy: [{ role: "asc" }, { joinedAt: "asc" }],
+        select: { role: true, joinedAt: true, founding: true, user: { select: { id: true, profile: { select: { displayName: true, headline: true } } } } },
+      },
+      announcements: { orderBy: { createdAt: "desc" }, take: 5, include: { author: { select: { profile: { select: { displayName: true } } } } } },
+      project: { select: { id: true, title: true, status: true } },
+    },
+  });
+}
+
+export async function joinGroup(userId: string, groupId: string) {
+  const a = await groupAccess(groupId, userId);
+  if (!a || a.group.suspendedAt) return { ok: false as const, error: "This group is not available." };
+  if (a.group.status === "ARCHIVED") return { ok: false as const, error: "Archived groups cannot be joined." };
+  if (a.isMember) return { ok: true as const };
+  if (a.membership?.status === "REMOVED") return { ok: false as const, error: "You were removed from this group by its coordinator. Contact the organization if you think this was a mistake." };
+  await db.$transaction(async (tx) => {
+    await tx.groupMembership.upsert({
+      where: { groupId_userId: { groupId: a.group.id, userId } },
+      create: { groupId: a.group.id, userId, role: "MEMBER" },
+      update: { status: "ACTIVE", role: "MEMBER", joinedAt: new Date(), leftAt: null },
+    });
+    await refreshMemberCount(a.group.id, tx);
+    await tx.researchGroup.update({ where: { id: a.group.id }, data: { lastActivityAt: new Date(), adminManaged: false } });
+  });
+  await publishRealtime(db, { t: "group.updated", groupId: a.group.id, what: "members" });
+  return { ok: true as const };
+}
+
+/**
+ * Coordinator succession (documented in docs/COMMUNITY.md):
+ * 1. If another active coordinator exists, nothing changes.
+ * 2. Otherwise the longest-standing active member becomes coordinator.
+ * 3. If no active member remains, the group is archived and flagged for administrators.
+ */
+async function ensureCoordinator(tx: Prisma.TransactionClient, groupId: string): Promise<{ promoted: string | null; archived: boolean }> {
+  const coord = await tx.groupMembership.findFirst({ where: { groupId, status: "ACTIVE", role: "COORDINATOR", user: ACTIVE_MEMBER } });
+  if (coord) return { promoted: null, archived: false };
+  const next = await tx.groupMembership.findFirst({ where: { groupId, status: "ACTIVE", user: ACTIVE_MEMBER }, orderBy: { joinedAt: "asc" } });
+  if (next) {
+    await tx.groupMembership.update({ where: { id: next.id }, data: { role: "COORDINATOR" } });
+    return { promoted: next.userId, archived: false };
+  }
+  await tx.researchGroup.update({ where: { id: groupId }, data: { status: "ARCHIVED", archivedAt: new Date(), adminManaged: true } });
+  return { promoted: null, archived: true };
+}
+
+async function afterMembershipEnded(groupId: string, userId: string, outcome: { promoted: string | null; archived: boolean }) {
+  await publishRealtime(db, { t: "group.access_revoked", groupId, userId });
+  await publishRealtime(db, { t: "group.updated", groupId, what: "members" });
+  const group = await db.researchGroup.findUniqueOrThrow({ where: { id: groupId }, select: { slug: true, name: true } });
+  if (outcome.promoted) {
+    await notify([outcome.promoted], {
+      type: "COORDINATOR_ASSIGNED",
+      title: `You are now the coordinator of “${group.name}”`,
+      body: "The previous coordinator left the group. As the longest-standing member, you were made coordinator. You can hand the role to another member at any time.",
+      link: `/community/groups/${group.slug}`,
+    });
+    await audit(null, "group.coordinator_succession", "ResearchGroup", groupId, { newCoordinator: outcome.promoted });
+  }
+  if (outcome.archived) await audit(null, "group.archived_no_members", "ResearchGroup", groupId);
+}
+
+/** Voluntary leave. Organization membership is not affected. History stays per retention policy. */
+export async function leaveGroup(userId: string, groupId: string) {
+  const m = await db.groupMembership.findUnique({ where: { groupId_userId: { groupId, userId } } });
+  if (!m || m.status !== "ACTIVE") return { ok: true as const };
+  const outcome = await db.$transaction(async (tx) => {
+    await tx.groupMembership.update({ where: { id: m.id }, data: { status: "LEFT", leftAt: new Date(), role: "MEMBER" } });
+    await refreshMemberCount(groupId, tx);
+    return ensureCoordinator(tx, groupId);
+  });
+  await afterMembershipEnded(groupId, userId, outcome);
+  return { ok: true as const };
+}
+
+export async function leaveAllGroups(userId: string) {
+  const ms = await db.groupMembership.findMany({ where: { userId, status: "ACTIVE" }, select: { groupId: true } });
+  for (const m of ms) await leaveGroup(userId, m.groupId);
+}
+
+/** Coordinator removes a disruptive member (audited). */
+export async function removeMember(coordinatorId: string, groupId: string, userId: string) {
+  await requireCoordinator(groupId, coordinatorId);
+  if (coordinatorId === userId) return { ok: false as const, error: "Use “Leave group” to leave yourself." };
+  const m = await db.groupMembership.findUnique({ where: { groupId_userId: { groupId, userId } } });
+  if (!m || m.status !== "ACTIVE") return { ok: false as const, error: "That person is not an active member." };
+  await db.$transaction(async (tx) => {
+    await tx.groupMembership.update({ where: { id: m.id }, data: { status: "REMOVED", leftAt: new Date(), role: "MEMBER" } });
+    await refreshMemberCount(groupId, tx);
+  });
+  await audit(coordinatorId, "group.member_removed", "ResearchGroup", groupId, { userId });
+  await afterMembershipEnded(groupId, userId, { promoted: null, archived: false });
+  return { ok: true as const };
+}
+
+/** Coordinator hands the role to another active member. */
+export async function transferCoordinator(coordinatorId: string, groupId: string, toUserId: string) {
+  await requireCoordinator(groupId, coordinatorId);
+  const target = await db.groupMembership.findUnique({ where: { groupId_userId: { groupId, userId: toUserId } } });
+  if (!target || target.status !== "ACTIVE") return { ok: false as const, error: "Choose an active member of the group." };
+  await db.$transaction([
+    db.groupMembership.update({ where: { groupId_userId: { groupId, userId: coordinatorId } }, data: { role: "MEMBER" } }),
+    db.groupMembership.update({ where: { id: target.id }, data: { role: "COORDINATOR" } }),
+  ]);
+  const g = await db.researchGroup.findUniqueOrThrow({ where: { id: groupId }, select: { slug: true, name: true } });
+  await notify([toUserId], { type: "COORDINATOR_ASSIGNED", title: `You are now the coordinator of “${g.name}”`, link: `/community/groups/${g.slug}` });
+  await audit(coordinatorId, "group.coordinator_transferred", "ResearchGroup", groupId, { to: toUserId });
+  return { ok: true as const };
+}
+
+export async function setGroupStatusByCoordinator(coordinatorId: string, groupId: string, status: GroupStatus) {
+  const a = await requireCoordinator(groupId, coordinatorId);
+  if (!COORDINATOR_STATUSES.includes(status)) return { ok: false as const, error: "That status can only be set by the organization." };
+  if (a.group.status === "APPROVED_FOR_PROJECT") return { ok: false as const, error: "This group was approved for project work; its status is managed by the organization." };
+  if (a.group.status === status) return { ok: true as const };
+  await db.researchGroup.update({ where: { id: groupId }, data: { status, lastActivityAt: new Date() } });
+  await audit(coordinatorId, "group.status_changed", "ResearchGroup", groupId, { from: a.group.status, to: status });
+  await notify(await activeMemberIds(groupId), {
+    type: "GROUP_STATUS",
+    title: `“${a.group.name}” is now: ${GROUP_STATUS_LABELS[status]}`,
+    body: status === "READY_FOR_REVIEW" ? "The group asked the organization to review its proposal. This does not yet authorize any commercial work." : undefined,
+    link: `/community/groups/${a.group.slug}`,
+  }, { exclude: coordinatorId });
+  await publishRealtime(db, { t: "group.updated", groupId, what: "status" });
+  return { ok: true as const };
+}
+
+export async function updateGroupInfo(coordinatorId: string, groupId: string, input: { name: string; purpose: string | null; description: string | null }) {
+  await requireCoordinator(groupId, coordinatorId);
+  await db.researchGroup.update({ where: { id: groupId }, data: input });
+  return { ok: true as const };
+}
+
+export async function postAnnouncement(coordinatorId: string, groupId: string, input: { title: string; body: string }) {
+  const a = await requireCoordinator(groupId, coordinatorId);
+  await db.groupAnnouncement.create({ data: { groupId, authorId: coordinatorId, ...input } });
+  await db.researchGroup.update({ where: { id: groupId }, data: { lastActivityAt: new Date() } });
+  await notify(await activeMemberIds(groupId), { type: "GROUP_ANNOUNCEMENT", title: `${a.group.name}: ${input.title}`, link: `/community/groups/${a.group.slug}` }, { exclude: coordinatorId });
+  await publishRealtime(db, { t: "group.updated", groupId, what: "announcement" });
+  return { ok: true as const };
+}
+
+// ---------------------------------------------------------------- administration
+
+export async function adminSetGroupState(adminId: string, groupId: string, action: "archive" | "reopen" | "suspend" | "unsuspend", reason?: string) {
+  const g = await db.researchGroup.findUnique({ where: { id: groupId } });
+  if (!g) return { ok: false as const, error: "Group not found." };
+  const data: Prisma.ResearchGroupUpdateInput =
+    action === "archive"
+      ? { status: "ARCHIVED", archivedAt: new Date() }
+      : action === "reopen"
+        ? { status: g.status === "ARCHIVED" ? "FORMING" : g.status, archivedAt: null, adminManaged: false }
+        : action === "suspend"
+          ? { suspendedAt: new Date(), suspendedReason: reason?.slice(0, 500) || null }
+          : { suspendedAt: null, suspendedReason: null };
+  await db.researchGroup.update({ where: { id: groupId }, data });
+  if (action === "reopen") await db.$transaction(async (tx) => { await ensureCoordinator(tx, groupId); });
+  if (action === "suspend") await publishRealtime(db, { t: "group.access_revoked", groupId });
+  await audit(adminId, `group.${action}`, "ResearchGroup", groupId, reason ? { reason: reason.slice(0, 200) } : undefined);
+  return { ok: true as const };
+}
+
+export async function adminAssignCoordinator(adminId: string, groupId: string, userId: string) {
+  const m = await db.groupMembership.findUnique({ where: { groupId_userId: { groupId, userId } } });
+  if (!m || m.status !== "ACTIVE") return { ok: false as const, error: "The new coordinator must be an active member of the group." };
+  await db.$transaction([
+    db.groupMembership.updateMany({ where: { groupId, role: "COORDINATOR" }, data: { role: "MEMBER" } }),
+    db.groupMembership.update({ where: { id: m.id }, data: { role: "COORDINATOR" } }),
+    db.researchGroup.update({ where: { id: groupId }, data: { adminManaged: false } }),
+  ]);
+  const g = await db.researchGroup.findUniqueOrThrow({ where: { id: groupId }, select: { slug: true, name: true } });
+  await notify([userId], { type: "COORDINATOR_ASSIGNED", title: `You are now the coordinator of “${g.name}”`, body: "The organization assigned you this role.", link: `/community/groups/${g.slug}` });
+  await audit(adminId, "group.coordinator_assigned", "ResearchGroup", groupId, { userId });
+  return { ok: true as const };
+}
+
+/**
+ * Explicit administrative approval: creates a linked Project in PLANNING.
+ * This does NOT start commercial work; contracts, compensation terms and
+ * legal requirements must be handled before any project becomes ACTIVE.
+ */
+export async function approveGroupForProject(adminId: string, groupId: string) {
+  const g = await db.researchGroup.findUnique({ where: { id: groupId }, include: { project: true } });
+  if (!g) return { ok: false as const, error: "Group not found." };
+  if (g.project) return { ok: false as const, error: "A project already exists for this group." };
+  if (g.status !== "READY_FOR_REVIEW") return { ok: false as const, error: "Only groups marked “Ready for review” can be approved." };
+  const { uniqueSlug } = await import("../admin/projects");
+  const project = await db.$transaction(async (tx) => {
+    const p = await tx.project.create({
+      data: {
+        title: g.name,
+        slug: await uniqueSlug(tx, g.name),
+        summary: g.purpose ?? g.name,
+        description: g.description,
+        status: "PLANNING",
+        researchGroupId: g.id,
+      },
+    });
+    await tx.researchGroup.update({ where: { id: g.id }, data: { status: "APPROVED_FOR_PROJECT", approvedAt: new Date(), approvedById: adminId } });
+    return p;
+  });
+  await audit(adminId, "group.approved_for_project", "ResearchGroup", g.id, { projectId: project.id });
+  await notify(await activeMemberIds(g.id), {
+    type: "GROUP_STATUS",
+    title: `“${g.name}” was approved for project planning`,
+    body: "The organization will contact members about written agreements and compensation terms before any paid work begins.",
+    link: `/community/groups/${g.slug}`,
+  });
+  return { ok: true as const, projectId: project.id };
+}
