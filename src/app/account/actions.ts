@@ -7,7 +7,7 @@ import type { FormState } from "@/components/forms/action-form";
 import { db } from "@/lib/db";
 import { audit } from "@/lib/audit";
 import { getSession, isRecentlyAuthenticated, requireUser } from "@/lib/auth/guard";
-import { clearSessionCookie, revokeUserSessions } from "@/lib/auth/session";
+import { clearSessionCookie, revokeSessionById, revokeUserSessions } from "@/lib/auth/session";
 import {
   beginTotpSetup,
   changePassword,
@@ -88,7 +88,7 @@ export async function disableTotpAction() {
 export async function revokeSessionAction(fd: FormData) {
   const s = await current();
   const id = String(fd.get("id") ?? "");
-  await db.session.updateMany({ where: { id, userId: s.user.id, revokedAt: null }, data: { revokedAt: new Date() } });
+  await revokeSessionById(s.user.id, id);
   await audit(s.user.id, "auth.session_revoked", "User", s.user.id);
   revalidatePath("/account/security");
 }

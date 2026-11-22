@@ -8,6 +8,10 @@
 //   in the database. Client-supplied user ids are never trusted.
 // - Server-side events (left group, suspended, revoked) arrive via Postgres
 //   LISTEN/NOTIFY and immediately remove sockets from rooms.
+// - A connection belongs to ONE session. When that session ends (sign-out,
+//   "sign out of other sessions", password change...) the connection is closed.
+//   As a safety net the session is also re-checked on every operation and once
+//   a minute, so a missed event cannot leave a signed-out session connected.
 import type { Server as HttpServer } from "node:http";
 import { Client } from "pg";
 import type { PrismaClient } from "@prisma/client";
@@ -19,7 +23,10 @@ import { chatMessageSchema } from "../lib/validation/community";
 import { channelAccess, deleteMessage, editMessage, history, markChannelRead, sendMessage } from "./chat-service";
 
 type SocketUser = { id: string; name: string };
-type Data = { user: SocketUser; channels: Map<string, string> /* channelId -> groupId */ };
+type Data = { user: SocketUser; sessionId: string; channels: Map<string, string> /* channelId -> groupId */ };
+
+/** How often an open connection re-checks that its session still exists. */
+const SESSION_RECHECK_MS = 60_000;
 type Ack = (res: unknown) => void;
 
 // Simple per-user token buckets (single instance; see README for scaling).
@@ -96,6 +103,7 @@ export async function attachRealtime(httpServer: HttpServer, db: PrismaClient, o
       const s = await lookupSession(db, token);
       if (!s || s.mfaPending || !s.user.communityAccess || !s.user.displayName) return next(new Error("unauthorized"));
       (socket.data as Data).user = { id: s.user.id, name: s.user.displayName };
+      (socket.data as Data).sessionId = s.sessionId;
       (socket.data as Data).channels = new Map();
       next();
     } catch {
@@ -103,10 +111,33 @@ export async function attachRealtime(httpServer: HttpServer, db: PrismaClient, o
     }
   });
 
+  /** Closes a connection whose session has ended. The browser is told why, so it can show "signed out". */
+  function endConnection(socket: Socket) {
+    socket.emit("session:ended");
+    socket.disconnect(true);
+  }
+  async function sessionAlive(sessionId: string): Promise<boolean> {
+    const s = await db.session.findUnique({ where: { id: sessionId }, select: { revokedAt: true, expiresAt: true } });
+    return Boolean(s && !s.revokedAt && s.expiresAt > new Date());
+  }
+
   io.on("connection", (socket) => {
     const data = socket.data as Data;
     const user = data.user;
     socket.join(`user:${user.id}`);
+
+    // Every operation first confirms that this connection's session still exists.
+    socket.use((_packet, next) => {
+      sessionAlive(data.sessionId)
+        .then((alive) => (alive ? next() : endConnection(socket)))
+        .catch(() => next(new Error("unavailable")));
+    });
+    const recheck = setInterval(() => {
+      sessionAlive(data.sessionId)
+        .then((alive) => !alive && endConnection(socket))
+        .catch(() => {});
+    }, SESSION_RECHECK_MS);
+    socket.on("disconnect", () => clearInterval(recheck));
 
     socket.on("channel:join", async (raw: unknown, ackRaw: unknown) => {
       const ack = safeAck(ackRaw);
@@ -211,6 +242,11 @@ export async function attachRealtime(httpServer: HttpServer, db: PrismaClient, o
       case "user.revoked":
         io.in(`user:${ev.userId}`).disconnectSockets(true);
         break;
+      case "sessions.ended": {
+        const ended = new Set(ev.sessionIds);
+        for (const socket of io.sockets.sockets.values()) if (ended.has((socket.data as Data).sessionId)) endConnection(socket);
+        break;
+      }
       case "group.access_revoked": {
         const sockets = await io.in(`group:${ev.groupId}`).fetchSockets();
         for (const remote of sockets) {

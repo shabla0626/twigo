@@ -8,6 +8,8 @@ export const REALTIME_CHANNEL = "cowork_realtime";
 export type RealtimeEvent =
   /** Sessions revoked / account suspended: disconnect all sockets of the user. */
   | { t: "user.revoked"; userId: string }
+  /** These sessions ended (sign-out, "sign out of other sessions", password change...): close their live connections. */
+  | { t: "sessions.ended"; sessionIds: string[] }
   /** User lost access to a group (left, removed, group suspended): leave its rooms. */
   | { t: "group.access_revoked"; groupId: string; userId?: string }
   /** Unread notification count changed for a user. */

@@ -1,9 +1,10 @@
 import "server-only";
 import { cookies, headers } from "next/headers";
-import type { UserRole } from "@prisma/client";
+import type { Prisma, UserRole } from "@prisma/client";
 import { db } from "../db";
 import { env } from "../env";
 import { randomToken, sha256 } from "../crypto";
+import { publishRealtime } from "../realtime-events";
 import { MFA_PENDING_MINUTES, SESSION_COOKIE } from "./constants";
 import { isAdminRole } from "./permissions";
 
@@ -63,18 +64,34 @@ export async function readSessionToken(): Promise<string | undefined> {
   return store.get(SESSION_COOKIE)?.value;
 }
 
+/**
+ * The ONE place where sessions are ended. Besides marking them revoked it tells
+ * the live-chat server which sessions ended, so their open connections are
+ * closed at once (a signed-out session must not keep chatting).
+ */
+async function endSessions(where: Prisma.SessionWhereInput): Promise<number> {
+  const rows = await db.session.findMany({ where: { ...where, revokedAt: null }, select: { id: true } });
+  if (!rows.length) return 0;
+  const ids = rows.map((r) => r.id);
+  await db.session.updateMany({ where: { id: { in: ids }, revokedAt: null }, data: { revokedAt: new Date() } });
+  // Notification payloads are limited in size: send the ids in small batches.
+  for (let i = 0; i < ids.length; i += 100) await publishRealtime(db, { t: "sessions.ended", sessionIds: ids.slice(i, i + 100) });
+  return ids.length;
+}
+
 export async function revokeSessionByToken(token: string | undefined) {
   if (!token) return;
-  await db.session.updateMany({ where: { tokenHash: sha256(token), revokedAt: null }, data: { revokedAt: new Date() } });
+  await endSessions({ tokenHash: sha256(token) });
+}
+
+/** Ends one session of a user ("sign out this device" on the security page). */
+export async function revokeSessionById(userId: string, sessionId: string): Promise<number> {
+  return endSessions({ id: sessionId, userId });
 }
 
 /** Revokes every session of a user, optionally keeping one. Returns the number revoked. */
 export async function revokeUserSessions(userId: string, exceptSessionId?: string): Promise<number> {
-  const res = await db.session.updateMany({
-    where: { userId, revokedAt: null, ...(exceptSessionId ? { id: { not: exceptSessionId } } : {}) },
-    data: { revokedAt: new Date() },
-  });
-  return res.count;
+  return endSessions({ userId, ...(exceptSessionId ? { id: { not: exceptSessionId } } : {}) });
 }
 
 export async function userAgent(): Promise<string | null> {
