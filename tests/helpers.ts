@@ -1,3 +1,4 @@
+import { notificationEmailsSettled } from "@/server/community/notifications";
 import { db } from "@/lib/db";
 import { resetRateLimits } from "@/lib/rate-limit";
 import { clearSettingsCache } from "@/server/settings";
@@ -16,11 +17,24 @@ export const TEST_TOTP_SECRET = "JBSWY3DPEHPK3PXPJBSWY3DPEHPK3PXP";
 export async function resetDb() {
   resetRateLimits();
   clearSettingsCache();
+  // Let background work of the previous test finish first (notification emails are sent after
+  // the action returns); emptying the tables underneath it can end in a database deadlock.
+  await notificationEmailsSettled();
   const tables = await db.$queryRawUnsafe<{ tablename: string }[]>(
     `SELECT tablename::text AS tablename FROM pg_tables WHERE schemaname = 'public' AND tablename <> '_prisma_migrations'`,
   );
   if (tables.length) {
-    await db.$executeRawUnsafe(`TRUNCATE ${tables.map((t) => `"${t.tablename}"`).join(", ")} RESTART IDENTITY CASCADE`);
+    const truncate = `TRUNCATE ${tables.map((t) => `"${t.tablename}"`).join(", ")} RESTART IDENTITY CASCADE`;
+    for (let attempt = 0; ; attempt++) {
+      try {
+        await db.$executeRawUnsafe(truncate);
+        break;
+      } catch (err) {
+        // Something else was still writing: wait a moment and try again.
+        if (attempt >= 3 || !/40P01|deadlock/.test(String((err as { code?: string }).code) + String(err))) throw err;
+        await new Promise((r) => setTimeout(r, 200 * (attempt + 1)));
+      }
+    }
   }
 }
 

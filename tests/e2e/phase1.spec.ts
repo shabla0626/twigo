@@ -358,8 +358,11 @@ test("D. waitlisted and declined applicants can sign in and see their status, bu
     await expect(e, path).toHaveURL(/\/application$/);
   }
   expect((await e.request.get("/api/files/anything")).status()).toBe(404);
-  const res = await e.goto("/admin");
-  expect(res?.status()).toBeGreaterThanOrEqual(400);
+  // The admin area is not theirs: they are sent back to their own page (no error page, nothing shown).
+  await e.goto("/admin");
+  await expect(e).toHaveURL(/\/application$/);
+  await e.goto("/admin/members");
+  await expect(e).toHaveURL(/\/application$/);
 
   const admin = sessions.admin!.page;
   await openApplication(admin, MEMBERS.E.name);
@@ -663,9 +666,12 @@ test("security: unauthenticated and member access to private areas is refused", 
   const r = await anon.request.get("/api/files/does-not-exist");
   expect(r.status()).toBe(404);
   await anon.close();
+  // A member who opens an admin address is sent back to the community (no error page, nothing shown).
   const m = sessions.B!.page;
-  const res = await m.goto("/admin");
-  expect(res?.status()).toBeGreaterThanOrEqual(400);
+  for (const p of ["/admin", "/admin/applications", "/admin/settings"]) {
+    await m.goto(p);
+    await expect(m, p).toHaveURL(/\/community$/);
+  }
 });
 
 test("public pages and mobile layouts", async ({ browser }) => {

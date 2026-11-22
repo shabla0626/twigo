@@ -7,6 +7,14 @@ import { ACTIVE_MEMBER } from "@/lib/auth/member-where";
 import { logger } from "@/lib/logger";
 import { publishRealtime } from "@/lib/realtime-events";
 
+/** Notification emails that are still being sent in the background. */
+const pendingEmails = new Set<Promise<unknown>>();
+
+/** Resolves when every notification email started so far has finished (used by the tests). */
+export async function notificationEmailsSettled(): Promise<void> {
+  while (pendingEmails.size) await Promise.allSettled([...pendingEmails]);
+}
+
 export const NOTIFICATION_TYPES: Record<NotificationType, { label: string; emailDefault: boolean }> = {
   IDEA_COMMENT: { label: "Comments on my ideas", emailDefault: false },
   COMMENT_REPLY: { label: "Replies to my comments", emailDefault: false },
@@ -87,7 +95,9 @@ export async function notify(userIds: string[], input: NotifyInput, opts: { excl
           logger.error("notification.email_failed", { err }),
         );
       // Outside a transaction send now; inside one, after commit is not observable here, so send best-effort.
-      void send();
+      const sending = send();
+      pendingEmails.add(sending);
+      void sending.finally(() => pendingEmails.delete(sending));
     }
   }
   for (const u of active) await publishRealtime(db, { t: "notifications.changed", userId: u.id });

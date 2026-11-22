@@ -174,11 +174,22 @@ describe("P2-21: the test-inbox label exists only outside production", () => {
       (process.env as Record<string, string>).NODE_ENV = "production";
       expect(isLocalTestMail("127.0.0.1")).toBe(false);
       expect(isLocalTestMail("localhost")).toBe(false);
+      // The browser tests: a production build on this computer, explicitly marked as a local test.
+      const site = process.env.SITE_URL;
+      process.env.LOCAL_PRODUCTION_TEST = "1";
+      process.env.SITE_URL = "http://127.0.0.1:3210";
+      expect(isLocalTestMail("127.0.0.1")).toBe(true);
+      // The switch left on with a real site address changes nothing (and the server would refuse to start).
+      process.env.SITE_URL = "https://www.organization.org";
+      expect(isLocalTestMail("127.0.0.1")).toBe(false);
+      delete process.env.LOCAL_PRODUCTION_TEST;
+      process.env.SITE_URL = site;
       (process.env as Record<string, string>).NODE_ENV = "development";
       expect(isLocalTestMail("127.0.0.1")).toBe(true);
       expect(isLocalTestMail("smtp.resend.com")).toBe(false);
     } finally {
       (process.env as Record<string, string>).NODE_ENV = before ?? "test";
+      delete process.env.LOCAL_PRODUCTION_TEST;
     }
   });
 });

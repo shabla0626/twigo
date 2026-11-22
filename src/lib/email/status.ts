@@ -1,3 +1,4 @@
+import { isLocalHostname } from "../env-schema";
 import type { EmailStatus } from "@prisma/client";
 
 /**
@@ -97,5 +98,14 @@ export function isLocalHost(host: string) {
  * the same machine is a real relay, and its emails are real deliveries.
  */
 export function isLocalTestMail(host: string) {
-  return process.env.NODE_ENV !== "production" && isLocalHost(host);
+  if (!isLocalHost(host)) return false;
+  if (process.env.NODE_ENV !== "production") return true;
+  // A production build run on this computer for the browser tests (LOCAL_PRODUCTION_TEST=1).
+  // A real site can never be in this mode: the server refuses to start with that switch
+  // unless SITE_URL is a local address (src/lib/env-schema.ts).
+  try {
+    return process.env.LOCAL_PRODUCTION_TEST === "1" && isLocalHostname(new URL(process.env.SITE_URL ?? "").hostname);
+  } catch {
+    return false;
+  }
 }
