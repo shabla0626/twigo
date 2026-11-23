@@ -58,3 +58,9 @@ Thumbs.db
 # Claude Code local settings (launch.json is tracked)
 .claude/settings.local.json
 .claude/worktrees/
+
+# Stage 4 walkthrough scratch folders (throw-away demo copy)
+/.walk-mail/
+/.walk-storage/
+/.walk-backups/
+/.walk-server.log

@@ -2,6 +2,7 @@ import { NextResponse, type NextRequest } from "next/server";
 import { db } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth/guard";
 import { env } from "@/lib/env";
+import { uploadOriginAllowed } from "@/lib/origin";
 import { storeUpload } from "@/server/community/files";
 
 export const dynamic = "force-dynamic";
@@ -31,10 +32,9 @@ async function readLimited(req: NextRequest, limit: number): Promise<Uint8Array<
   return out;
 }
 
-/** Same-origin check (CSRF protection for this non-server-action endpoint). */
+/** Same-origin check (CSRF protection for this non-server-action endpoint); see src/lib/origin.ts. */
 function sameOrigin(req: NextRequest) {
-  const origin = req.headers.get("origin");
-  return origin !== null && origin === new URL(req.url).origin;
+  return uploadOriginAllowed(req.headers.get("origin"));
 }
 
 export async function POST(req: NextRequest) {
