@@ -158,7 +158,8 @@ on_signal() {
   exit "$2"
 }
 trap on_exit EXIT
-trap 'FAILS+=("$STEP: command failed at line $LINENO (exit code $?)"); exit $((10 + STEP_NO))' ERR
+# An unexpected failing command: say so (never stop silently), then stop like die().
+trap 'ERR_RC=$?; FAILS+=("$STEP: command failed at line $LINENO (exit code $ERR_RC)"); say ""; say "ERROR: an unexpected command failed during \"$STEP\" (line $LINENO, exit code $ERR_RC). Details: $LOG"; exit $((10 + STEP_NO))' ERR
 trap 'on_signal HUP 129 "the connection or terminal was closed"' HUP
 trap 'on_signal INT 130 "stopped with Ctrl+C"' INT
 trap 'on_signal TERM 143 "stopped by a TERM signal"' TERM
@@ -243,7 +244,9 @@ CV="$(docker compose version --short 2>/dev/null || true)"
 IFS=. read -r cv1 cv2 _ <<< "${CV#v}"
 (( cv1 > 2 || (cv1 == 2 && cv2 >= 17) )) || die "Docker Compose $CV is too old (2.17 or newer is needed for build secrets)." "Update: sudo apt-get install -y docker-compose-plugin"
 ok "Docker Compose $CV"
-avail_kb() { df -Pk "$1" 2>/dev/null | awk 'NR==2 {print $4}'; }
+# Free space in KB, or nothing when the folder is not visible here (e.g. Docker's data folder of a daemon
+# in a VM or another container): the callers then fall back to the root file system.
+avail_kb() { df -Pk "$1" 2>/dev/null | awk 'NR==2 {print $4}' || true; }
 FREE="$(avail_kb "$SELF_DIR")"; [[ -n "$FREE" ]] || FREE=0
 (( FREE >= 3 * 1024 * 1024 )) || die "Not enough disk space in $SELF_DIR: $((FREE / 1024)) MB free, at least 3072 MB needed."
 DROOT="$(docker info -f '{{.DockerRootDir}}' 2>/dev/null || echo /var/lib/docker)"

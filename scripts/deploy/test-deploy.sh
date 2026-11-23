@@ -109,7 +109,7 @@ cp -p "$ROOT/env.keep" "$SERVER/twigo/.env.production"
 [[ $rc -eq 13 ]] && said "Required settings are empty" && said "ORG_JURISDICTION" && [[ ! -f "$SERVER/twigo/docker-compose.yml" ]] && result pass "missing ORG_JURISDICTION stops before any change (exit 13 = step 3)" || result fail "missing setting (exit $rc)"
 
 # ---------------------------------------------------------------- 6b. a deployment is already running
-flock "$SERVER/.twigo-deploy.lock" sleep 60 & HOLDER=$!
+flock -o "$SERVER/.twigo-deploy.lock" sleep 60 & HOLDER=$!   # -o: only flock holds the lock, so killing it releases the lock
 sleep 0.5
 deploy; rc=$?
 kill $HOLDER 2>/dev/null; wait $HOLDER 2>/dev/null
