@@ -1,6 +1,6 @@
 # Twigo: An Online Collaborative Community
 
-*Together We Innovate, Grow & Opportunity* · intended address: `https://twigo.stream`
+*Together We Innovate, Grow & Opportunity* · intended address: `https://twigo.space`
 
 Twigo is an independent, remote-first online collaborative community where people come together to
 propose ideas, develop business opportunities, form voluntary project groups, and pursue income through

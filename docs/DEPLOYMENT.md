@@ -1,7 +1,29 @@
 # Deployment guide
 
-Nothing has been deployed or purchased. The founder chose **one always-on server**.
-Choose a host, get approval for its cost, then follow these steps.
+Nothing has been deployed yet. The founder chose **one always-on server** and has set it up (section 0).
+
+## 0. Production target
+
+| Setting | Value |
+| --- | --- |
+| Public address | `https://twigo.space` (the site's only canonical address; `www.twigo.space` should redirect to it) |
+| `SITE_URL` | `https://twigo.space` (exactly; see section 4) |
+| Server | VPS at `162.35.23.106` |
+| SSH access | `ssh shabla@162.35.23.106` |
+| App directory / service | `/srv/cowork`, systemd unit `cowork.service`, running as its own `cowork` user (section 5) |
+| Email sender | `no-reply@twigo.space` once the domain is verified with the email provider ([EMAIL.md](EMAIL.md)) |
+
+Still to do by the founder before the first start (none of this has been done from this project):
+
+1. DNS at the domain registrar: an `A` record for `twigo.space` and for `www.twigo.space` pointing to
+   `162.35.23.106` (and `AAAA` records only if the VPS has an IPv6 address).
+2. On the VPS: Node.js 20.9+ (tested on 24), PostgreSQL 14+, Caddy (or nginx), a firewall allowing only
+   ports 22, 80 and 443. Prefer SSH keys over passwords for `shabla`, and do not run the app as `shabla`
+   or `root`.
+3. Name the VPS provider and the server location in the Privacy Policy (a new version, reviewed), and
+   enter the legal details in Admin → Legal → Legal notices.
+
+Then follow sections 3 to 6.
 
 ## 1. What runs where
 
@@ -125,10 +147,16 @@ wrong attempts. With nginx use `proxy_set_header X-Forwarded-For
 $proxy_add_x_forwarded_for;`. Minimal Caddyfile:
 
 ```
-your-domain.example {
+twigo.space {
   reverse_proxy 127.0.0.1:3000
 }
+
+www.twigo.space {
+  redir https://twigo.space{uri} permanent
+}
 ```
+
+Caddy obtains the HTTPS certificates itself once the DNS records point to the server.
 
 Keep the process running and restart it on failure with systemd (or pm2):
 

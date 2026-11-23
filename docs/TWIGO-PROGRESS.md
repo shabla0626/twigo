@@ -25,7 +25,7 @@ resumed from the last checkpoint if it is interrupted.
 | Stage | Status | Checkpoint | Completed tasks | Tests at the checkpoint |
 | --- | --- | --- | --- | --- |
 | 0. Protect and audit | Done | `5cbcbda`, tag `pre-twigo-2026-11-23` (the starting point) | Branch; code bundle; verified database backup restored and compared (0 differences); search for old branding; checklist [TWIGO-CHECKLIST.md](TWIGO-CHECKLIST.md) | 348 automated, 21 browser (state before the work) |
-| 1. Brand | Done | `5bc465c` | Twigo name, identity, slogan, description; `SITE_URL` for twigo.stream; public pages, footer, FAQ, emails rewritten | Affected tests updated and passing; no separate full-run record kept for this commit (full runs recorded in Stage 10) |
+| 1. Brand | Done | `5bc465c` | Twigo name, identity, slogan, description; `SITE_URL` for twigo.space; public pages, footer, FAQ, emails rewritten | Affected tests updated and passing; no separate full-run record kept for this commit (full runs recorded in Stage 10) |
 | 2. Revenue model | Done | `5bc465c` | No fee, investment or commission wording; project-specific contracting models; data model for group projects and support (migration written, additive) | as above |
 | 3. Legal documents | Done | `5bc465c` | 8 versioned documents with states and fingerprints, all *Pending legal review*; Legal Notices with per-field confirmation; `/legal` pages | as above |
 | 4. Acceptance workflow | Done | `5bc465c` | Separate sign-up checkboxes; acceptance records; renewed acceptance gate; Account → Agreements | as above |
@@ -59,7 +59,7 @@ defaults in [TWIGO-OPEN-DECISIONS.md](TWIGO-OPEN-DECISIONS.md)):
 1. Decide the legal operator and jurisdiction; fill in and confirm the Legal Notices.
 2. Lawyer's review of the eight documents; then publish with "ask everyone to accept again".
 3. Contact and privacy addresses; hosting and email providers (to be named in the Privacy Policy).
-4. Review and merge the branch; authorize deployment to twigo.stream.
+4. Review and merge the branch; authorize deployment to twigo.space.
 5. Decide on the earlier admin-run project module.
 
 ## How to resume after an interruption
@@ -81,3 +81,4 @@ defaults in [TWIGO-OPEN-DECISIONS.md](TWIGO-OPEN-DECISIONS.md)):
 | When (2026-11-23) | Update |
 | --- | --- |
 | after Stage 11 | File created at the founder's request; all checkpoints recorded from the git history and test logs |
+| follow-up | Domain changed from twigo.stream to **twigo.space**; production server recorded as VPS `162.35.23.106`, SSH `shabla@162.35.23.106` (`.env.example`, `docs/DEPLOYMENT.md` section 0, README, reports). Nothing deployed, no DNS changed, no connection made to the server. |

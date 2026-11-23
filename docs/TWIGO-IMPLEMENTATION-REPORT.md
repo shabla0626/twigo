@@ -1,6 +1,6 @@
 # Twigo: implementation report
 
-*An Online Collaborative Community · Together We Innovate, Grow & Opportunity · intended address `https://twigo.stream`*
+*An Online Collaborative Community · Together We Innovate, Grow & Opportunity · intended address `https://twigo.space`*
 
 Work done on 23 November 2026 on branch `feature/twigo-platform-transformation`, following the
 "Complete platform transformation and legal framework" instructions. Nothing was deployed, no DNS was
@@ -21,7 +21,7 @@ The platform is now **Twigo**, and its rules about money and agreements are enfo
 only described:
 
 - **Brand:** Twigo name, identity, slogan (exactly as given) and description across public pages,
-  metadata, emails, admin and documentation; `SITE_URL` drives `https://twigo.stream` in production while
+  metadata, emails, admin and documentation; `SITE_URL` drives `https://twigo.space` in production while
   local development keeps working. No "Strivanta" or "CoWork" branding remains in code or public content.
 - **Revenue model:** no fees, no investment, no commission or share, no handling of project money. Groups
   create projects and record versioned agreements (15 items, contracting model, payment recipient, each
@@ -95,7 +95,7 @@ Principles enforced in code rather than only in text:
   description and supporting text from the instructions, used on the home page, metadata, share image,
   emails, footer and README.
 - Configuration-driven: `ORG_NAME` (default "Twigo"), `ORG_TAGLINE`; the local `.env` now says Twigo.
-  `.env.example` documents `SITE_URL=https://twigo.stream` for production; local development keeps
+  `.env.example` documents `SITE_URL=https://twigo.space` for production; local development keeps
   `http://localhost:3000`. Canonical URLs, sitemap and emails use `SITE_URL`.
 - All public pages rewritten for the cooperative model (home, how it works, about, pay & fairness,
   participation, founding contributors, FAQ with 15 questions, contact, work with us). The footer says
@@ -359,8 +359,8 @@ block a public launch:
 2. Jurisdiction and governing law.
 3. A lawyer's review of the eight documents (then publish with renewed acceptance).
 4. The public contact and privacy contact addresses.
-5. Hosting provider and final email provider (they must be named in the Privacy Policy).
-6. Authorization to deploy to `twigo.stream`.
+5. The VPS provider and location (server `162.35.23.106` is set up) and the final email provider; both must be named in the Privacy Policy.
+6. Authorization to deploy to `twigo.space`.
 
 ## 20. Recommended next steps
 
@@ -368,7 +368,7 @@ block a public launch:
 2. Give the legal checklist and `/legal` to a lawyer; decide items 1–5 above.
 3. Enter the Legal Notices and publish reviewed versions with "ask everyone to accept again".
 4. Decide on the earlier admin-run project module (open decision 9).
-5. Choose the host and email provider; then follow `DEPLOYMENT.md` with `SITE_URL=https://twigo.stream`.
+5. Point the `twigo.space` DNS records to the VPS (`162.35.23.106`), record the VPS provider and location, choose the email provider; then follow `docs/DEPLOYMENT.md` (section 0 lists the target) with `SITE_URL=https://twigo.space`.
 6. Only after the support recipient and accounting are settled: commission a payment integration as a
    separate, reviewed change.
 

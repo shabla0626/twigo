@@ -113,6 +113,6 @@ collapsed while an agreement is in force); those are covered by the final browse
 
 - Email was tested only against the local mail catcher; no real provider is configured.
 - Performance was measured on this computer with a small demo database (`docs/performance/twigo.json`).
-- Not tested: real hosting, HTTPS on `twigo.stream`, the production environment check with real values.
+- Not tested: real hosting, HTTPS on `twigo.space`, the production environment check with real values.
 - Legal adequacy of any text or of the acceptance records cannot be established by tests; see
   [TWIGO-LEGAL-REVIEW-CHECKLIST.md](TWIGO-LEGAL-REVIEW-CHECKLIST.md).

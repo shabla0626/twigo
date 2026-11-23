@@ -17,7 +17,7 @@ Started 23 November 2026 on branch `feature/twigo-platform-transformation`. The 
 | # | Item | Stage |
 |---|---|---|
 | 1 | Protect: branch, tag, code bundle, verified database backup | 0 |
-| 2 | Brand defaults: Twigo, slogan, identity, description; `.env.example` with `https://twigo.stream`; local `.env` name | 1 |
+| 2 | Brand defaults: Twigo, slogan, identity, description; `.env.example` with `https://twigo.space`; local `.env` name | 1 |
 | 3 | Public pages, metadata, emails, admin, documentation use Twigo | 1 |
 | 4 | Revenue model wording everywhere: no commission, no fee, no investment, group-controlled compensation, voluntary support separate | 2 |
 | 5 | Legal documents as versioned records with states (Draft, Pending Legal Review, Approved, Published, Superseded) and fingerprints | 3 |
