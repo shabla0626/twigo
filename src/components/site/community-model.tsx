@@ -9,7 +9,7 @@ const steps = (name: string) => [
   ["Share and support ideas", "Members propose business ideas and support the ones they would like to investigate."],
   [
     "Research together",
-    "When two members other than the author support an idea, a research group is created automatically, with its own chat, meetings and shared notes.",
+    "When two members other than the author support an idea, a project group is created automatically, with its own chat, meetings and shared notes.",
   ],
   [
     "Agree before any paid work",

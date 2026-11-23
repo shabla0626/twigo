@@ -24,7 +24,7 @@ export default async function EditIdeaPage({ params }: { params: Promise<{ id: s
           <input type="hidden" name="id" value={idea.id} />
           {hasGroup && (
             <div className="rounded-xl border border-sky-200 bg-sky-50 p-4 text-sm leading-6 text-sky-950">
-              <p className="font-semibold">This idea already has a research group.</p>
+              <p className="font-semibold">This idea already has a project group.</p>
               <p className="mt-1">
                 You can still make minor corrections here (wording, typos, clarity). The direction of the work now belongs to the group “{idea.group!.name}
                 ”: a change of direction is made there by the coordinator, together with a note that every member sees.

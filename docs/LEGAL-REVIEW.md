@@ -1,5 +1,7 @@
 # Items requiring professional legal / accounting review
 
+> **Superseded for Twigo** by [TWIGO-LEGAL-REVIEW-CHECKLIST.md](TWIGO-LEGAL-REVIEW-CHECKLIST.md) and [TWIGO-OPEN-DECISIONS.md](TWIGO-OPEN-DECISIONS.md). Kept for history.
+
 The website deliberately avoids inventing legal facts. The following must be decided with
 qualified professionals **before launch** and before any project work begins.
 

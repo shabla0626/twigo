@@ -135,7 +135,7 @@ Keep the process running and restart it on failure with systemd (or pm2):
 ```ini
 # /etc/systemd/system/cowork.service
 [Unit]
-Description=CoWork
+Description=Twigo
 After=network.target postgresql.service
 
 [Service]

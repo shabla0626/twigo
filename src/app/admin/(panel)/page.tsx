@@ -47,7 +47,7 @@ export default async function OverviewPage() {
   const waiting = [
     { n: received, one: "application received", many: "applications received", href: "/admin/applications?status=SUBMITTED", perm: "applications.view" as const },
     { n: openReports, one: "open report", many: "open reports", href: "/admin/reports", perm: "moderation.act" as const },
-    { n: groupsToCheck, one: "research group asks for review or has no coordinator", many: "research groups ask for review or have no coordinator", href: "/admin/groups", perm: "groups.manage" as const },
+    { n: groupsToCheck, one: "project group asks for review or has no coordinator", many: "project groups ask for review or have no coordinator", href: "/admin/groups", perm: "groups.manage" as const },
     { n: failedEmails, one: "email could not be delivered in the last 7 days", many: "emails could not be delivered in the last 7 days", href: "/admin/email?filter=problems", perm: "email.send" as const },
     { n: openInquiries, one: "open customer inquiry", many: "open customer inquiries", href: "/admin/inquiries", perm: "inquiries.manage" as const },
   ].filter((w) => w.n > 0 && can(admin.role, w.perm));
@@ -90,7 +90,7 @@ export default async function OverviewPage() {
         <StatCard label="Applications received" value={received} href="/admin/applications?status=SUBMITTED" />
         <StatCard label="Applications under review" value={underReview} href="/admin/applications?status=UNDER_REVIEW" />
         <StatCard label="Applications with an interview requested" value={interview} href="/admin/applications?status=INTERVIEW_REQUESTED" />
-        <StatCard label="Research groups" value={groups} href="/admin/groups" />
+        <StatCard label="Project groups" value={groups} href="/admin/groups" />
         <StatCard label="Projects" value={projects} href="/admin/projects" />
       </div>
 

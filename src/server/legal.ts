@@ -102,25 +102,39 @@ export async function publicHistory(key: LegalKey) {
   });
 }
 
-/** Overview of every document with its displayed version (for /legal). */
-export async function legalIndex() {
+/** The displayed version of several documents in one query (same rule as displayedVersion). */
+async function displayedVersions(keys: readonly LegalKey[]) {
   await ensureLegalDocuments();
-  const out = [];
-  for (const def of LEGAL_DOCUMENTS) {
-    const shown = await displayedVersion(def.key);
-    if (shown) out.push({ key: def.key, title: shown.doc.title, summary: shown.doc.summary, acceptance: def.acceptance, version: shown.version });
+  const docs = await db.legalDocument.findMany({
+    where: { key: { in: [...keys] } },
+    include: { versions: { where: { status: { in: SHOWN } }, orderBy: { version: "desc" } } },
+  });
+  const out = new Map<string, { doc: (typeof docs)[number]; version: (typeof docs)[number]["versions"][number] }>();
+  for (const d of docs) {
+    const version = d.versions.find((v) => v.status === "PUBLISHED") ?? d.versions[0];
+    if (version) out.set(d.key, { doc: d, version });
   }
   return out;
 }
 
+/** Overview of every document with its displayed version (for /legal). */
+export async function legalIndex() {
+  const shown = await displayedVersions(LEGAL_DOCUMENTS.map((d) => d.key));
+  return LEGAL_DOCUMENTS.flatMap((def) => {
+    const x = shown.get(def.key);
+    return x ? [{ key: def.key, title: x.doc.title, summary: x.doc.summary, acceptance: def.acceptance, version: x.version }] : [];
+  });
+}
+
 /** The versions a person must accept or acknowledge at registration, as shown on the form. */
 export async function registrationDocuments() {
-  const accept = await Promise.all(REGISTRATION_ACCEPT.map((k) => displayedVersion(k)));
-  const ack = await Promise.all(REGISTRATION_ACK.map((k) => displayedVersion(k)));
-  return {
-    accept: accept.filter((x) => x !== null).map((x) => ({ key: x.doc.key as LegalKey, title: x.doc.title, version: x.version.version, versionId: x.version.id })),
-    ack: ack.filter((x) => x !== null).map((x) => ({ key: x.doc.key as LegalKey, title: x.doc.title, version: x.version.version, versionId: x.version.id })),
-  };
+  const shown = await displayedVersions([...REGISTRATION_ACCEPT, ...REGISTRATION_ACK]);
+  const pick = (keys: readonly LegalKey[]) =>
+    keys.flatMap((k) => {
+      const x = shown.get(k);
+      return x ? [{ key: k, title: x.doc.title, version: x.version.version, versionId: x.version.id }] : [];
+    });
+  return { accept: pick(REGISTRATION_ACCEPT), ack: pick(REGISTRATION_ACK) };
 }
 
 type RecordInput = { userId: string; key: LegalKey; kind: AcceptanceKind; method: string; context?: string | null; versionId?: string };
@@ -246,7 +260,12 @@ export async function changeStatus(
       await tx.legalDocumentVersion.update({ where: { id: v.id }, data: { status: "APPROVED", approvedAt: now, approvedById: ownerId, approvalNote: note.slice(0, 1000) } });
     } else if (to === "PUBLISHED") {
       if (v.status !== "APPROVED") return { ok: false as const, error: "Only an approved version can be published." };
-      await tx.legalDocumentVersion.updateMany({ where: { documentId: v.documentId, status: "PUBLISHED" }, data: { status: "SUPERSEDED", supersededAt: now } });
+      // Every earlier version that was shown or published is replaced by this one (an older text that was
+      // still awaiting review would otherwise stay listed as current next to the published one).
+      await tx.legalDocumentVersion.updateMany({
+        where: { documentId: v.documentId, version: { lt: v.version }, status: { in: ["PUBLISHED", "APPROVED", "PENDING_LEGAL_REVIEW"] } },
+        data: { status: "SUPERSEDED", supersededAt: now },
+      });
       await tx.legalDocumentVersion.update({ where: { id: v.id }, data: { status: "PUBLISHED", publishedAt: now, publishedById: ownerId, effectiveDate: input.effectiveDate ?? now } });
     }
     await tx.auditLog.create({ data: { actorId: ownerId, action: `legal.status_${to.toLowerCase()}`, entityType: "LegalDocumentVersion", entityId: v.id, metadata: { from: v.status, version: v.version } } });

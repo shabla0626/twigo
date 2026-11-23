@@ -19,7 +19,7 @@ export const NOTIFICATION_TYPES: Record<NotificationType, { label: string; email
   IDEA_COMMENT: { label: "Comments on my ideas", emailDefault: false },
   COMMENT_REPLY: { label: "Replies to my comments", emailDefault: false },
   IDEA_ENDORSED: { label: "Endorsements of my ideas", emailDefault: false },
-  IDEA_GROUP_CREATED: { label: "My idea became a research group", emailDefault: true },
+  IDEA_GROUP_CREATED: { label: "My idea became a project group", emailDefault: true },
   GROUP_MEMBERSHIP: { label: "I was added to a group", emailDefault: true },
   GROUP_ANNOUNCEMENT: { label: "Group announcements", emailDefault: false },
   MEETING_STARTED: { label: "A group meeting started", emailDefault: false },
@@ -27,7 +27,7 @@ export const NOTIFICATION_TYPES: Record<NotificationType, { label: string; email
   GROUP_DECISION: { label: "Group decisions recorded", emailDefault: false },
   COORDINATOR_ASSIGNED: { label: "I became a group coordinator", emailDefault: true },
   DISCUSSION_REPLY: { label: "Replies in group discussions I started", emailDefault: false },
-  ADMIN_MESSAGE: { label: "Messages from the organization", emailDefault: true },
+  ADMIN_MESSAGE: { label: "Messages from the administrators", emailDefault: true },
   IDEA_CHANGED: { label: "Changes to ideas I support", emailDefault: true },
   PROJECT_AGREEMENT: { label: "Project agreements I take part in (new versions, acceptances)", emailDefault: true },
 };

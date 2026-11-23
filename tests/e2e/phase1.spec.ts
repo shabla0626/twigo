@@ -123,7 +123,7 @@ async function register(page: Page, m: Person) {
   await page.getByLabel("Email address").fill(m.email);
   await page.getByLabel("Password", { exact: true }).fill(E2E.password);
   await page.getByLabel("Confirm password").fill(E2E.password);
-  await page.locator('input[name="agree"]').check();
+  for (const consent of ["acceptTerms", "acceptGuidelines", "ackPrivacy"]) await page.locator(`input[name="${consent}"]`).check();
   await page.getByRole("button", { name: "Create Account" }).click();
   await expect(page.getByRole("heading", { name: "Check your email" })).toBeVisible();
 }
@@ -192,7 +192,7 @@ test("A. a new visitor creates an account, confirms their email and reaches the 
   await page.getByLabel("Confirm password").fill("different-pass-1");
   await page.getByRole("button", { name: "Show password" }).first().click();
   await expect(page.getByLabel("Password", { exact: true })).toHaveAttribute("type", "text");
-  await page.locator('input[name="agree"]').check();
+  for (const consent of ["acceptTerms", "acceptGuidelines", "ackPrivacy"]) await page.locator(`input[name="${consent}"]`).check();
   await page.getByLabel("Password", { exact: true }).fill("short-pass-12");
   await page.getByRole("button", { name: "Create Account" }).click();
   await expect(page.getByText("The two passwords do not match.")).toBeVisible();
@@ -393,7 +393,7 @@ test("E. an email outage loses nothing: the account is kept, the problem is expl
   await page.getByLabel("Email address").fill(MEMBERS.F.email);
   await page.getByLabel("Password", { exact: true }).fill(E2E.password);
   await page.getByLabel("Confirm password").fill(E2E.password);
-  await page.locator('input[name="agree"]').check();
+  for (const consent of ["acceptTerms", "acceptGuidelines", "ackPrivacy"]) await page.locator(`input[name="${consent}"]`).check();
   await page.getByRole("button", { name: "Create Account" }).click();
   await expect(page.getByText(/Your account was saved, but we could not send the email right now/)).toBeVisible();
   expect(mailsTo(MEMBERS.F.email)).toHaveLength(0);
@@ -462,6 +462,7 @@ test("5. Member A publishes a business idea", async () => {
   await page.getByLabel("What is the idea?").fill("Small shops in our towns need affordable, reliable monthly bookkeeping done remotely.");
   await page.getByLabel("How might it make money?").fill("A flat monthly fee paid by each shop.");
   await page.getByLabel("Which area fits best?").selectOption("ONLINE_SERVICES");
+  await page.getByLabel("I understand who can see my idea and that it is not confidential.").check();
   await page.getByRole("button", { name: "Publish idea" }).click();
   await expect(page.getByRole("heading", { name: IDEA })).toBeVisible();
   await expect(page.getByText("Your idea is published.")).toBeVisible();
@@ -480,7 +481,7 @@ test("6–8. Member B endorses; no group exists yet", async () => {
   await expect(page.getByText(/1\s*of 2 supporters needed/)).toBeVisible();
   await expect(page.getByText("You support this idea")).toBeVisible();
   await page.goto("/community/groups");
-  await expect(page.getByText("No research groups yet")).toBeVisible();
+  await expect(page.getByText("No project groups yet")).toBeVisible();
 });
 
 test("9–13. Member C endorses; exactly one group is created with A, B and C", async () => {
@@ -488,7 +489,7 @@ test("9–13. Member C endorses; exactly one group is created with A, B and C", 
   await page.goto("/community");
   await expect(page.getByText("Needs 1 more supporter")).toBeVisible();
   await page.getByRole("button", { name: `Support “${IDEA}”` }).click();
-  await expect(page.getByText(/a research group has been created and you are a founding member/)).toBeVisible();
+  await expect(page.getByText(/a project group has been created and you are a founding member/)).toBeVisible();
   groupUrl = new URL(page.url()).pathname;
   await page.goto("/community/groups");
   await expect(page.getByRole("link", { name: IDEA })).toHaveCount(1);
@@ -626,10 +627,98 @@ test("28. existing application and project features still work", async () => {
   await admin.goto("/admin/applications");
   await expect(admin.getByText(MEMBERS.A.name)).toBeVisible();
   await admin.goto("/admin/projects");
-  await expect(admin.getByRole("heading", { name: "Projects" })).toBeVisible();
+  await expect(admin.getByRole("heading", { name: "Earlier project records" })).toBeVisible();
   await admin.goto("/admin/groups");
   await admin.getByRole("link", { name: IDEA }).click();
   await expect(admin.getByText(/Private chat messages and files are not shown/)).toBeVisible();
+});
+
+test("29. Twigo: the group plans a project, every participant accepts its agreement, and work starts", async () => {
+  const [a, b, c] = [sessions.A!.page, sessions.B!.page, sessions.C!.page];
+  await a.goto(`${groupUrl}/projects`);
+  await a11y(a, "group projects");
+  await a.getByLabel("Project name").fill("Bookkeeping pilot");
+  await a.getByLabel("Business objective").fill("Monthly bookkeeping for three local shops, for six months.");
+  await a.getByRole("button", { name: "Create project" }).click();
+  await expect(a.getByText("Project created. Next: draft its agreement.")).toBeVisible();
+  const projectUrl = new URL(a.url()).pathname;
+  await expect(a.getByText(/is not a party to this project and receives no share, commission or fee/)).toBeVisible();
+
+  // The coordinator writes the terms; nothing is preset.
+  await a.getByLabel("5. Contracting arrangement").selectOption("PROJECT_REPRESENTATIVE");
+  await a.getByLabel("Compensation method").selectOption("CONTRIBUTION");
+  const terms: [string, string][] = [
+    ["1. Project scope", "Monthly ledgers for three shops."],
+    ["6. Who receives customer payments", "Member A, who passes on each share within 7 days."],
+    ["8a. Gross customer receipts", "Everything the shops pay for the service."],
+    ["8b. Taxes and mandatory deductions", "Each participant handles their own taxes."],
+    ["8c. Refunds and chargebacks", "Shared in the same proportion as revenue."],
+    ["8d. Net distributable project revenue", "Gross receipts minus refunds and approved expenses."],
+    ["9. Revenue distribution formula", "In proportion to recorded hours."],
+    ["10. Payment schedule", "Monthly, after the shops pay."],
+    ["12. Intellectual property", "Each keeps their own templates; ledgers belong to the shops."],
+    ["13. Confidentiality", "Shop data stays within the project."],
+    ["14. Withdrawal and termination", "Two weeks notice; work done until then is paid."],
+    ["15. Dispute resolution", "Discuss in the group first, then an agreed mediator."],
+  ];
+  for (const [label, value] of terms) await a.getByLabel(label).fill(value);
+  const include = a.locator('input[name$="_include"]');
+  await expect(include).toHaveCount(3);
+  for (let i = 0; i < 3; i++) {
+    await include.nth(i).check();
+    await a.locator('textarea[name$="_responsibilities"]').nth(i).fill("Prepares the ledgers for one shop.");
+    await a.locator('textarea[name$="_compensation"]').nth(i).fill(`Share by hours, participant ${i + 1}`);
+  }
+  await a.getByRole("button", { name: "Save draft" }).click();
+  await expect(a.getByText(/Draft saved\. Nothing is binding/)).toBeVisible();
+  await a.getByRole("button", { name: "Ask the participants to accept this version" }).click();
+  await expect(a.getByText("The participants were asked to review and accept this version.")).toBeVisible();
+  // Not commercially active before everyone accepted.
+  await a.reload();
+  await expect(a.getByText("Waiting for acceptance: version 1")).toBeVisible();
+
+  for (const [page, name] of [[a, "A"], [b, "B"], [c, "C"]] as const) {
+    if (page !== a) await page.goto(projectUrl);
+    await page.getByLabel(/I have read version 1/).check();
+    await page.getByRole("button", { name: "Accept this version" }).click();
+    await expect(page.getByText("Your acceptance was recorded."), `acceptance by ${name}`).toBeVisible();
+  }
+  await a.reload();
+  await expect(a.getByText("Agreement in force: version 1")).toBeVisible();
+  await a11y(a, "project agreement");
+  // The copy contains the exact text, its fingerprint and three acceptances.
+  const href = await a.getByRole("link", { name: "Download a copy" }).getAttribute("href");
+  const copy = await a.request.get(href!);
+  expect(copy.status()).toBe(200);
+  const body = await copy.text();
+  expect(body).toMatch(/SHA-256 fingerprint of the agreement text below: [0-9a-f]{64}/);
+  expect(body.match(/accepted \d{4}-/g)).toHaveLength(3);
+  await a.getByRole("button", { name: "Start commercial work" }).click();
+  await expect(a.getByText("The project is commercially active under the accepted agreement.")).toBeVisible();
+});
+
+test("30. Twigo: new owner and member pages open and pass the accessibility check", async () => {
+  const owner = sessions.admin!.page;
+  for (const p of ["/admin/legal", "/admin/legal/terms", "/admin/legal/notices", "/admin/legal/acceptances", "/admin/agreements", "/admin/support", "/admin/privacy-requests"]) {
+    await owner.goto(p);
+    await expect(owner, p).toHaveURL(new RegExp(`${p}$`));
+    await a11y(owner, p);
+  }
+  // Acceptances recorded by the browser tests above (registrations and supporting the idea) are listed.
+  await owner.goto("/admin/legal/acceptances");
+  await expect(owner.getByText("registration").first()).toBeVisible();
+  await expect(owner.getByText("idea-support").first()).toBeVisible();
+  // The owner sees the group project and its acceptance count.
+  await owner.goto("/admin/agreements");
+  await expect(owner.getByText("Bookkeeping pilot")).toBeVisible();
+  await expect(owner.getByText("3 of 3")).toBeVisible();
+  const member = sessions.B!.page;
+  for (const p of ["/account/agreements", "/account/data", "/legal", "/support"]) {
+    await member.goto(p);
+    await a11y(member, p);
+  }
+  await member.goto("/account/agreements");
+  await expect(member.getByRole("link", { name: /Terms of Use/ }).first()).toBeVisible();
 });
 
 test("navigation: three main areas, account menu and help", async () => {
@@ -683,7 +772,7 @@ test("public pages and mobile layouts", async ({ browser }) => {
   // Reduced motion: scroll-reveal fade-ins would otherwise be scanned mid-animation.
   const ctx = await browser.newContext({ reducedMotion: "reduce" });
   const page = await ctx.newPage();
-  const PUBLIC = ["/", "/how-it-works", "/about", "/compensation", "/participation", "/founding-contributors", "/faq", "/contact", "/work-with-us", "/community-rules", "/join", "/login", "/forgot-password", "/verify-email"];
+  const PUBLIC = ["/", "/how-it-works", "/about", "/compensation", "/participation", "/founding-contributors", "/faq", "/contact", "/work-with-us", "/support", "/legal", "/legal/terms", "/legal/privacy", "/legal/community-guidelines", "/legal/notices", "/join", "/login", "/forgot-password", "/verify-email"];
   for (const p of PUBLIC) {
     await page.goto(p, { waitUntil: "networkidle" });
     await a11y(page, p);
@@ -691,7 +780,7 @@ test("public pages and mobile layouts", async ({ browser }) => {
   // The header shows only the main pages; everything else is in the footer.
   await page.goto("/");
   await expect(page.getByRole("navigation", { name: "Main" }).getByRole("link")).toHaveText(["How It Works", "About", "Pay & Fairness", "FAQ"]);
-  for (const label of ["For Businesses", "Contact", "Privacy Notice", "Community Rules"]) {
+  for (const label of ["For Businesses", "Contact", "Community Support", "Terms of Use", "Privacy Policy", "Community Guidelines"]) {
     await expect(page.getByRole("contentinfo").getByRole("link", { name: label })).toBeVisible();
   }
   // Public pages fit a phone screen without sideways scrolling, and the phone menu works.

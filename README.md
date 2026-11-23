@@ -1,11 +1,20 @@
-# CoWork: Remote Collaborative Business Community
+# Twigo: An Online Collaborative Community
 
-Public website, application system, **members-only collaboration community** and admin
-dashboard for a founding-stage, fully remote, contribution-based organization.
+*Together We Innovate, Grow & Opportunity* · intended address: `https://twigo.stream`
 
-> **"CoWork" is a working name** (set by `ORG_NAME`; all branding lives in
-> `src/config/brand.ts`). Replace it, the contact email and legal details before launch.
-> See [docs/LEGAL-REVIEW.md](docs/LEGAL-REVIEW.md) and [docs/legal/](docs/legal/).
+Twigo is an independent, remote-first online collaborative community where people come together to
+propose ideas, develop business opportunities, form voluntary project groups, and pursue income through
+meaningful contributions and cooperation. Twigo charges no fees, takes no commission or share of project
+revenue, and does not collect, hold or distribute project money: each project group decides and documents
+its own arrangements.
+
+> The name is set by `ORG_NAME` (all branding lives in `src/config/brand.ts`). Internal identifiers such as
+> the `cowork` database name and the repository folder were deliberately not renamed. The legal operator,
+> jurisdiction and contact details are **not yet confirmed**; see
+> [docs/TWIGO-OPEN-DECISIONS.md](docs/TWIGO-OPEN-DECISIONS.md) and
+> [docs/TWIGO-LEGAL-REVIEW-CHECKLIST.md](docs/TWIGO-LEGAL-REVIEW-CHECKLIST.md).
+
+Twigo transformation report: **[docs/TWIGO-IMPLEMENTATION-REPORT.md](docs/TWIGO-IMPLEMENTATION-REPORT.md)**.
 
 Phase 1 status, test evidence and open items: **[docs/PHASE-1-REPORT.md](docs/PHASE-1-REPORT.md)**.
 Architecture: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md). Deployment and costs:
@@ -15,12 +24,12 @@ Architecture: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md). Deployment and costs
 
 | Area | Features |
 | --- | --- |
-| Public site | Home, About, How It Works (incl. the member-community model), Participation, Compensation, Founding Contributors, **Work With Us** (honest business inquiry form), FAQ, Contact, Apply, **Community rules**, Privacy (draft), Terms (draft), sitemap, robots, generated share image |
+| Public site | Home, About, How It Works (incl. the member-community model), Participation, Compensation, Founding Contributors, **Work With Us** (honest business inquiry form), FAQ, Contact, Apply, **Community rules**, **Legal centre** (`/legal`: versioned Terms, Privacy, Guidelines, IP, Participation & Compensation, Cookies, Group Participation, Community Support, Legal Notices), **Community Support** (`/support`), sitemap, robots, generated share image |
 | Accounts | One identity model (OWNER / ADMIN / MEMBER), self-registration with email confirmation (administrators are invited by the owner), sign-in with lockout and rate limits, **two-step verification (TOTP + recovery codes)**, password reset and change, email change with verification, device/session list with revoke, re-confirmation for sensitive actions, suspension/deactivation |
-| Community | Home feed, Business Ideas (submit, search, filter, sort, threaded comments, endorsements), **automatic research group at 2 endorsements** (configurable), group directory, My Groups, dedicated group pages (Overview, Discussions, Chat, Meetings, Research & Planning, Members, Files), join/leave/rejoin, coordinator succession, notifications with preferences, member profiles with visibility controls, reporting |
+| Community | Home feed, Business Ideas (submit, search, filter, sort, threaded comments, endorsements), **automatic project group at 2 supporters** (configurable), **group-led projects with versioned agreements every participant accepts**, group directory, My Groups, dedicated group pages (Overview, Discussions, Chat, Meetings, Research & Planning, Members, Files), join/leave/rejoin, coordinator succession, notifications with preferences, member profiles with visibility controls, reporting |
 | Real-time | Socket.IO group chat: persisted history, replies, edit/delete, unread counts, presence, typing indicator, attachments, reconnection with idempotent resend; live notification badge |
 | Meetings | Google Meet links per group (founder decision), voice or video, member-only join, attendance metadata; nothing recorded |
-| Admin | Overview, applications (status, notes, **email with preview**, export for the owner), members, participants, reports & moderation, ideas, research groups (coordinator, archive/suspend, **approve into project**), projects (compensation OWNER-only), inquiries, email templates + delivery log, content, privacy & retention, backups, administrators, settings, audit log |
+| Admin | Overview, applications (status, notes, **email with preview**, export for the owner), members, participants, reports & moderation, ideas, project groups (coordinator, archive/suspend), project agreements (terms owner-only), earlier project records, **legal documents, notices and acceptance records**, community support records, privacy requests, inquiries, email templates + delivery log, content, privacy & retention, backups, administrators, settings, audit log |
 | Operations | Custom server (`server.ts`), daily retention + backup jobs, verified backup/restore tooling, health check, structured logging, security headers |
 
 ## Tech stack

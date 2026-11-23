@@ -196,7 +196,7 @@ export async function joinGroup(userId: string, groupId: string) {
   if (!a || a.group.suspendedAt) return { ok: false as const, error: "This group is not available." };
   if (a.group.status === "ARCHIVED") return { ok: false as const, error: "Archived groups cannot be joined." };
   if (a.isMember) return { ok: true as const };
-  if (a.membership?.status === "REMOVED") return { ok: false as const, error: "You were removed from this group by its coordinator. Contact the organization if you think this was a mistake." };
+  if (a.membership?.status === "REMOVED") return { ok: false as const, error: "You were removed from this group by its coordinator. Contact the administrators if you think this was a mistake." };
   const joined = await withGroupLock(a.group.id, async (tx) => {
     // Re-read under the lock: the situation may have changed since the checks above.
     const g = await tx.researchGroup.findUniqueOrThrow({ where: { id: a.group.id }, select: { status: true, suspendedAt: true } });
@@ -366,7 +366,7 @@ export async function removeMember(coordinatorId: string, groupId: string, userI
   await notify([userId], {
     type: "GROUP_MEMBERSHIP",
     title: `You were removed from “${g.name}” by its coordinator`,
-    body: "You no longer have access to its chat, meetings and shared research. Your account and your other groups are not affected. If you think this was a mistake, contact the organization.",
+    body: "You no longer have access to its chat, meetings and shared research. Your account and your other groups are not affected. If you think this was a mistake, contact the administrators.",
     link: `/community/groups/${g.slug}`,
   });
   return { ok: true as const };
@@ -382,7 +382,7 @@ export async function adminLiftRemoval(adminId: string, groupId: string, userId:
     const m = await tx.groupMembership.findUnique({ where: { groupId_userId: { groupId, userId } } });
     if (!m || m.status !== "REMOVED") return null;
     await tx.groupMembership.update({ where: { id: m.id }, data: { status: "LEFT" } });
-    return { line: await writeSystemLine(tx, groupId, `The organization allowed ${await nameInChat(tx, userId)} to join the group again`) };
+    return { line: await writeSystemLine(tx, groupId, `An administrator allowed ${await nameInChat(tx, userId)} to join the group again`) };
   });
   if (!done) return { ok: false as const, error: "This person is not currently removed from the group." };
   await publishLines([done.line]);
@@ -391,7 +391,7 @@ export async function adminLiftRemoval(adminId: string, groupId: string, userId:
   await notify([userId], {
     type: "GROUP_MEMBERSHIP",
     title: `You can join “${g.name}” again`,
-    body: "The organization lifted your removal from this group. You are not a member yet: open the group and choose “Join” if you want to return.",
+    body: "An administrator lifted your removal from this group. You are not a member yet: open the group and choose “Join” if you want to return.",
     link: `/community/groups/${g.slug}`,
   });
   return { ok: true as const };
@@ -418,15 +418,15 @@ export async function transferCoordinator(coordinatorId: string, groupId: string
 
 export async function setGroupStatusByCoordinator(coordinatorId: string, groupId: string, status: GroupStatus) {
   const a = await requireCoordinator(groupId, coordinatorId);
-  if (!COORDINATOR_STATUSES.includes(status)) return { ok: false as const, error: "That status can only be set by the organization." };
-  if (a.group.status === "APPROVED_FOR_PROJECT") return { ok: false as const, error: "This group was approved for project work; its status is managed by the organization." };
+  if (!COORDINATOR_STATUSES.includes(status)) return { ok: false as const, error: "That status can only be set by an administrator." };
+  if (a.group.status === "APPROVED_FOR_PROJECT") return { ok: false as const, error: "This group was approved for project work; its status is managed by the administrators." };
   if (a.group.status === status) return { ok: true as const };
   await db.researchGroup.update({ where: { id: groupId }, data: { status, lastActivityAt: new Date() } });
   await audit(coordinatorId, "group.status_changed", "ResearchGroup", groupId, { from: a.group.status, to: status });
   await notify(await activeMemberIds(groupId), {
     type: "GROUP_STATUS",
     title: `“${a.group.name}” is now: ${GROUP_STATUS_LABELS[status]}`,
-    body: status === "READY_FOR_REVIEW" ? "The group asked the organization to review its proposal. This does not yet authorize any commercial work." : undefined,
+    body: status === "READY_FOR_REVIEW" ? "The group asked for feedback on its research. Administrators can now read the research notes (not the chat)." : undefined,
     link: `/community/groups/${a.group.slug}`,
   }, { exclude: coordinatorId });
   await publishRealtime(db, { t: "group.updated", groupId, what: "status" });
@@ -532,12 +532,12 @@ export async function adminAssignCoordinator(adminId: string, groupId: string, u
     await tx.groupMembership.updateMany({ where: { groupId, role: "COORDINATOR" }, data: { role: "MEMBER" } });
     await tx.groupMembership.update({ where: { id: m.id }, data: { role: "COORDINATOR" } });
     await tx.researchGroup.update({ where: { id: groupId }, data: { adminManaged: false } });
-    return { line: await writeSystemLine(tx, groupId, `${await nameInChat(tx, userId)} is now the coordinator (assigned by the organization)`) };
+    return { line: await writeSystemLine(tx, groupId, `${await nameInChat(tx, userId)} is now the coordinator (assigned by an administrator)`) };
   });
   if (!done) return { ok: false as const, error: "The new coordinator must be an active member of the group who currently has community access." };
   await publishLines([done.line]);
   const g = await db.researchGroup.findUniqueOrThrow({ where: { id: groupId }, select: { slug: true, name: true } });
-  await notify([userId], { type: "COORDINATOR_ASSIGNED", title: `You are now the coordinator of “${g.name}”`, body: "The organization assigned you this role.", link: `/community/groups/${g.slug}` });
+  await notify([userId], { type: "COORDINATOR_ASSIGNED", title: `You are now the coordinator of “${g.name}”`, body: "An administrator assigned you this role.", link: `/community/groups/${g.slug}` });
   await audit(adminId, "group.coordinator_assigned", "ResearchGroup", groupId, { userId });
   return { ok: true as const };
 }
@@ -571,7 +571,7 @@ export async function approveGroupForProject(adminId: string, groupId: string) {
   await notify(await activeMemberIds(g.id), {
     type: "GROUP_STATUS",
     title: `“${g.name}” was approved for project planning`,
-    body: "The organization will contact members about written agreements and compensation terms before any paid work begins.",
+    body: "This links the group to an earlier, administrator-run project record. Paid work still begins only after the people involved accept a written agreement.",
     link: `/community/groups/${g.slug}`,
   });
   return { ok: true as const, projectId: project.id };

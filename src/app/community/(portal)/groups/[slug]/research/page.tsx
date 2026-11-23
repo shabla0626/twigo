@@ -125,8 +125,8 @@ export default async function ResearchPage({ params }: { params: Promise<{ slug:
               ))}
           </ul>
           <p className="mt-3 text-sm leading-6 text-ink-600">
-            When the group has a credible plan, the coordinator can mark it “Ready for review” to ask the organization to look at it. That does not authorize
-            paid work.
+            When the group has a credible plan, it can create a project in the Projects tab and agree its terms in writing. Marking the group “Ready for review” is optional and only
+            lets administrators read these notes to give feedback.
           </p>
         </details>
       </div>

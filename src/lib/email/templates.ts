@@ -177,7 +177,7 @@ export const TEMPLATES: Record<TemplateKey, TemplateDef> = {
       "",
       "You can now sign in with your email address and password, and enter the member community: {{communityLink}}",
       "",
-      "Inside the community you can propose business ideas, discuss and support ideas from other members, and join research groups.",
+      "Inside the community you can propose business ideas, discuss and support ideas from other members, and join project groups.",
       "",
       "Please keep in mind: acceptance does not guarantee paid project work or income. Any paid work is agreed in writing, with clear terms, before it starts.",
       "",

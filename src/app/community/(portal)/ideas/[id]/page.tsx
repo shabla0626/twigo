@@ -146,7 +146,7 @@ export default async function IdeaPage({ params, searchParams }: Props) {
                     label="Close idea"
                     confirm={{
                       question: "Close this idea?",
-                      detail: "It stays visible, but nobody can support it any more, so no research group can start from it. You cannot reopen it yourself.",
+                      detail: "It stays visible, but nobody can support it any more, so no project group can start from it. You cannot reopen it yourself.",
                       yes: "Yes, close the idea",
                       danger: true,
                     }}
@@ -165,7 +165,7 @@ export default async function IdeaPage({ params, searchParams }: Props) {
           {idea.group ? (
             <div className="space-y-3 text-sm">
               <p className="leading-6 text-ink-700">
-                This idea attracted enough support, so a research group was created to investigate it. That does not mean it will succeed: finding out is the
+                This idea attracted enough support, so a project group was created to investigate it. That does not mean it will succeed: finding out is the
                 group’s job.
               </p>
               <Link href={`/community/groups/${idea.group.slug}`} className="flex items-center gap-2 rounded-xl bg-accent-50 p-3 font-semibold text-accent-900 hover:bg-accent-100">
@@ -210,7 +210,7 @@ export default async function IdeaPage({ params, searchParams }: Props) {
                     </form>
                   )}
                   <p className="text-sm leading-6 text-ink-600">
-                    Support an idea if you would like to investigate it with others. When {threshold} members other than the author support it, a research group is
+                    Support an idea if you would like to investigate it with others. When {threshold} members other than the author support it, a project group is
                     created and <strong>every supporter automatically becomes a group member</strong>. You can leave the group at any time.
                     {remaining > 0 && ` ${remaining} more supporter${remaining === 1 ? "" : "s"} needed.`}
                   </p>
@@ -218,7 +218,7 @@ export default async function IdeaPage({ params, searchParams }: Props) {
               )}
               {isAuthor && idea.status === "OPEN" && (
                 <p className="text-sm leading-6 text-ink-600">
-                  This is your idea. When {threshold} other members support it, a research group is created automatically and you will coordinate it.
+                  This is your idea. When {threshold} other members support it, a project group is created automatically and you will coordinate it.
                 </p>
               )}
               {idea.status === "CLOSED" && <p className="text-sm text-ink-600">The author closed this idea, so it can no longer receive support.</p>}

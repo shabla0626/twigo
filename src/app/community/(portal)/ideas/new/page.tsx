@@ -20,7 +20,7 @@ export default async function NewIdeaPage() {
       </p>
       <PageTitle
         title="Propose a Business Idea"
-        description={`You don’t need a business plan. Describe the idea in your own words; other members can ask questions and support it. When ${threshold} other members support it, a research group is created to investigate it together.`}
+        description={`You don’t need a business plan. Describe the idea in your own words; other members can ask questions and support it. When ${threshold} other members support it, a project group is created to investigate it together.`}
       />
       <Panel>
         <ActionForm action={createIdeaAction} submitLabel="Publish idea" pendingLabel="Publishing…">

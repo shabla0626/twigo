@@ -184,7 +184,7 @@ describe("P3-15: no action fails silently", () => {
     await signIn(b.id);
     expect((await closeIdeaAction(undefined, form({ id: ideaId })))?.error).toBe("Only the author can close this idea.");
     await signIn(a.id);
-    expect((await closeIdeaAction(undefined, form({ id: ideaId })))?.error).toContain("already has a research group");
+    expect((await closeIdeaAction(undefined, form({ id: ideaId })))?.error).toContain("already has a project group");
     expect((await db.businessIdea.findUniqueOrThrow({ where: { id: ideaId } })).status).not.toBe("CLOSED");
   });
 
@@ -226,7 +226,7 @@ describe("P3-14: actions that cannot be undone", () => {
     expect(shownAt(to).ok).toContain("was removed and has been told");
     const n = await db.notification.findMany({ where: { userId: b.id, title: `You were removed from “${g.name}” by its coordinator` } });
     expect(n).toHaveLength(1);
-    expect(n[0]!.body).toContain("contact the organization");
+    expect(n[0]!.body).toContain("contact the administrators");
     // A second attempt is refused with a message next to the button.
     expect((await removeMemberAction(undefined, form({ groupId: g.id, userId: b.id })))?.error).toBe("That person is not an active member.");
     // A member who is not the coordinator cannot remove anyone.
@@ -259,7 +259,7 @@ describe("P3-14: actions that cannot be undone", () => {
     expect((await adminLiftRemoval(owner.id, g.id, b.id)).ok).toBe(true);
     // Not a member again by this act alone.
     expect((await db.groupMembership.findUniqueOrThrow({ where: { groupId_userId: { groupId: g.id, userId: b.id } } })).status).toBe("LEFT");
-    expect(await systemLines(channelId)).toContain("The organization allowed Bob to join the group again");
+    expect(await systemLines(channelId)).toContain("An administrator allowed Bob to join the group again");
     expect(await db.auditLog.count({ where: { action: "group.removal_lifted", actorId: owner.id, entityId: g.id } })).toBe(1);
     const titles = (await db.notification.findMany({ where: { userId: b.id }, orderBy: { createdAt: "asc" } })).map((n) => n.title);
     expect(titles).toContain(`You can join “${g.name}” again`);

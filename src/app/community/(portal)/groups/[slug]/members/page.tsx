@@ -51,7 +51,7 @@ export default async function MembersPage({ params, searchParams }: Props) {
                       variant="secondary"
                       confirm={{
                         question: `Make ${name} the coordinator?`,
-                        detail: "You hand the role over and become an ordinary member. You cannot take it back yourself; only the new coordinator or the organization can change it again.",
+                        detail: "You hand the role over and become an ordinary member. You cannot take it back yourself; only the new coordinator or the administrators can change it again.",
                         yes: "Yes, hand over",
                       }}
                     />
@@ -63,7 +63,7 @@ export default async function MembersPage({ params, searchParams }: Props) {
                       ariaLabel={`Remove ${name} from the group`}
                       confirm={{
                         question: `Remove ${name} from the group?`,
-                        detail: "They lose access to the chat, meetings and shared research, and they cannot rejoin by themselves (only the organization can allow that). They are told, the group sees it in the chat, and it is recorded.",
+                        detail: "They lose access to the chat, meetings and shared research, and they cannot rejoin by themselves (only the administrators can allow that). They are told, the group sees it in the chat, and it is recorded.",
                         yes: "Yes, remove",
                         danger: true,
                       }}

@@ -121,7 +121,7 @@ export default async function GroupsPage({ searchParams }: Props) {
         </div>
       ) : (
         <EmptyState
-          title={q || category || status ? "No groups match" : "No research groups yet"}
+          title={q || category || status ? "No groups match" : "No project groups yet"}
           body="A group is created automatically when an idea gets enough support from other members."
           action={
             <Link href="/community?sort=endorsed" className={buttonClass("primary")}>

@@ -1,5 +1,7 @@
 # Financial transparency: design for Phase 3 (not implemented)
 
+> **Twigo note:** under the Twigo model the platform receives no project revenue. Project groups document their own finances in project agreements; Twigo publishes only aggregate Community Support reports (`/support`). See [TWIGO-IMPLEMENTATION-REPORT.md](TWIGO-IMPLEMENTATION-REPORT.md).
+
 The founder intends to share genuine business results with members. Phase 1 only
 prepares the architecture. **No figures are published, no payments, wallets, investment
 accounts, cryptocurrency or capital-contribution features exist, and none are planned.**

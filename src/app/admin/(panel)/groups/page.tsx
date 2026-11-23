@@ -13,7 +13,7 @@ export default async function GroupsAdminPage() {
   });
   return (
     <>
-      <AdminHeader title="Research groups" description="Groups that need attention appear first: ready for review, without a coordinator, or suspended." />
+      <AdminHeader title="Project groups" description="Groups that need attention appear first: ready for review, without a coordinator, or suspended." />
       <div className="mt-6">
         <Table head={["Group", "Stage", "Members", "Coordinator", "Last activity", "Flags"]} empty={!groups.length && <Empty>No groups yet. Groups form automatically from endorsed ideas.</Empty>}>
           {[...groups]

@@ -177,7 +177,7 @@ export async function verifyEmailToken(token: string): Promise<VerifyResult> {
         error: t.reason === "expired" ? "This link has expired. Sign in and ask for a new one." : "This link is not valid or was already used. If your email is confirmed, just sign in.",
       };
     const user = await tx.user.findUniqueOrThrow({ where: { id: t.userId } });
-    if (user.status !== "ACTIVE") return { ok: false as const, error: "This account cannot be confirmed. Please contact the organization." };
+    if (user.status !== "ACTIVE") return { ok: false as const, error: "This account cannot be confirmed. Please contact the administrators." };
     if (t.email && t.email === user.email) {
       await tx.user.update({ where: { id: user.id }, data: { emailVerifiedAt: user.emailVerifiedAt ?? new Date() } });
       const linkedGrant = await linkLegacyApplicant(tx, user.id, user.email);
@@ -193,7 +193,7 @@ export async function verifyEmailToken(token: string): Promise<VerifyResult> {
     // inside the database and undo everything, so it is refused here with a clear answer.
     // (An earlier application without an account has no userId: it must count as "someone else" too.)
     const clash = await tx.applicant.findFirst({ where: { email: t.email, OR: [{ userId: null }, { userId: { not: user.id } }] }, select: { id: true } });
-    if (clash) return { ok: false as const, error: "That email address is already used by an earlier application. Your address was not changed. Please contact the organization." };
+    if (clash) return { ok: false as const, error: "That email address is already used by an earlier application. Your address was not changed. Please contact the administrators." };
     await tx.user.update({ where: { id: user.id }, data: { email: t.email, emailVerifiedAt: new Date() } });
     await tx.applicant.updateMany({ where: { userId: user.id }, data: { email: t.email } });
     await grantAcceptedMembership(tx, user.id, { reason: "email confirmed" });

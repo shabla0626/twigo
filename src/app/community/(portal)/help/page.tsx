@@ -13,7 +13,7 @@ const QUESTIONS: [string, string][] = [
     "It means you would like to investigate the idea with others. It is not a promise of money or work, and it does not mean the idea will succeed.",
   ],
   [
-    "What happens when a research group is created?",
+    "What happens when a project group is created?",
     "The idea’s author and its supporters become the first members. The group gets its own page with chat, meetings, shared research and discussions. A group is a place to investigate an idea; it is not a company or a job.",
   ],
   ["Can I join or leave groups freely?", "Yes. Join any active group from Explore Groups, and leave at any time from the group page. Leaving a group does not close your account."],
@@ -34,10 +34,10 @@ export default async function HelpPage() {
   const threshold = await getSetting("community.endorsementThreshold");
   const steps: [string, string][] = [
     ["Propose an idea", "Share a business opportunity in a few sentences."],
-    ["Discuss and support", `Members comment and support the ideas they want to investigate. When ${threshold} members other than the author support an idea, a research group is created automatically.`],
+    ["Discuss and support", `Members comment and support the ideas they want to investigate. When ${threshold} members other than the author support an idea, a project group is created automatically.`],
     ["Join a group", "Explore groups and join the ones that interest you. Your groups are under My Groups."],
     ["Work together", "Chat, meet through Google Meet, and collect research to test whether the idea can work."],
-    ["Turn it into a project", "When a group has a credible plan, it asks the organization for review. Paid work only starts after written agreements."],
+    ["Turn it into a project", "When a group has a credible plan, it creates a project and writes down its agreement: who does what, who signs with the customer, and how earnings are shared. Paid work only starts after every participant accepts it."],
   ];
   return (
     <div className="max-w-3xl space-y-6">
@@ -74,8 +74,8 @@ export default async function HelpPage() {
       </Panel>
       <p className="text-sm text-ink-600">
         Please read the{" "}
-        <Link href="/community-rules" className="font-medium text-accent-700 underline">
-          community rules
+        <Link href="/legal/community-guidelines" className="font-medium text-accent-700 underline">
+          Community Guidelines
         </Link>
         . Your profile, notification and privacy settings are in the account menu at the top right.
       </p>

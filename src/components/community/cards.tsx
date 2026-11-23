@@ -22,7 +22,7 @@ export type Viewer = { id: string; supports: boolean };
 
 /** Plain-language status of an idea. */
 export function ideaStatus(idea: { status: string; endorsementCount: number; group: unknown }, threshold: number) {
-  if (idea.group) return { label: "Research group formed", tone: "success" as const };
+  if (idea.group) return { label: "Project group formed", tone: "success" as const };
   if (idea.status === "CLOSED") return { label: "Closed by author", tone: "neutral" as const };
   const left = Math.max(0, threshold - idea.endorsementCount);
   return { label: left > 0 ? `Needs ${left} more supporter${left === 1 ? "" : "s"}` : "Open for support", tone: "accent" as const };

@@ -120,7 +120,7 @@ export async function activateAccount(
 
   const result = await db.$transaction(async (tx) => {
     const t = await consumeToken(tx, token, "INVITE");
-    if (!t.ok) return { ok: false as const, error: t.reason === "expired" ? "This activation link has expired. Ask the organization for a new one." : "This activation link is not valid or was already used." };
+    if (!t.ok) return { ok: false as const, error: t.reason === "expired" ? "This activation link has expired. Ask the administrators for a new one." : "This activation link is not valid or was already used." };
     const user = await tx.user.findUniqueOrThrow({ where: { id: t.userId } });
     if (user.status === "SUSPENDED" || user.status === "DEACTIVATED") return { ok: false as const, error: "This account cannot be activated." };
     const now = new Date();
@@ -375,7 +375,7 @@ export async function setMembership(actorId: string, userId: string, to: Communi
     await deliverTemplate(
       "membership_status",
       target.email,
-      { name: target.name, change: MEMBERSHIP_MESSAGES[to], contactEmail: brand().contactEmail || "the organization" },
+      { name: target.name, change: MEMBERSHIP_MESSAGES[to], contactEmail: brand().contactEmail || "the administrators" },
       { sentById: actorId, userId },
     );
   }

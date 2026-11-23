@@ -70,7 +70,7 @@ export async function updateIdea(userId: string, ideaId: string, input: IdeaInpu
     let kind: IdeaChangeKind = opts.kind ?? "MINOR";
     if (idea.group) {
       if (opts.kind === "MATERIAL" || changed.includes("category")) {
-        return { ok: false as const, error: "This idea already has a research group, so only minor corrections can be made here. A change of direction is made in the group (coordinator tools), where everyone sees it." };
+        return { ok: false as const, error: "This idea already has a project group, so only minor corrections can be made here. A change of direction is made in the group (coordinator tools), where everyone sees it." };
       }
       kind = "MINOR";
     } else if (supporters.length > 0) {
@@ -127,7 +127,7 @@ export async function ideaRevisions(ideaId: string) {
 export async function closeIdea(userId: string, ideaId: string) {
   const idea = await db.businessIdea.findUnique({ where: { id: ideaId }, include: { group: { select: { id: true } } } });
   if (!idea || idea.authorId !== userId) return { ok: false as const, error: "Only the author can close this idea." };
-  if (idea.group) return { ok: false as const, error: "This idea already has a research group; it stays open as its origin." };
+  if (idea.group) return { ok: false as const, error: "This idea already has a project group; it stays open as its origin." };
   await db.businessIdea.update({ where: { id: ideaId }, data: { status: "CLOSED" } });
   return { ok: true as const };
 }
@@ -249,7 +249,7 @@ async function announceGroupCreated(g: CreatedGroup, ideaId: string, title: stri
     await afterSaved("notify author", () =>
       notify([g.authorId!], {
         type: "IDEA_GROUP_CREATED",
-        title: `Your idea “${title}” has attracted enough support. A research group has been created.`,
+        title: `Your idea “${title}” has attracted enough support. A project group has been created.`,
         body: "You coordinate the group. This means the idea is ready to investigate together, not that its success is proven.",
         link: `/community/groups/${g.slug}`,
       }),
@@ -261,7 +261,7 @@ async function announceGroupCreated(g: CreatedGroup, ideaId: string, title: stri
       {
         type: "GROUP_MEMBERSHIP",
         title: `You are a founding member of “${g.name}”`,
-        body: "Your support helped create this research group to investigate the idea. You can leave the group at any time.",
+        body: "Your support helped create this project group to investigate the idea. You can leave the group at any time.",
         link: `/community/groups/${g.slug}`,
       },
       { exclude: g.authorId ?? undefined },
@@ -293,7 +293,7 @@ export async function endorseIdea(userId: string, ideaId: string): Promise<Endor
     title = idea.title;
     if (idea.authorId === userId) return { ok: false as const, error: "You cannot support your own idea." };
     if (idea.status !== "OPEN") {
-      return { ok: false as const, error: idea.status === "GROUP_FORMED" ? "This idea already has a research group. You can join the group instead." : "This idea is no longer open for support." };
+      return { ok: false as const, error: idea.status === "GROUP_FORMED" ? "This idea already has a project group. You can join the group instead." : "This idea is no longer open for support." };
     }
 
     const inserted = await tx.ideaEndorsement.createMany({ data: [{ ideaId, userId }], skipDuplicates: true });

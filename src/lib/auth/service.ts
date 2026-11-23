@@ -71,7 +71,7 @@ export async function authenticate(
   }
 
   // Status is only revealed after a correct password.
-  if (user.status === "SUSPENDED") return { ok: false, error: "This account is suspended. Please contact the organization." };
+  if (user.status === "SUSPENDED") return { ok: false, error: "This account is suspended. Please contact the administrators." };
   if (user.status !== "ACTIVE") return { ok: false, error: GENERIC };
 
   // Upgrade older password hashes (bcrypt) to the current scheme while we know the password.

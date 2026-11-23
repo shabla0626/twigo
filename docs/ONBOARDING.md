@@ -1,4 +1,4 @@
-# Joining CoWork: accounts, applications and membership
+# Joining Twigo (formerly CoWork): accounts, applications and membership
 
 Report on the redesign of registration, application, sign-in, email verification and membership
 approval (2026-11-22). **One person, one account, one membership lifecycle.**

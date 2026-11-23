@@ -33,13 +33,13 @@ export default async function WelcomePage({ searchParams }: Props) {
             Other members see this when you propose ideas, comment or join groups. Only your display name is required; add more whenever you like.
           </p>
           <ul className="mt-5 space-y-2 rounded-2xl bg-ink-50 p-4 text-sm leading-6 text-ink-700">
-            <li>• Any member can propose a business idea. When {threshold} other members support it, a research group is created automatically.</li>
+            <li>• Any member can propose a business idea. When {threshold} other members support it, a project group is created automatically.</li>
             <li>• Groups research opportunities together with chat, meetings and shared notes.</li>
-            <li>• Paid work only begins after the organization approves a project and everyone signs a written agreement.</li>
+            <li>• Paid work only begins after everyone involved accepts a written project agreement. The groups decide the terms; {brand().name} takes no share.</li>
             <li>
               • Nobody may ask you for fees or investments. Report it if it happens.{" "}
-              <Link href="/community-rules" className="font-medium text-accent-700 underline">
-                Read the community rules
+              <Link href="/legal/community-guidelines" className="font-medium text-accent-700 underline">
+                Read the Community Guidelines
               </Link>
             </li>
           </ul>

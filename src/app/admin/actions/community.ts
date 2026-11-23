@@ -222,7 +222,7 @@ export async function saveSettingsAction(_p: FormState, fd: FormData): Promise<F
     if (!res.ok) return { error: res.error };
     groupsCreated += res.groupsCreated;
   }
-  return { ok: groupsCreated ? `Settings saved. ${groupsCreated} research group${groupsCreated === 1 ? " was" : "s were"} created for ideas that now have enough supporters.` : "Settings saved." };
+  return { ok: groupsCreated ? `Settings saved. ${groupsCreated} project group${groupsCreated === 1 ? " was" : "s were"} created for ideas that now have enough supporters.` : "Settings saved." };
 }
 
 export async function setRoleAction(fd: FormData) {

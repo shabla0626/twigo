@@ -116,7 +116,7 @@ describe("idea endorsements and automatic group creation", () => {
     const endorsers = await Promise.all(["E1", "E2", "E3", "E4", "E5", "E6"].map((n) => createMember(n)));
     const results = await Promise.all(endorsers.map((e) => endorseIdea(e.id, res.id)));
     // Requests processed after the group formed are refused with a "join the group" hint.
-    for (const r of results) if (!r.ok) expect(r.error).toMatch(/already has a research group/);
+    for (const r of results) if (!r.ok) expect(r.error).toMatch(/already has a project group/);
     expect(results.filter((r) => r.ok)).toHaveLength(2);
     expect(await db.researchGroup.count({ where: { ideaId: res.id } })).toBe(1);
     expect(results.filter((r) => r.ok && r.groupCreated)).toHaveLength(1);

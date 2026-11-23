@@ -30,17 +30,25 @@ async function projectPath(projectId: string) {
   return `/community/groups/${p.group.slug}/projects/${p.id}`;
 }
 
-/** Runs a service call; access refusals become form messages instead of errors. */
+/**
+ * Runs a service call; access refusals become form messages instead of errors. On success the project
+ * page is loaded again with the message at the top: most actions change which panels the page shows
+ * (the form that was used may no longer be there to show its own message), and the editor must start
+ * again from the stored version.
+ */
 async function run(fn: () => Promise<{ ok: boolean; error?: string }>, ok: string, path?: () => Promise<string>): Promise<FormState> {
+  let target: string | null = null;
   try {
     const res = await fn();
     if (!res.ok) return { error: res.error };
-    if (path) revalidatePath(await path());
-    return { ok };
+    if (path) target = await path();
   } catch (e) {
     if (e instanceof AccessError) return { error: e.message };
     throw e;
   }
+  if (!target) return { ok };
+  revalidatePath(target);
+  redirect(withFlash(target, { ok }));
 }
 
 export async function createProjectAction(_p: FormState, fd: FormData): Promise<FormState> {

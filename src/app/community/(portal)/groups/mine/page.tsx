@@ -18,7 +18,7 @@ export default async function MyGroupsPage() {
     <>
       <PageTitle
         title="My Groups"
-        description="The research groups you belong to. Open a group to chat, meet and share research. You can belong to as many groups as you like."
+        description="The project groups you belong to. Open a group to chat, meet and share research. You can belong to as many groups as you like."
         actions={
           <ButtonLink href="/community/groups" variant="secondary">
             Explore more groups

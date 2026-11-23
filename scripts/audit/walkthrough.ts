@@ -151,17 +151,20 @@ async function openApplicationOf(p: Page, name: string) {
   const visitor = await session(b);
   const vp = visitor.page;
   for (const [url, heading] of [
-    ["/", /Work Together/],
+    ["/", /Together We Innovate/],
     ["/how-it-works", /Three simple parts/],
-    ["/about", /Why this organization exists/],
-    ["/compensation", /Fair results from real work/],
+    ["/about", /Why this community exists/],
+    ["/compensation", /Your project, your agreement/],
     ["/participation", /Ways to contribute/],
-    ["/founding-contributors", /Help build the organization/],
+    ["/founding-contributors", /Help build the community/],
     ["/faq", /Frequently asked questions/],
     ["/work-with-us", /./],
-    ["/community-rules", /./],
-    ["/privacy", /./],
-    ["/terms", /./],
+    ["/legal/community-guidelines", /./],
+    ["/legal", /./],
+    ["/legal/terms", /Terms of Use/],
+    ["/legal/privacy", /Privacy Policy/],
+    ["/legal/notices", /./],
+    ["/support", /Voluntary support for the community/],
   ] as const) {
     await step(`opens ${url}`, async () => {
       const res = await vp.goto(BASE + url);
@@ -178,12 +181,28 @@ async function openApplicationOf(p: Page, name: string) {
       must(!/built-in (voice|video)|voice and video calls in the app|in-app (voice|video)/i.test(await visible(vp)), `promise of built-in calls on ${p}`);
     }
   });
-  await step("revenue wording matches the founder's decision", async () => {
+  await step("revenue wording matches the Twigo model", async () => {
     await go(vp, "/compensation");
     const t = await visible(vp);
-    for (const s of ["There is no fixed organizational percentage.", "There are no undisclosed deductions.", "No membership fee is required, ever."]) must(t.includes(s), `missing: ${s}`);
+    for (const s of ["No membership fee, ever.", "No mandatory investment or capital contribution.", "No commission, percentage or ownership share of project revenue for Twigo."]) must(t.includes(s), `missing: ${s}`);
     must(!/\d+\s?%/.test(t), "a percentage is published");
   }, { page: vp, shotName: "pay-and-fairness", full: true });
+  await step("policies are shown as drafts awaiting legal review, with no placeholders or invented operator details", async () => {
+    for (const p of ["/legal/terms", "/legal/privacy", "/legal/community-guidelines", "/legal/participation-compensation", "/legal/community-support"]) {
+      await go(vp, p);
+      const t = await visible(vp);
+      must(t.includes("Draft awaiting legal review"), `${p} is not marked as a draft`);
+      must(!/\[(Company Name|Legal Address|Jurisdiction|Registration Number)\]/i.test(t), `placeholder on ${p}`);
+    }
+    await go(vp, "/legal/notices");
+    must((await visible(vp)).includes("Not yet confirmed"), "legal notices claim confirmed facts");
+  }, { page: vp, shotName: "legal-draft" });
+  await step("community support: optional, no online payment, no invented figures", async () => {
+    await go(vp, "/support");
+    const t = await visible(vp);
+    must(t.includes("Online contributions are not available"), "payment availability not explained");
+    must(t.includes("No support has been received and no report has been published yet."), "an invented report is shown");
+  }, { page: vp, shotName: "community-support", full: true });
   await step("sends a message through the contact form", async () => {
     await go(vp, "/contact");
     await vp.getByLabel("Name").fill("Valerie Visitor");
@@ -296,6 +315,7 @@ async function openApplicationOf(p: Page, name: string) {
     await tp.getByLabel("Idea title").fill("Homework help for primary school pupils");
     await tp.getByLabel("What is the idea?").fill("Parents often look for affordable online homework help. A small team of tutors could offer it in the evenings.");
     await tp.getByLabel("Which area fits best?").selectOption({ index: 1 });
+    await tp.getByLabel("I understand who can see my idea and that it is not confidential.").check();
     await tp.getByRole("button", { name: "Publish idea" }).click();
     await tp.waitForURL(/\/community\/ideas\/[a-z0-9]+\?published=1/);
     ideaUrl = new URL(tp.url()).pathname;
@@ -343,6 +363,50 @@ async function openApplicationOf(p: Page, name: string) {
   const lp = luis.page;
   await signIn(mp, "maya@demo.test");
   await signIn(lp, "luis@demo.test");
+  await step("plans a project: Maya drafts the agreement, both participants accept it, work starts", async () => {
+    await go(mp, `${GROUP}/projects`);
+    await mp.getByLabel("Project name").fill("Bookkeeping pilot");
+    await mp.getByLabel("Business objective").fill("Monthly bookkeeping for three local shops, for six months.");
+    await mp.getByRole("button", { name: "Create project" }).click();
+    await expectText(mp, "Project created. Next: draft its agreement.");
+    const projectUrl = new URL(mp.url()).pathname;
+    await mp.getByLabel("5. Contracting arrangement").selectOption("PROJECT_REPRESENTATIVE");
+    await mp.getByLabel("Compensation method").selectOption("ROLE");
+    for (const [label, value] of [
+      ["1. Project scope", "Monthly ledgers for three shops."],
+      ["6. Who receives customer payments", "Maya, who passes on the share of Luis within 7 days."],
+      ["8a. Gross customer receipts", "Everything the shops pay for the service."],
+      ["8b. Taxes and mandatory deductions", "Each participant handles their own taxes."],
+      ["8c. Refunds and chargebacks", "Shared in the same proportion as revenue."],
+      ["8d. Net distributable project revenue", "Gross receipts minus refunds and approved expenses."],
+      ["9. Revenue distribution formula", "Bookkeeping role two thirds, sales role one third."],
+      ["10. Payment schedule", "Monthly, after the shops pay."],
+      ["12. Intellectual property", "Each keeps their own templates; ledgers belong to the shops."],
+      ["13. Confidentiality", "Shop data stays within the project."],
+      ["14. Withdrawal and termination", "Two weeks notice; work done until then is paid."],
+      ["15. Dispute resolution", "Discuss in the group first, then an agreed mediator."],
+    ] as const) await mp.getByLabel(label).fill(value);
+    for (const [who, role, comp] of [["Maya Patel", "Bookkeeper", "Two thirds of net revenue"], ["Luis Romero", "Sales", "One third of net revenue"]] as const) {
+      await mp.getByLabel(`${who} takes part`).check();
+      await mp.getByLabel(`Role of ${who}`).fill(role);
+      await mp.getByLabel(`Responsibilities of ${who}`).fill(role === "Sales" ? "Finds and looks after the shops." : "Prepares the monthly ledgers.");
+      await mp.getByLabel(`Compensation of ${who}`).fill(comp);
+    }
+    await mp.getByRole("button", { name: "Save draft" }).click();
+    await expectText(mp, /Draft saved\. Nothing is binding/);
+    await mp.getByRole("button", { name: "Ask the participants to accept this version" }).click();
+    await expectText(mp, "The participants were asked to review and accept this version.");
+    for (const page of [mp, lp]) {
+      await go(page, projectUrl);
+      await page.getByLabel(/I have read version 1/).check();
+      await page.getByRole("button", { name: "Accept this version" }).click();
+      await expectText(page, "Your acceptance was recorded.");
+    }
+    await go(mp, projectUrl);
+    await expectText(mp, "Agreement in force: version 1");
+    await mp.getByRole("button", { name: "Start commercial work" }).click();
+    await expectText(mp, "The project is commercially active under the accepted agreement.");
+  }, { page: mp, shotName: "project-agreement", full: true });
   await step("chat between two sessions, live", async () => {
     await go(mp, `${GROUP}/chat`);
     await go(lp, `${GROUP}/chat`);
@@ -468,7 +532,7 @@ async function openApplicationOf(p: Page, name: string) {
     await ap.getByLabel("Display name").fill(ADMIN.name);
     await ap.getByLabel("Password", { exact: true }).fill(ADMIN.password);
     await ap.getByLabel("Repeat the new password").fill(ADMIN.password);
-    await ap.locator('input[name="agree"]').check();
+    for (const consent of ["acceptTerms", "ackPrivacy"]) await ap.locator(`input[name="${consent}"]`).check();
     await ap.getByRole("button", { name: "Activate account" }).click();
     await ap.waitForURL((u) => !u.pathname.startsWith("/activate"), { timeout: 20000 });
   }, { page: ap, shotName: "activated" });
@@ -503,7 +567,7 @@ async function openApplicationOf(p: Page, name: string) {
     await expectText(ap, /Changes saved\.|saved/i);
   }, { page: ap, shotName: "content-saved" });
   await step("owner-only areas are refused with a plain message", async () => {
-    for (const url of ["/admin/settings", "/admin/backups", "/admin/admins"]) {
+    for (const url of ["/admin/settings", "/admin/backups", "/admin/admins", "/admin/legal", "/admin/support", "/admin/privacy-requests"]) {
       await go(ap, url);
       must(new URL(ap.url()).pathname === "/admin/no-access", `${url} opened for an administrator`);
       must(/permission/i.test(await visible(ap)), "no explanation shown");
@@ -563,6 +627,28 @@ async function openApplicationOf(p: Page, name: string) {
     await op.waitForURL(/\/admin\/projects(\?|$)/);
     await expectText(op, "Deleted.");
   }, { page: op, shotName: "project-deleted" });
+  await step("legal documents: versions, status, acceptance records and notices", async () => {
+    await go(op, "/admin/legal");
+    must((await visible(op)).includes("Pending legal review"), "statuses not shown");
+    await go(op, "/admin/legal/terms");
+    must(/fingerprint/i.test(await visible(op)), "no fingerprint shown");
+    await go(op, "/admin/legal/acceptances");
+    must(/registration|activation|idea-support|group-join/.test(await visible(op)), "no acceptance records listed");
+    await go(op, "/admin/legal/notices");
+    await op.getByRole("button", { name: "Save legal notices" }).click();
+    await expectText(op, /Legal notices saved/);
+  }, { page: op, shotName: "admin-legal" });
+  await step("project agreements: the owner sees the group project and can download it", async () => {
+    await go(op, "/admin/agreements");
+    must((await visible(op)).includes("Bookkeeping pilot"), "the group project is not listed");
+    const href = await op.getByRole("link", { name: "Download (owner)" }).first().getAttribute("href");
+    const res = await op.request.get(BASE + href);
+    must(res.status() === 200 && /fingerprint/.test(await res.text()), `download answered ${res.status()}`);
+  }, { page: op, shotName: "admin-agreements" });
+  await step("community support records: payments shown as not available", async () => {
+    await go(op, "/admin/support");
+    must((await visible(op)).includes("not available"), "payment status not shown");
+  }, { page: op, shotName: "admin-support" });
   await step("Back up now writes a backup", async () => {
     await go(op, "/admin/backups");
     await op.getByRole("button", { name: "Back up now" }).click();

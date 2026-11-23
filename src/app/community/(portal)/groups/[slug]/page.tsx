@@ -46,7 +46,7 @@ export default async function GroupOverviewPage({ params, searchParams }: Props)
         <div aria-live="polite" className="space-y-3 empty:hidden">
           {sp.created && (
             <FormAlert tone="success">
-              Your support was the last one needed, so a research group has been created and you are a founding member. This means the idea is ready to
+              Your support was the last one needed, so a project group has been created and you are a founding member. This means the idea is ready to
               investigate together; it does not mean its success is proven.
             </FormAlert>
           )}
@@ -162,7 +162,7 @@ export default async function GroupOverviewPage({ params, searchParams }: Props)
                     </Select>
                   </Field>
                   <p className="text-sm leading-6 text-ink-600">
-                    Choosing “Ready for review” asks the organization to review the group’s research. It does not authorize paid work.
+                    Choosing “Ready for review” lets administrators read the group’s research notes (not the chat) to give feedback. It is optional: a group needs nobody’s approval to create a project in the Projects tab.
                   </p>
                   <Button type="submit" variant="secondary">
                     Update stage
@@ -192,7 +192,7 @@ export default async function GroupOverviewPage({ params, searchParams }: Props)
             <p className="text-lg font-semibold text-ink-800">{GROUP_STATUS_LABELS[group.status]}</p>
           )}
           <p className="mt-3 text-sm leading-6 text-ink-600">{GROUP_STATUS_HELP[group.status]}</p>
-          {overview.project && <p className="mt-3 text-sm text-ink-600">Linked project: {overview.project.title} (managed by the organization).</p>}
+          {overview.project && <p className="mt-3 text-sm text-ink-600">Linked project: {overview.project.title} (managed by the administrators).</p>}
         </Panel>
 
         <Panel
@@ -220,7 +220,7 @@ export default async function GroupOverviewPage({ params, searchParams }: Props)
           </ul>
           {overview.memberships.length > 8 && <p className="mt-2 text-sm text-ink-500">and {overview.memberships.length - 8} more</p>}
           {!overview.memberships.some((m) => m.role === "COORDINATOR") && (
-            <p className="mt-3 text-sm text-ink-600">No coordinator right now. The organization looks after this group for the moment.</p>
+            <p className="mt-3 text-sm text-ink-600">No coordinator right now. The administrators look after this group for the moment.</p>
           )}
           <p className="mt-3 text-xs text-ink-500">
             Group created <Time date={group.createdAt} />

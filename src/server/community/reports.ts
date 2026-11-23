@@ -14,7 +14,7 @@ import { groupAccess } from "./access";
  * see private group chat content; there is no other access path.
  */
 export async function fileReport(reporterId: string, input: { targetType: ReportTarget; targetId: string; reason: ReportReason; details: string | null }) {
-  if (!rateLimit(`report:${reporterId}`, 20, 24 * 3600_000).ok) return { ok: false as const, error: "Too many reports today. Please contact the organization directly." };
+  if (!rateLimit(`report:${reporterId}`, 20, 24 * 3600_000).ok) return { ok: false as const, error: "Too many reports today. Please contact the administrators directly." };
   const snap = await snapshot(reporterId, input.targetType, input.targetId);
   if (!snap) return { ok: false as const, error: "That content is not available to you." };
   try {
@@ -22,9 +22,9 @@ export async function fileReport(reporterId: string, input: { targetType: Report
       data: { reporterId, targetType: input.targetType, targetId: input.targetId, groupId: snap.groupId, reason: input.reason, details: input.details, snapshot: snap.text.slice(0, 10_000) },
     });
   } catch {
-    return { ok: true as const, message: "You already reported this. The organization will review it." };
+    return { ok: true as const, message: "You already reported this. The moderators will review it." };
   }
-  return { ok: true as const, message: "Thank you. The report was sent to the organization's moderators." };
+  return { ok: true as const, message: "Thank you. The report was sent to the moderators." };
 }
 
 /** Returns a snapshot only if the reporter can actually see the content. */

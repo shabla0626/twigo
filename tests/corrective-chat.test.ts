@@ -123,7 +123,7 @@ describe("P1-1: membership changes are visible to the group and recorded", () =>
     expect(await systemLines(channelId)).toEqual([
       "Bob is now the coordinator (handed over by Alice)",
       "Cara was removed from the group by the coordinator",
-      "Alice is now the coordinator (assigned by the organization)",
+      "Alice is now the coordinator (assigned by an administrator)",
       "Bob is now the coordinator",
     ]);
   });

@@ -43,7 +43,7 @@ const PHASES: Phase[] = [
     tone: "blue",
     steps: [
       { title: "Propose a business idea", body: "Any member can describe an opportunity in a few sentences. A business plan is not needed." },
-      { title: "Support the ideas you like", body: "When two members other than the author support an idea, a research group is created automatically. Supporters become its first members." },
+      { title: "Support the ideas you like", body: "When two members other than the author support an idea, a project group is created automatically. Supporters become its first members." },
       { title: "Research together", body: "Each group has its own chat, shared notes and a to-do list, and holds its meetings through Google Meet. Anyone can join or leave a group at any time." },
       { title: "Plan a project", body: "When the group finds a real opportunity, it creates a project and drafts the agreement for it. The group decides; nobody needs permission from the platform." },
     ],

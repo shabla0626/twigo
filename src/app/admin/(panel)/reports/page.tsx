@@ -10,7 +10,7 @@ import { moderateAction } from "../../actions/community";
 
 type Props = { searchParams: Promise<Record<string, string | undefined>> };
 
-const TARGET = { IDEA: "Idea", COMMENT: "Comment", DISCUSSION: "Group discussion", MESSAGE: "Group chat message", GROUP: "Research group", USER: "Member profile" } as const;
+const TARGET = { IDEA: "Idea", COMMENT: "Comment", DISCUSSION: "Group discussion", MESSAGE: "Group chat message", GROUP: "Project group", USER: "Member profile" } as const;
 
 export default async function ReportsPage({ searchParams }: Props) {
   const admin = await requireAdmin("moderation.act");

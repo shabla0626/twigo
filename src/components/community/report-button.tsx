@@ -13,7 +13,7 @@ export function ReportButton({ targetType, targetId, label = "Report" }: { targe
       </summary>
       <div className="absolute right-0 z-20 mt-2 w-80 rounded-2xl border border-ink-100 bg-white p-4 shadow-soft-lg">
         <p className="text-sm font-semibold text-ink-950">Report to the moderators</p>
-        <p className="mt-1 text-xs text-ink-600">A copy of this content is sent to the organization’s administrators for review.</p>
+        <p className="mt-1 text-xs text-ink-600">A copy of this content is sent to the moderators for review.</p>
         <ActionForm action={reportAction} submitLabel="Send report" pendingLabel="Sending…" variant="danger" className="mt-3" submitClassName="w-full">
           <input type="hidden" name="targetType" value={targetType} />
           <input type="hidden" name="targetId" value={targetId} />

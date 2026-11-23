@@ -50,8 +50,8 @@ export default async function PortalLayout({ children }: { children: React.React
                 How it works
               </Link>{" "}
               ·{" "}
-              <Link href="/community-rules" className="font-medium text-ink-700 hover:underline">
-                Community rules
+              <Link href="/legal/community-guidelines" className="font-medium text-ink-700 hover:underline">
+                Community Guidelines
               </Link>
             </p>
           </div>

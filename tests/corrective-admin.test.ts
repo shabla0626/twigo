@@ -79,9 +79,11 @@ describe("P2-17: a shorter menu without losing a page", () => {
   const navBlock = layout.slice(layout.indexOf("const NAV"), layout.indexOf("];", layout.indexOf("const NAV")));
   const entries = [...navBlock.matchAll(/\{ href: "(\/admin[^"]*)", label: "([^"]+)"/g)].map((m) => ({ href: m[1]!, label: m[2]! }));
 
-  it("has twelve entries instead of sixteen", () => {
-    expect(entries).toHaveLength(12);
-    expect(entries.map((e) => e.label)).toEqual(["Overview", "Applications", "Members", "Moderation", "Research groups", "Projects", "Customer inquiries", "Email", "Website content", "Settings", "Privacy & data", "Audit log"]);
+  // Twigo added three sections (project agreements, community support, legal); the twelve earlier
+  // entries are all still there, with the groups and old projects entries relabelled.
+  it("has the twelve earlier entries plus the three Twigo sections", () => {
+    expect(entries).toHaveLength(15);
+    expect(entries.map((e) => e.label)).toEqual(["Overview", "Applications", "Members", "Moderation", "Project groups", "Project agreements", "Earlier project records", "Community support", "Customer inquiries", "Email", "Website content", "Settings", "Legal", "Privacy & data", "Audit log"]);
   });
 
   it("the four pages that left the menu are tabs of a related page, and still exist at their old address", () => {
