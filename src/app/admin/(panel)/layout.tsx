@@ -14,13 +14,16 @@ const NAV: (NavItem & { perm: Permission })[] = [
   { href: "/admin/applications", label: "Applications", perm: "applications.view", section: "People" },
   { href: "/admin/members", label: "Members", perm: "members.view", section: "People", also: ["/admin/admins"] },
   { href: "/admin/reports", label: "Moderation", perm: "moderation.act", section: "Community", also: ["/admin/ideas"] },
-  { href: "/admin/groups", label: "Research groups", perm: "groups.manage", section: "Community" },
-  { href: "/admin/projects", label: "Projects", perm: "projects.manage", section: "Business", also: ["/admin/participants"] },
+  { href: "/admin/groups", label: "Project groups", perm: "groups.manage", section: "Community" },
+  { href: "/admin/agreements", label: "Project agreements", perm: "agreements.view", section: "Business" },
+  { href: "/admin/projects", label: "Earlier project records", perm: "projects.manage", section: "Business", also: ["/admin/participants"] },
+  { href: "/admin/support", label: "Community support", perm: "support.manage", section: "Business" },
   { href: "/admin/inquiries", label: "Customer inquiries", perm: "inquiries.manage", section: "Business" },
   { href: "/admin/email", label: "Email", perm: "email.send", section: "Website & email" },
   { href: "/admin/content", label: "Website content", perm: "content.edit", section: "Website & email" },
   { href: "/admin/settings", label: "Settings", perm: "settings.manage", section: "System" },
-  { href: "/admin/privacy", label: "Privacy & data", perm: "retention.preview", section: "System", also: ["/admin/backups"] },
+  { href: "/admin/legal", label: "Legal", perm: "legal.manage", section: "System" },
+  { href: "/admin/privacy", label: "Privacy & data", perm: "retention.preview", section: "System", also: ["/admin/backups", "/admin/privacy-requests"] },
   { href: "/admin/audit", label: "Audit log", perm: "audit.view", section: "System" },
 ];
 
@@ -34,6 +37,10 @@ const TAB_PAGES: { href: string; perm: Permission }[] = [
   { href: "/admin/ideas", perm: "moderation.act" },
   { href: "/admin/privacy", perm: "retention.preview" },
   { href: "/admin/backups", perm: "backups.manage" },
+  { href: "/admin/privacy-requests", perm: "privacy.requests" },
+  { href: "/admin/legal", perm: "legal.manage" },
+  { href: "/admin/legal/notices", perm: "legal.manage" },
+  { href: "/admin/legal/acceptances", perm: "legal.manage" },
 ];
 
 export const metadata: Metadata = { title: "Admin", robots: { index: false, follow: false } };

@@ -29,6 +29,17 @@ export async function exportUserData(userId: string) {
         select: { terms: true, basis: true, amountMinor: true, currency: true, status: true, agreedAt: true, documentRef: true, createdAt: true, updatedAt: true, assignment: { select: { status: true, project: { select: { title: true } } } } },
       })
     : [];
+  const [legalAcceptances, projectAgreements, privacyRequests] = await Promise.all([
+    db.legalAcceptance.findMany({ where: { userId }, orderBy: { acceptedAt: "asc" }, select: { documentKey: true, version: true, contentHash: true, kind: true, method: true, context: true, acceptedAt: true } }),
+    db.projectAgreementParticipant.findMany({
+      where: { userId },
+      select: {
+        role: true, responsibilities: true, expectedContribution: true, compensation: true, acceptedAt: true, acceptedHash: true, declinedAt: true, withdrewAt: true,
+        version: { select: { version: true, status: true, contentHash: true, createdAt: true, project: { select: { name: true, group: { select: { name: true } } } } } },
+      },
+    }),
+    db.privacyRequest.findMany({ where: { userId }, select: { kind: true, status: true, details: true, response: true, createdAt: true, handledAt: true } }),
+  ]);
   const [ideas, comments, endorsements, memberships, messages, notifications, files, sessions, reports] = await Promise.all([
     db.businessIdea.findMany({ where: { authorId: userId }, omit: { authorId: true } }),
     db.comment.findMany({ where: { authorId: userId }, select: { id: true, ideaId: true, discussionId: true, body: true, createdAt: true, editedAt: true, deletedAt: true } }),
@@ -55,6 +66,9 @@ export async function exportUserData(userId: string) {
     files,
     sessions,
     reportsFiled: reports,
+    legalAcceptances,
+    projectAgreements,
+    privacyRequests,
   };
 }
 

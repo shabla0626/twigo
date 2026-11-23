@@ -84,6 +84,13 @@ export const IconNotes = (p: SVGProps<SVGSVGElement>) => (
     <path d="M14 3v5h5M9 13h6M9 17h4" />
   </svg>
 );
+/** A clipboard with a check: project agreements. */
+export const IconClipboard = (p: SVGProps<SVGSVGElement>) => (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" {...p}>
+    <rect x="5" y="4" width="14" height="17" rx="2" />
+    <path d="M9 4.5V3h6v1.5M9 13l2 2 4-4" />
+  </svg>
+);
 export const IconInfo = (p: SVGProps<SVGSVGElement>) => (
   <svg {...base} {...p}>
     <circle cx="12" cy="12" r="9" />

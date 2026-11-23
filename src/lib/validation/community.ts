@@ -50,6 +50,10 @@ export const ideaSchema = z.object({
   revenueModel: optText(2_000),
   skillsNeeded: optText(1_000),
   timeEstimate: optText(300),
+  // Added for Twigo. Optional keys, so earlier callers stay valid.
+  expectedActivities: optText(2_000).optional(),
+  objectives: optText(2_000).optional(),
+  collaborationApproach: optText(2_000).optional(),
   links: z
     .string()
     .optional()

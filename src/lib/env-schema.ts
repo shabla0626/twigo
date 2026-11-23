@@ -45,6 +45,10 @@ export const envSchema = z.object({
   RESEND_WEBHOOK_SECRET: z.string().default(""),
   SEND_APPLICANT_CONFIRMATION: z.string().default("true").transform((v) => v !== "false"),
   RETENTION_DAYS_DECLINED: z.coerce.number().int().min(30).default(365),
+  // Voluntary community support: online payments are NOT built. This switch exists so the decision is
+  // explicit; even when set to "true" no payment is possible until a provider is integrated after the
+  // legal recipient, jurisdiction and accounting are confirmed.
+  SUPPORT_PAYMENTS_ENABLED: z.string().default("false").transform((v) => v === "true"),
 });
 
 export type Env = z.infer<typeof envSchema>;

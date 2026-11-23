@@ -36,6 +36,9 @@ export default async function MemberAdminDetail({ params, searchParams }: Props)
   });
   if (!u) notFound();
   const reportsAgainst = await db.contentReport.count({ where: { targetType: "USER", targetId: u.id } });
+  const acceptances = can(admin.role, "legal.manage")
+    ? await db.legalAcceptance.findMany({ where: { userId: u.id }, orderBy: { acceptedAt: "desc" }, take: 20, select: { id: true, documentKey: true, version: true, kind: true, method: true, acceptedAt: true } })
+    : null;
   const latestApplication = u.applicant?.applications[0] ?? null;
   // One plain sentence: can this person use the member community right now, and if not, why not.
   const inShort =
@@ -151,6 +154,31 @@ export default async function MemberAdminDetail({ params, searchParams }: Props)
               <p className="text-sm text-ink-600">No group memberships.</p>
             )}
           </Panel>
+          {acceptances && (
+            <Panel title="Policies accepted">
+              {acceptances.length ? (
+                <ul className="divide-y divide-ink-100 text-sm">
+                  {acceptances.map((a) => (
+                    <li key={a.id} className="flex justify-between gap-3 py-2">
+                      <span>
+                        {a.documentKey} v{a.version} · {a.kind === "ACCEPTED" ? "accepted" : "acknowledged"}
+                      </span>
+                      <span className="text-ink-600">
+                        {fmtDate(a.acceptedAt)} · {a.method}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <p className="text-sm text-ink-600">No acceptance recorded (accounts created before the policies existed).</p>
+              )}
+              <p className="mt-2 text-xs">
+                <Link href="/admin/legal/acceptances" className="text-accent-700 hover:underline">
+                  All acceptance records
+                </Link>
+              </p>
+            </Panel>
+          )}
           {u.status === "INVITED" && (
             <Panel title="Invitations">
               <ul className="text-sm text-ink-700">

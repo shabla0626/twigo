@@ -99,6 +99,17 @@ export const INQUIRY_CATEGORIES = {
 
 export const INQUIRY_STATUSES = { OPEN: "Open", RESPONDED: "Responded", CLOSED: "Closed" } as const;
 
+export const PRIVACY_REQUEST_KINDS = {
+  ACCESS: "Access my information",
+  CORRECTION: "Correct my information",
+  DELETION: "Delete my information",
+  WITHDRAW_CONSENT: "Withdraw a consent",
+  OBJECTION: "Object to a use of my information",
+  OTHER: "Something else",
+} as const;
+
+export const PRIVACY_REQUEST_STATUSES = { OPEN: "Received", IN_PROGRESS: "In progress", COMPLETED: "Completed", REJECTED: "Refused (with reason)" } as const;
+
 export const HOURS_OPTIONS = [2, 5, 10, 15, 20, 30, 40] as const;
 
 export function keysOf<T extends Record<string, string>>(o: T): [keyof T & string, ...(keyof T & string)[]] {

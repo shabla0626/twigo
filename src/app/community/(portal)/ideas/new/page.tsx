@@ -25,10 +25,24 @@ export default async function NewIdeaPage() {
       <Panel>
         <ActionForm action={createIdeaAction} submitLabel="Publish idea" pendingLabel="Publishing…">
           <IdeaFields />
-          <p className="text-sm leading-6 text-ink-500">
-            Only approved members can see your idea, never the public. Please don’t share confidential information from an employer or client. Ideas that ask
-            members for money are not allowed.
-          </p>
+          <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm leading-6 text-amber-950">
+            <p className="font-semibold">Before you publish</p>
+            <ul className="mt-2 list-disc space-y-1 pl-5">
+              <li>All approved members can read your idea (never the public). It is therefore not confidential: do not include anything you want to keep secret, or confidential information from an employer or client.</li>
+              <li>
+                You keep ownership of your idea. Publishing it only lets the community show it to members (see the{" "}
+                <Link href="/legal/intellectual-property" target="_blank" className="font-medium underline">
+                  Intellectual Property Policy
+                </Link>
+                ). If a project uses it, the participants agree ownership of the work in writing before starting.
+              </li>
+              <li>Ideas that ask members for money are not allowed.</li>
+            </ul>
+            <label className="mt-3 flex items-start gap-3">
+              <input type="checkbox" name="visibilityAck" required className="mt-1 h-4 w-4 rounded border-amber-300" />
+              <span>I understand who can see my idea and that it is not confidential.</span>
+            </label>
+          </div>
         </ActionForm>
       </Panel>
     </div>

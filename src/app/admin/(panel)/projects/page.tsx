@@ -14,7 +14,7 @@ export default async function ProjectsPage({ searchParams }: { searchParams: Pro
   const projects = await listProjects();
   return (
     <>
-      <AdminHeader title="Projects" description="Create projects, define roles, assign participants and track milestones." />
+      <AdminHeader title="Earlier project records" description="Projects run directly by the site operator under the earlier model, kept for their history and agreements. Group-led projects, where the participants decide everything, are under Project agreements. Whether to retire this module is an open decision." />
       <Flash {...readFlash(sp)} />
       <div className="mt-6">
         <Table

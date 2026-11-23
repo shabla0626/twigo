@@ -34,6 +34,10 @@ export const PERMISSIONS = [
   "backups.manage",
   "settings.manage", // organization settings (thresholds, retention periods)
   "admins.manage", // create / change / remove administrators
+  "legal.manage", // legal documents: versions, approval, publication; legal notices (owner only)
+  "support.manage", // voluntary community support records and reports (owner only)
+  "privacy.requests", // members' privacy requests (owner only)
+  "agreements.view", // see that group project agreements exist and their state (not their financial terms)
 ] as const;
 
 export type Permission = (typeof PERMISSIONS)[number];
@@ -54,6 +58,7 @@ const ADMIN: Permission[] = [
   "inquiries.manage",
   "audit.view",
   "retention.preview",
+  "agreements.view",
 ];
 
 export const ROLE_PERMISSIONS: Record<UserRole, readonly Permission[]> = {

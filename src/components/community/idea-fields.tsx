@@ -7,7 +7,9 @@ import { Field, Input, Select, Textarea } from "../forms/fields";
  * required; everything else can be filled in later by the author or the group.
  */
 export function IdeaFields({ idea }: { idea?: BusinessIdea | null }) {
-  const moreOpen = Boolean(idea?.description || idea?.proposal || idea?.customers || idea?.skillsNeeded || idea?.timeEstimate || idea?.links.length);
+  const moreOpen = Boolean(
+    idea?.description || idea?.proposal || idea?.customers || idea?.skillsNeeded || idea?.timeEstimate || idea?.expectedActivities || idea?.objectives || idea?.collaborationApproach || idea?.links.length,
+  );
   return (
     <div className="space-y-6">
       <Field id="title" label="Idea title" hint="A short name. Example: “Meal prep for busy families”">
@@ -48,14 +50,23 @@ export function IdeaFields({ idea }: { idea?: BusinessIdea | null }) {
         <summary className="cursor-pointer text-sm font-semibold text-ink-900">Add more details (optional)</summary>
         <p className="mt-1 text-sm text-ink-600">Early ideas are welcome. Fill in only what you know; the group can research the rest.</p>
         <div className="mt-4 space-y-5">
-          <Field id="proposal" label="The product or service in more detail" optional>
+          <Field id="proposal" label="Proposed solution: the product or service in more detail" optional>
             <Textarea id="proposal" name="proposal" defaultValue={idea?.proposal ?? ""} maxLength={3000} rows={3} />
           </Field>
-          <Field id="customers" label="Who would the customers be?" optional>
+          <Field id="customers" label="Who would the customers be? (potential customers or markets)" optional>
             <Textarea id="customers" name="customers" defaultValue={idea?.customers ?? ""} maxLength={2000} rows={2} />
           </Field>
           <Field id="skillsNeeded" label="Skills that would help" optional>
             <Input id="skillsNeeded" name="skillsNeeded" defaultValue={idea?.skillsNeeded ?? ""} maxLength={1000} />
+          </Field>
+          <Field id="expectedActivities" label="What would the work involve?" optional hint="For example research, building, selling, customer support.">
+            <Textarea id="expectedActivities" name="expectedActivities" defaultValue={idea?.expectedActivities ?? ""} maxLength={2000} rows={2} aria-describedby="expectedActivities-hint" />
+          </Field>
+          <Field id="objectives" label="First objectives for a project group" optional hint="What should a group find out or achieve first?">
+            <Textarea id="objectives" name="objectives" defaultValue={idea?.objectives ?? ""} maxLength={2000} rows={2} aria-describedby="objectives-hint" />
+          </Field>
+          <Field id="collaborationApproach" label="How would you like to collaborate?" optional hint="For example weekly calls, written updates, shared tasks.">
+            <Textarea id="collaborationApproach" name="collaborationApproach" defaultValue={idea?.collaborationApproach ?? ""} maxLength={2000} rows={2} aria-describedby="collaborationApproach-hint" />
           </Field>
           <Field id="timeEstimate" label="How much time it might take, if you know" optional>
             <Input id="timeEstimate" name="timeEstimate" defaultValue={idea?.timeEstimate ?? ""} maxLength={300} />

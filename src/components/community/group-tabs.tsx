@@ -3,14 +3,15 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { cn } from "../ui/primitives";
-import { IconChat, IconInfo, IconMegaphone, IconNotes, IconVideo } from "./icons";
+import { IconChat, IconClipboard, IconInfo, IconMegaphone, IconNotes, IconVideo } from "./icons";
 
-/** Five sections; members are listed on Overview, files live in Research. */
+/** Six sections; members are listed on Overview, files live in Research. */
 const TABS = [
   { seg: "", label: "Overview", icon: IconInfo, private: false, also: ["members"] },
   { seg: "chat", label: "Chat", icon: IconChat, private: true, also: [] },
   { seg: "meetings", label: "Meetings", icon: IconVideo, private: true, also: [] },
   { seg: "research", label: "Research", icon: IconNotes, private: true, also: ["files"] },
+  { seg: "projects", label: "Projects", icon: IconClipboard, private: true, also: [] },
   { seg: "discussions", label: "Discussions", icon: IconMegaphone, private: false, also: [] },
 ];
 
@@ -19,7 +20,7 @@ export function GroupTabs({ slug, isMember, unread = 0, live = false }: { slug: 
   const base = `/community/groups/${slug}`;
   return (
     <nav aria-label="Group sections">
-      <ul className="grid grid-cols-5 gap-1 rounded-2xl bg-ink-50 p-1 sm:flex sm:w-fit">
+      <ul className="grid grid-cols-6 gap-1 rounded-2xl bg-ink-50 p-1 sm:flex sm:w-fit">
         {TABS.map((t) => {
           const href = t.seg ? `${base}/${t.seg}` : base;
           const active = t.seg ? path.startsWith(href) || t.also.some((a) => path.startsWith(`${base}/${a}`)) : path === base || t.also.some((a) => path.startsWith(`${base}/${a}`));

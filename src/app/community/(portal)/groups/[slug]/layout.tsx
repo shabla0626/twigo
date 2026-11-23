@@ -4,6 +4,7 @@ import { LeaveGroupButton } from "@/components/community/leave-group";
 import { Badge, Button } from "@/components/ui/primitives";
 import { GROUP_STATUS_LABELS } from "@/server/community/group-labels";
 import { groupMeetingNow, groupUnread, loadGroupPage } from "@/server/community/group-page";
+import { GroupAgreementNote } from "@/components/community/group-agreement-note";
 import { joinGroupAction, leaveGroupAction } from "../../../actions";
 
 type Props = { children: React.ReactNode; params: Promise<{ slug: string }> };
@@ -42,9 +43,10 @@ export default async function GroupLayout({ children, params }: Props) {
               <LeaveGroupButton groupId={group.id} action={leaveGroupAction} />
             </div>
           ) : isOpen && membership?.status !== "REMOVED" ? (
-            <form action={joinGroupAction}>
+            <form action={joinGroupAction} className="max-w-xs space-y-1.5 sm:text-right">
               <input type="hidden" name="groupId" value={group.id} />
               <Button type="submit">Join group</Button>
+              <GroupAgreementNote action="joining" />
             </form>
           ) : null}
         </div>
@@ -53,7 +55,7 @@ export default async function GroupLayout({ children, params }: Props) {
             You can read the overview and discussions. <strong>Join the group</strong> to use its chat, meetings and shared research.
           </p>
         )}
-        {group.suspendedAt && <p className="rounded-xl bg-red-50 p-3 text-sm text-red-900">This group is suspended while the organization reviews it. Its content is read-only.</p>}
+        {group.suspendedAt && <p className="rounded-xl bg-red-50 p-3 text-sm text-red-900">This group is suspended while the moderators review it. Its content is read-only.</p>}
         {group.status === "ARCHIVED" && (
           <p className="rounded-xl bg-ink-100 p-3 text-sm text-ink-800">
             This group is archived and read-only.{" "}

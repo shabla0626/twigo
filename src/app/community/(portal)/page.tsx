@@ -12,6 +12,7 @@ import { IDEA_CATEGORIES } from "@/lib/validation/community";
 import { listGroups, myGroups } from "@/server/community/groups";
 import { listIdeas, type IdeaSort } from "@/server/community/ideas";
 import { getSetting } from "@/server/settings";
+import { GroupAgreementNote } from "@/components/community/group-agreement-note";
 import { endorseAction } from "../actions";
 
 export const metadata = { title: "Business Ideas" };
@@ -69,6 +70,7 @@ export default async function BusinessIdeasPage({ searchParams }: Props) {
                 How it works
               </Link>
             </p>
+            <GroupAgreementNote action="supporting" className="mt-1" />
           </div>
           <ButtonLink href="/community/ideas/new" size="lg">
             <IconPlus className="h-5 w-5" /> Propose a Business Idea

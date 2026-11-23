@@ -17,16 +17,20 @@ import { GROUP_STATUS_LABELS } from "@/server/community/group-labels";
 import { IdeaHistory } from "@/components/community/idea-history";
 import { IDEA_TEXT_FIELDS, getIdea, ideaRevisions } from "@/server/community/ideas";
 import { getSetting } from "@/server/settings";
+import { GroupAgreementNote } from "@/components/community/group-agreement-note";
 import { closeIdeaAction, endorseAction, withdrawEndorsementAction } from "../../../actions";
 
 type Props = { params: Promise<{ id: string }>; searchParams: Promise<Record<string, string | undefined>> };
 
-const DETAILS: [key: "problem" | "proposal" | "customers" | "revenueModel" | "skillsNeeded" | "timeEstimate", label: string][] = [
+const DETAILS: [key: "problem" | "proposal" | "customers" | "revenueModel" | "skillsNeeded" | "timeEstimate" | "expectedActivities" | "objectives" | "collaborationApproach", label: string][] = [
   ["problem", "Problem or opportunity"],
   ["revenueModel", "How it might make money"],
-  ["proposal", "The product or service"],
+  ["proposal", "Proposed solution"],
   ["customers", "Who the customers would be"],
   ["skillsNeeded", "Skills that would help"],
+  ["expectedActivities", "What the work would involve"],
+  ["objectives", "First objectives"],
+  ["collaborationApproach", "Preferred way of collaborating"],
   ["timeEstimate", "Time it might take"],
 ];
 
@@ -197,11 +201,12 @@ export default async function IdeaPage({ params, searchParams }: Props) {
                       </form>
                     </div>
                   ) : (
-                    <form action={endorseAction}>
+                    <form action={endorseAction} className="space-y-2">
                       <input type="hidden" name="id" value={idea.id} />
                       <Button type="submit" className="w-full">
                         <IconThumb className="h-4 w-4" /> Support this idea
                       </Button>
+                      <GroupAgreementNote action="supporting" />
                     </form>
                   )}
                   <p className="text-sm leading-6 text-ink-600">

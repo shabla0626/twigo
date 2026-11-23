@@ -21,6 +21,7 @@ import {
 } from "@/server/accounts";
 import { NOTIFICATION_TYPES, savePreferences } from "@/server/community/notifications";
 import { stashCodes } from "@/server/flash";
+import { submitPrivacyRequest } from "@/server/privacy-requests";
 
 async function current() {
   const s = await getSession();
@@ -123,4 +124,12 @@ export async function deactivateSelfAction(_prev: FormState, fd: FormData): Prom
   if (!res.ok) return { error: res.error };
   await clearSessionCookie();
   redirect("/login?signedout=1");
+}
+
+export async function privacyRequestAction(_prev: FormState, fd: FormData): Promise<FormState> {
+  const user = await requireUser("/account/data");
+  const res = await submitPrivacyRequest(user.id, { kind: String(fd.get("kind") ?? ""), details: String(fd.get("details") ?? "") });
+  if (!res.ok) return { error: res.error };
+  revalidatePath("/account/data");
+  return { ok: "Your request was received. You will see the answer here." };
 }

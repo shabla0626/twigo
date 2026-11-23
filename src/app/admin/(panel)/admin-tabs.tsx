@@ -31,10 +31,19 @@ export const ADMIN_TAB_GROUPS: { hrefs: string[]; tabs: { href: string; label: s
     ],
   },
   {
-    hrefs: ["/admin/privacy", "/admin/backups"],
+    hrefs: ["/admin/privacy", "/admin/backups", "/admin/privacy-requests"],
     tabs: [
       { href: "/admin/privacy", label: "Retention" },
+      { href: "/admin/privacy-requests", label: "Privacy requests" },
       { href: "/admin/backups", label: "Backups" },
+    ],
+  },
+  {
+    hrefs: ["/admin/legal", "/admin/legal/notices", "/admin/legal/acceptances"],
+    tabs: [
+      { href: "/admin/legal", label: "Documents" },
+      { href: "/admin/legal/notices", label: "Legal notices" },
+      { href: "/admin/legal/acceptances", label: "Acceptance records" },
     ],
   },
 ];

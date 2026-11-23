@@ -6,6 +6,7 @@ import type { GroupStatus, TaskStatus } from "@prisma/client";
 import type { FormState } from "@/components/forms/action-form";
 import { db } from "@/lib/db";
 import { withFlash } from "@/lib/flash";
+import { recordAcceptance } from "@/server/legal";
 import { requireMember, requireUser } from "@/lib/auth/guard";
 import {
   announcementSchema,
@@ -117,10 +118,12 @@ export async function removeProfilePhotoAction() {
 
 // ---------------------------------------------------------------- ideas
 
-const IDEA_KEYS = ["title", "summary", "category", "description", "problem", "proposal", "customers", "revenueModel", "skillsNeeded", "timeEstimate", "links"];
+const IDEA_KEYS = ["title", "summary", "category", "description", "problem", "proposal", "customers", "revenueModel", "skillsNeeded", "timeEstimate", "expectedActivities", "objectives", "collaborationApproach", "links"];
 
 export async function createIdeaAction(_p: FormState, fd: FormData): Promise<FormState> {
   const user = await requireMember();
+  // The author confirms, before publishing, that they understood who sees the idea and what that means.
+  if (fd.get("visibilityAck") !== "on") return { error: "Please confirm that you understand who can see your idea and that it is not confidential." };
   const parsed = ideaSchema.safeParse(fields(fd, IDEA_KEYS));
   if (!parsed.success) return { fieldErrors: parsed.error.flatten().fieldErrors };
   const res = await createIdea(user.id, parsed.data);
@@ -153,6 +156,8 @@ export async function endorseAction(fd: FormData) {
   const user = await requireMember();
   const id = str(fd, "id");
   const res = await endorseIdea(user.id, id);
+  // Supporting can make the person a founding group member: the agreement shown next to the button is recorded.
+  if (res.ok) await recordAcceptance({ userId: user.id, key: "group-participation", kind: "ACCEPTED", method: "idea-support", context: id });
   if (res.ok && res.groupCreated) redirect(`/community/groups/${res.groupCreated.slug}?created=1`);
   redirect(res.ok ? `/community/ideas/${id}?endorsed=1` : withFlash(`/community/ideas/${encodeURIComponent(id)}`, { error: res.error }));
 }
@@ -215,6 +220,7 @@ export async function joinGroupAction(fd: FormData) {
   const groupId = str(fd, "groupId");
   const path = await groupPath(groupId);
   const res = await joinGroup(user.id, groupId);
+  if (res.ok) await recordAcceptance({ userId: user.id, key: "group-participation", kind: "ACCEPTED", method: "group-join", context: groupId });
   redirect(res.ok ? `${path}?joined=1` : withFlash(path, { error: res.error }));
 }
 

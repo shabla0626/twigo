@@ -31,6 +31,9 @@ export const IDEA_TEXT_FIELDS = {
   description: "More details",
   skillsNeeded: "Skills needed",
   timeEstimate: "Time needed",
+  expectedActivities: "Expected activities",
+  objectives: "First objectives",
+  collaborationApproach: "Preferred way of collaborating",
   links: "Links",
 } as const;
 type IdeaTextField = keyof typeof IDEA_TEXT_FIELDS;

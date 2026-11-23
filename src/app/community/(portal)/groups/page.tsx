@@ -11,6 +11,7 @@ import { readFlash } from "@/lib/flash";
 import { IDEA_CATEGORIES } from "@/lib/validation/community";
 import { GROUP_STATUS_LABELS } from "@/server/community/group-labels";
 import { listGroups } from "@/server/community/groups";
+import { GroupAgreementNote } from "@/components/community/group-agreement-note";
 import { joinGroupAction } from "../../actions";
 
 export const metadata = { title: "Explore Groups" };
@@ -52,6 +53,7 @@ export default async function GroupsPage({ searchParams }: Props) {
               My Groups
             </Link>
             .
+            <GroupAgreementNote action="joining" className="mt-1" />
           </>
         }
       />
