@@ -4,6 +4,9 @@
 #
 #    bash ~/Server/deploy-twigo.sh
 #
+#  One click from Windows: .\deploy-twigo.ps1 (project folder) uploads the release named in
+#  release/release-manifest.json and runs this script over SSH (docs/ONE-CLICK-DEPLOYMENT.md).
+#
 #  Expected layout (next to this script):
 #    deploy-twigo.sh
 #    twigo-<release>.tar.gz          the release archive (the newest one is used)
@@ -25,6 +28,11 @@
 #    TWIGO_LEGAL_PUBLISH=yes, TWIGO_LEGAL_REVIEWED_BY, TWIGO_LEGAL_REVIEWED_ON[, TWIGO_LEGAL_EFFECTIVE]
 #    TWIGO_ARCHIVE (archive path), TWIGO_ASSUME_NO=1 (answer "no" to optional questions)
 #    TWIGO_COMPOSE_PROJECT, TWIGO_APP_DIR, TWIGO_BACKUP_ROOT, TWIGO_LOG_DIR   (isolated test runs only)
+#
+#  Exit codes: 0 success; 10 + N when step N failed (11 = step 1 ... 20 = step 10; 10 = before step 1);
+#  30 another deployment is running; 129 the connection or terminal was closed (HUP), 130 Ctrl+C,
+#  141 the output pipe was closed, 143 stopped (TERM). After a failure from step 5 on, the previous
+#  version is put back. Only one deployment runs at a time (lock file .twigo-deploy.lock next to this script).
 # =====================================================================================================
 set -Eeuo pipefail
 # Release files must stay readable inside the image (the app runs as an unprivileged user); backups and
@@ -49,7 +57,8 @@ LOG="$LOG_DIR/twigo-deploy-$TS.log"
 : > "$LOG" && chmod 600 "$LOG"
 
 OKS=(); SKIPS=(); FAILS=(); MANUAL=()
-STEP="start"; SWAPPED=0; PREV_EXISTS=0; PREV_APP_RUNNING=0; PREV_IMAGE=0; STAGING=""; NEWDIR=""; FINISHED=0
+SUDO_KEEPALIVE=""
+STEP="start"; STEP_NO=0; SWAPPED=0; PREV_EXISTS=0; PREV_APP_RUNNING=0; PREV_IMAGE=0; STAGING=""; NEWDIR=""; FINISHED=0
 INTERACTIVE=0; [[ -t 0 && -t 1 && "${TWIGO_ASSUME_NO:-0}" != "1" ]] && INTERACTIVE=1
 
 say()  { printf '%s\n' "$*"; printf '%s %s\n' "$(date +%H:%M:%S)" "$*" >> "$LOG"; }
@@ -57,8 +66,8 @@ note() { printf '      %s\n' "$*"; printf '%s       %s\n' "$(date +%H:%M:%S)" "$
 ok()   { OKS+=("$1"); note "OK: $1"; }
 skip() { SKIPS+=("$1"); note "SKIPPED: $1"; }
 manual() { MANUAL+=("$1"); }
-step() { STEP="$2"; say ""; say "[$1/10] $2..."; }
-die()  { FAILS+=("$STEP: $1"); say ""; say "ERROR: $1"; shift; for l in "$@"; do note "$l"; done; exit 1; }
+step() { STEP_NO="$1"; STEP="$2"; say ""; say "[$1/10] $2..."; }
+die()  { FAILS+=("$STEP: $1"); say ""; say "ERROR: $1"; shift; for l in "$@"; do note "$l"; done; exit $((10 + STEP_NO)); }
 quiet() { "$@" >> "$LOG" 2>&1; }      # command output goes to the log only
 
 # docker compose for a given application directory (the old one for backups, the new one after the swap)
@@ -96,8 +105,12 @@ rollback() {
   # Without a previous running version, the new one (if it was started) must not keep running.
   if [[ "$PREV_APP_RUNNING" != "1" && -f "$APP_DIR/docker-compose.yml" ]]; then dc stop app >> "$LOG" 2>&1 || true; fi
   if [[ -d "$APP_DIR" ]]; then mv "$APP_DIR" "$BK/app-failed" 2>>"$LOG" || true; fi
-  if [[ -d "$BK/app-previous" ]]; then mv "$BK/app-previous" "$APP_DIR"; note "previous code restored to $APP_DIR"; fi
-  if [[ "$PREV_IMAGE" == "1" ]]; then docker tag "$IMAGE:previous-$TS" "$IMAGE:latest" >> "$LOG" 2>&1 && note "previous image restored"; fi
+  if [[ -d "$BK/app-previous" ]]; then
+    if mv "$BK/app-previous" "$APP_DIR" 2>>"$LOG"; then note "previous code restored to $APP_DIR"; else note "the previous code could NOT be moved back: it is in $BK/app-previous"; fi
+  fi
+  if [[ "$PREV_IMAGE" == "1" ]]; then
+    if docker tag "$IMAGE:previous-$TS" "$IMAGE:latest" >> "$LOG" 2>&1; then note "previous image restored"; else note "the previous image could NOT be tagged back: it is $IMAGE:previous-$TS"; fi
+  fi
   if [[ "$PREV_APP_RUNNING" == "1" && -f "$APP_DIR/docker-compose.yml" ]]; then
     if dc up -d --no-build app >> "$LOG" 2>&1 && wait_healthy app 180; then
       note "the previous version is running again on 127.0.0.1:$PORT"
@@ -110,24 +123,46 @@ rollback() {
 
 on_exit() {
   local code=$?
+  # Finish the clean-up whatever happens now: no abort on a failing command, no second interruption.
+  set +e; trap - ERR; trap '' HUP INT TERM PIPE
   [[ -n "$STAGING" && -d "$STAGING" ]] && rm -rf "$STAGING"
   [[ -n "$NEWDIR" && -d "$NEWDIR" ]] && rm -rf "$NEWDIR"
+  [[ -n "$SUDO_KEEPALIVE" ]] && kill "$SUDO_KEEPALIVE" 2>/dev/null
   if [[ "$code" != "0" && "$FINISHED" != "1" ]]; then
     [[ ${#FAILS[@]} -eq 0 ]] && FAILS+=("$STEP: a command failed (exit code $code); details in the log")
-    rollback || true
-    summary "FAILED"
-    say ""
-    say "Nothing after the failed step was done. To recover:"
-    note "1. Read the log: $LOG"
-    note "2. Fix the cause shown above, then run the same command again: bash $SELF_DIR/deploy-twigo.sh"
-    [[ -d "$BK" ]] && note "3. Backups of this run: $BK (settings, previous code, database backup if it existed)"
-    note "Database migrations are not rolled back automatically. To return to the database as it was before"
-    note "this run, restore its backup as described in docs/DEPLOYMENT.md, section 8 (restore, then TWIGO_DB_NAME)."
+    if [[ ! -d "$BK" ]]; then
+      # Stopped during the checks: nothing on the server was changed. Keep it short.
+      say ""
+      say "STOPPED: nothing was changed on the server."
+      say "After fixing the problem above, run again:  bash $SELF_DIR/deploy-twigo.sh"
+      say "(details: $LOG; exit code $code)"
+    else
+      rollback || true
+      summary "FAILED"
+      say ""
+      say "What to do: fix the problem shown above, then run again:  bash $SELF_DIR/deploy-twigo.sh"
+      note "Backups of this run: $BK   Log: $LOG   Exit code: $code"
+      [[ "$STEP" == "Applying database migrations" || "$STEP" == "Checking owner and legal publication" || "$STEP" == "Starting and verifying Twigo" ]] && \
+        note "Database changes are not undone automatically; the database backup of this run can be restored (docs/DEPLOYMENT.md, section 8)."
+    fi
   fi
   exit "$code"
 }
+# Interrupted: HUP when the SSH connection or the terminal is closed, PIPE when the output can no longer be
+# written, INT for Ctrl+C, TERM for kill. The run stops and the EXIT handler puts the previous version back.
+on_signal() {
+  trap '' HUP INT TERM PIPE
+  # Nobody can read the terminal any more: from here on everything goes to the log only.
+  if [[ "$1" == HUP || "$1" == PIPE ]]; then exec >> "$LOG" 2>&1 < /dev/null; fi
+  FAILS+=("$STEP: interrupted ($3)")
+  exit "$2"
+}
 trap on_exit EXIT
-trap 'FAILS+=("$STEP: command failed at line $LINENO (exit code $?)"); exit 1' ERR
+trap 'FAILS+=("$STEP: command failed at line $LINENO (exit code $?)"); exit $((10 + STEP_NO))' ERR
+trap 'on_signal HUP 129 "the connection or terminal was closed"' HUP
+trap 'on_signal INT 130 "stopped with Ctrl+C"' INT
+trap 'on_signal TERM 143 "stopped by a TERM signal"' TERM
+trap 'on_signal PIPE 141 "the output could no longer be written"' PIPE
 
 summary() {
   say ""
@@ -150,6 +185,21 @@ say "       TWIGO PRODUCTION DEPLOYMENT"
 say "========================================"
 say "Folder: $SELF_DIR    Log: $LOG"
 
+# One deployment at a time: a second run (from another terminal or another computer) stops here.
+LOCK="$SELF_DIR/.twigo-deploy.lock"
+if command -v flock >/dev/null; then
+  exec 9>> "$LOCK"
+  if ! flock -n 9; then
+    FAILS+=("start: another deployment is running")
+    say ""
+    say "ERROR: another deployment is already running on this server (it holds $LOCK)."
+    note "Wait until it has finished, then run again."
+    exit 30
+  fi
+else
+  note "WARNING: flock is missing; two deployments at the same time cannot be prevented (sudo apt-get install -y util-linux)"
+fi
+
 # -----------------------------------------------------------------------------------------------------
 step 1 "Checking server environment"
 if [[ "${TWIGO_SKIP_OS_CHECK:-0}" != "1" ]]; then
@@ -158,8 +208,35 @@ if [[ "${TWIGO_SKIP_OS_CHECK:-0}" != "1" ]]; then
   [[ "${ID:-}" == "ubuntu" ]] || die "This script is for Ubuntu (found: ${PRETTY_NAME:-unknown})."
   ok "Ubuntu ${VERSION_ID:-}"
 fi
-for c in docker curl tar sha256sum python3 ss awk; do command -v "$c" >/dev/null || die "The command '$c' is missing." "Install it (for example: sudo apt-get install -y $c) and run again."; done
-docker info >/dev/null 2>&1 || die "Docker is not running or this user may not use it." "Start Docker (sudo systemctl start docker) and add the user to the docker group (sudo usermod -aG docker \$USER, then log in again)."
+for c in curl tar sha256sum python3 ss awk; do command -v "$c" >/dev/null || die "The command '$c' is missing." "Install it: sudo apt-get install -y $c"; done
+
+ask_yes() { [[ "$INTERACTIVE" == "1" ]] || return 1; local a; read -r -p "      $1 [y/N] " a; [[ "$a" =~ ^[Yy] ]]; }
+# Docker: installed? running? usable by this user? Fixes what it can, asking first where it installs anything.
+if ! command -v docker >/dev/null; then
+  say "      Docker is not installed on this server."
+  ask_yes "Install Docker now from the Ubuntu packages (docker.io, docker-compose-v2)?" || die "Docker is needed." "Install it: sudo apt-get install -y docker.io docker-compose-v2"
+  sudo apt-get update >> "$LOG" 2>&1 && sudo apt-get install -y docker.io docker-compose-v2 >> "$LOG" 2>&1 || die "Installing Docker failed." "See: $LOG"
+  sudo systemctl enable --now docker >> "$LOG" 2>&1 || true
+  ok "Docker installed"
+fi
+DOCKER_SUDO=0
+if ! docker info >/dev/null 2>&1; then
+  # Not usable by this user (not in the docker group yet) or not running: use sudo for this run.
+  say "      Your user may not use Docker directly yet; using sudo for this run (your password may be asked once)."
+  sudo -v || die "Administrator rights (sudo) are needed to use Docker." "Ask the server administrator to add you to the docker group."
+  ( exec 9>&-; while true; do sudo -n true 2>/dev/null; sleep 50; done ) &
+  SUDO_KEEPALIVE=$!
+  if ! sudo docker info >/dev/null 2>&1; then
+    sudo systemctl start docker >> "$LOG" 2>&1 || true
+    sleep 3
+  fi
+  sudo docker info >/dev/null 2>&1 || die "Docker does not start on this server." "Check it with: sudo systemctl status docker"
+  DOCKER_SUDO=1
+  docker() { sudo docker "$@"; }
+  if ! id -nG "$USER" | tr ' ' '\n' | grep -qx docker; then
+    sudo usermod -aG docker "$USER" >> "$LOG" 2>&1 && note "added $USER to the docker group: from your next login, no password is needed"
+  fi
+fi
 ok "Docker Engine $(docker version -f '{{.Server.Version}}' 2>/dev/null)"
 CV="$(docker compose version --short 2>/dev/null || true)"
 [[ -n "$CV" ]] || die "Docker Compose v2 is missing." "Install the plugin: sudo apt-get install -y docker-compose-plugin"
@@ -304,10 +381,11 @@ cp -p "$ENVF" "$NEWDIR/.env.production"
 [[ "$(sha256sum < "$ENVF")" == "$(sha256sum < "$NEWDIR/.env.production")" ]] || die "The settings file could not be carried over unchanged."
 printf '%s\n%s\n' "$(basename "$ARCHIVE") $ACTUAL" "deployed $TS" > "$NEWDIR/.twigo-release"
 dcx "$NEWDIR" config --quiet >> "$LOG" 2>&1 || die "The Docker Compose configuration of the release is not valid with these settings." "See the log: $LOG"
-python3 - "$NEWDIR" "$PROJECT" >> "$LOG" 2>&1 <<'PY' || die "The release's service configuration is not as expected (port 1010 on 127.0.0.1, private database)." "See the log: $LOG"
+python3 - "$NEWDIR" "$PROJECT" "$DOCKER_SUDO" >> "$LOG" 2>&1 <<'PY' || die "The release's service configuration is not as expected (port 1010 on 127.0.0.1, private database)." "See the log: $LOG"
 import json, subprocess, sys
 d, p = sys.argv[1], sys.argv[2]
-out = subprocess.run(["docker", "compose", "-p", p, "--project-directory", d, "-f", f"{d}/docker-compose.yml", "--env-file", f"{d}/.env.production", "config", "--format", "json"], capture_output=True, text=True, check=True).stdout
+prefix = ["sudo", "docker"] if sys.argv[3] == "1" else ["docker"]
+out = subprocess.run(prefix + ["compose", "-p", p, "--project-directory", d, "-f", f"{d}/docker-compose.yml", "--env-file", f"{d}/.env.production", "config", "--format", "json"], capture_output=True, text=True, check=True).stdout
 c = json.loads(out)
 app, db = c["services"]["app"], c["services"]["db"]
 ports = app.get("ports", [])

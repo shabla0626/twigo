@@ -6,10 +6,12 @@
 #   bash scripts/deploy/test-deploy.sh <release archive .tar.gz>      (inside WSL/Linux)
 #
 # Scenarios: syntax; missing archive; wrong checksum; unsafe archive; secrets in archive; missing
-# settings; fresh install (owner created, legal publication skipped); repeated deployment with legal
-# publication (owner kept, data kept, database backup made); repeated again (idempotent); failed
-# Docker build (previous version restored and running); failed health check (previous version restored
-# and running); no secret value in any log.
+# settings; second deployment while one is running (lock); fresh install (owner created, legal
+# publication skipped); repeated deployment with legal publication (owner kept, data kept, database
+# backup made); repeated again (idempotent); Docker only through sudo; failed Docker build (previous
+# version restored and running); failed health check (previous version restored and running); SSH
+# connection lost during the build (previous version restored and running); no secret value in any log.
+# Every failure must end with its step's exit code (10 + step number) so callers can tell the stage.
 set -uo pipefail
 SRC_ARCHIVE="$(readlink -f "${1:?usage: test-deploy.sh <release archive>}")"
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -80,23 +82,23 @@ while IFS='=' read -r k v; do case "$k" in POSTGRES_PASSWORD|AUTH_SECRET|ENCRYPT
 bash -n "$SERVER/deploy-twigo.sh" && result pass "shell syntax" || result fail "shell syntax"
 
 # ---------------------------------------------------------------- 2. missing archive
-deploy; [[ $? -ne 0 ]] && said "No release archive found" && result pass "missing archive stops safely" || result fail "missing archive"
+deploy; [[ $? -eq 12 ]] && said "No release archive found" && result pass "missing archive stops safely (exit 12 = step 2)" || result fail "missing archive"
 
 # ---------------------------------------------------------------- 3. wrong checksum
 pack "$ROOT/base" twigo-test-1.tar.gz
 echo "0000000000000000000000000000000000000000000000000000000000000000  twigo-test-1.tar.gz" > "$SERVER/twigo-test-1.tar.gz.sha256"
-deploy; [[ $? -ne 0 ]] && said "does not match its checksum" && result pass "wrong checksum stops safely" || result fail "wrong checksum"
+deploy; [[ $? -eq 12 ]] && said "does not match its checksum" && result pass "wrong checksum stops safely (exit 12)" || result fail "wrong checksum"
 
 # ---------------------------------------------------------------- 4. unsafe archive
 mkdir -p "$ROOT/evil/inner"; cp -a "$ROOT/base/." "$ROOT/evil/inner/"
 rm -f "$SERVER"/twigo-*; tar -czf "$SERVER/twigo-test-evil.tar.gz" -C "$ROOT/evil/inner" . --transform 's,^\./Dockerfile$,../Dockerfile,'
 (cd "$SERVER" && sha256sum twigo-test-evil.tar.gz > twigo-test-evil.tar.gz.sha256)
-deploy; [[ $? -ne 0 ]] && said "unsafe paths" && [[ ! -e "$SERVER/Dockerfile" ]] && result pass "unsafe archive refused, nothing extracted" || result fail "unsafe archive"
+deploy; [[ $? -eq 12 ]] && said "unsafe paths" && [[ ! -e "$SERVER/Dockerfile" ]] && result pass "unsafe archive refused, nothing extracted (exit 12)" || result fail "unsafe archive"
 
 # ---------------------------------------------------------------- 5. secrets inside the archive
 mkdir -p "$ROOT/secret"; cp -a "$ROOT/base/." "$ROOT/secret/"; echo "AUTH_SECRET=leaked" > "$ROOT/secret/.env.production"
 pack "$ROOT/secret" twigo-test-secret.tar.gz
-deploy; [[ $? -ne 0 ]] && said "settings file with secrets" && result pass "archive containing .env.production refused" || result fail "secrets in archive"
+deploy; [[ $? -eq 12 ]] && said "settings file with secrets" && result pass "archive containing .env.production refused (exit 12)" || result fail "secrets in archive"
 
 # ---------------------------------------------------------------- 6. missing required setting
 pack "$ROOT/base" twigo-test-1.tar.gz
@@ -104,7 +106,14 @@ cp -p "$SERVER/twigo/.env.production" "$ROOT/env.keep"
 sed -i 's/^ORG_JURISDICTION=.*/ORG_JURISDICTION=/' "$SERVER/twigo/.env.production"
 deploy; rc=$?
 cp -p "$ROOT/env.keep" "$SERVER/twigo/.env.production"
-[[ $rc -ne 0 ]] && said "Required settings are empty" && said "ORG_JURISDICTION" && [[ ! -f "$SERVER/twigo/docker-compose.yml" ]] && result pass "missing ORG_JURISDICTION stops before any change" || result fail "missing setting"
+[[ $rc -eq 13 ]] && said "Required settings are empty" && said "ORG_JURISDICTION" && [[ ! -f "$SERVER/twigo/docker-compose.yml" ]] && result pass "missing ORG_JURISDICTION stops before any change (exit 13 = step 3)" || result fail "missing setting (exit $rc)"
+
+# ---------------------------------------------------------------- 6b. a deployment is already running
+flock "$SERVER/.twigo-deploy.lock" sleep 60 & HOLDER=$!
+sleep 0.5
+deploy; rc=$?
+kill $HOLDER 2>/dev/null; wait $HOLDER 2>/dev/null
+[[ $rc -eq 30 ]] && said "another deployment is already running" && [[ ! -d "$SERVER/backups" && ! -f "$SERVER/twigo/docker-compose.yml" ]]   && result pass "second deployment while one runs: refused (exit 30), nothing changed" || result fail "lock (exit $rc)"
 
 # ---------------------------------------------------------------- 7. fresh installation
 export TWIGO_OWNER_EMAIL=founder@deploytest.dev TWIGO_OWNER_NAME="Test Founder"
@@ -140,13 +149,28 @@ if [[ $rc -eq 0 ]] && ran_ok && said "already published" && said "owner account 
 else result fail "idempotent run (exit $rc)"; tail -30 "$ROOT/last-run.txt"; fi
 GOOD_RELEASE="$(release_marker)"
 
+# ---------------------------------------------------------------- 9b. Docker usable only through sudo
+# The user's Docker client points at a missing socket (like a user not yet in the docker group); a stand-in
+# "sudo" runs commands with the normal socket, as the real sudo would. Every Docker call must go through it.
+mkdir -p "$ROOT/fakesudo"
+cat > "$ROOT/fakesudo/sudo" <<'SH'
+#!/bin/sh
+case "$1" in -v|-n) exit 0;; usermod|systemctl|apt-get) exit 0;; esac
+exec env -u DOCKER_HOST "$@"
+SH
+chmod +x "$ROOT/fakesudo/sudo"
+DOCKER_HOST=unix:///tmp/twigo-no-such.sock PATH="$ROOT/fakesudo:$PATH" bash "$SERVER/deploy-twigo.sh" > "$ROOT/last-run.txt" 2>&1 < /dev/null; rc=$?
+if [[ $rc -eq 0 ]] && ran_ok && said "using sudo for this run" && healthy_on_1010; then
+  result pass "Docker usable only with sudo: the script switches to sudo by itself and deploys"
+else result fail "sudo path (exit $rc)"; tail -30 "$ROOT/last-run.txt"; fi
+
 # ---------------------------------------------------------------- 10. failed Docker build
 mkdir -p "$ROOT/badbuild"; cp -a "$ROOT/base/." "$ROOT/badbuild/"
 sed -i 's/^RUN --mount=type=secret,id=envfile.*/RUN false \&\& \\/' "$ROOT/badbuild/Dockerfile"
 pack "$ROOT/badbuild" twigo-test-badbuild.tar.gz
 deploy; rc=$?
-if [[ $rc -ne 0 ]] && said "could not be built" && [[ "$(release_marker)" == "$GOOD_RELEASE" ]] && healthy_on_1010; then
-  result pass "failed build: stopped, previous code restored, previous version still serving on 1010"
+if [[ $rc -eq 16 ]] && said "could not be built" && [[ "$(release_marker)" == "$GOOD_RELEASE" ]] && healthy_on_1010; then
+  result pass "failed build: stopped (exit 16 = step 6), previous code restored, previous version still serving on 1010"
 else result fail "failed build (exit $rc)"; tail -30 "$ROOT/last-run.txt"; fi
 
 # ---------------------------------------------------------------- 11. failed health check
@@ -154,9 +178,23 @@ mkdir -p "$ROOT/badstart"; cp -a "$ROOT/base/." "$ROOT/badstart/"
 sed -i '1i if (process.argv.includes("--production")) { console.error("deploy test: simulated start failure"); process.exit(1); }' "$ROOT/badstart/server.ts"
 pack "$ROOT/badstart" twigo-test-badstart.tar.gz
 deploy; rc=$?
-if [[ $rc -ne 0 ]] && said "did not become healthy" && [[ "$(release_marker)" == "$GOOD_RELEASE" ]] && healthy_on_1010; then
-  result pass "failed start: stopped, previous code and image restored, previous version healthy on 1010"
+if [[ $rc -eq 20 ]] && said "did not become healthy" && [[ "$(release_marker)" == "$GOOD_RELEASE" ]] && healthy_on_1010; then
+  result pass "failed start: stopped (exit 20 = step 10), previous code and image restored, previous version healthy on 1010"
 else result fail "failed health check (exit $rc)"; tail -30 "$ROOT/last-run.txt"; fi
+
+# ---------------------------------------------------------------- 11b. SSH connection lost during the deployment
+# A closed SSH session sends SIGHUP to the whole session; here: to the script's own process group, once the
+# build has started (after the swap). The run must stop, put the previous version back and keep it serving.
+pack "$ROOT/base" twigo-test-hup.tar.gz
+setsid bash "$SERVER/deploy-twigo.sh" > "$ROOT/last-run.txt" 2>&1 < /dev/null & DPID=$!
+for _ in $(seq 1 1500); do said "[6/10]" && break; sleep 0.2; done
+PGID="$(ps -o pgid= -p "$DPID" | tr -d ' ')"
+[[ -n "$PGID" ]] && kill -HUP -- "-$PGID"
+wait "$DPID"; rc=$?
+HUPLOG="$(ls -1t "$SERVER"/logs/twigo-deploy-*.log | head -n 1)"
+if [[ $rc -eq 129 ]] && grep -q "interrupted (the connection or terminal was closed)" "$HUPLOG"    && grep -q "previous version is running again" "$HUPLOG" && [[ "$(release_marker)" == "$GOOD_RELEASE" ]] && healthy_on_1010; then
+  result pass "connection lost during the deployment (HUP): stopped (exit 129), previous version restored and healthy on 1010"
+else result fail "connection lost (exit $rc)"; tail -30 "$HUPLOG"; fi
 
 # ---------------------------------------------------------------- 12. no secret in any log or output
 LEAK=0
