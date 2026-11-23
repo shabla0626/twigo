@@ -144,6 +144,19 @@ curl -s http://127.0.0.1:1010/api/health   # from the VPS: {"status":"ok","db":"
 docker port twigo-app-1                    # should show 1010/tcp -> 127.0.0.1:1010
 ```
 
+**Trial on a development computer** (Docker in WSL, done on 23 November 2026, see
+[TWIGO-RESEND-CADDY-INTEGRATION-REPORT.md](TWIGO-RESEND-CADDY-INTEGRATION-REPORT.md), section G): a
+git-ignored `.env.docker-local` with generated test secrets, `SITE_URL=http://127.0.0.1:1010` and
+`LOCAL_PRODUCTION_TEST=1`, used through `TWIGO_ENV_FILE`:
+
+```bash
+cd /mnt/d/MyProject/Co_work
+export TWIGO_ENV_FILE=.env.docker-local
+alias dc='docker compose --env-file .env.docker-local'
+dc build && dc up -d db && dc run --rm app npm run db:deploy && dc up -d app
+# open http://127.0.0.1:1010 ; stop with: dc stop   (dc down keeps the data volumes)
+```
+
 The site listens on **1010** in the container and on the host (`127.0.0.1:1010:1010`); there is no
 other application port. Updating: `git pull`, then `dc build`, backup, `dc run --rm app npm run db:deploy`,
 `dc up -d app`. Logs: `dc logs -f app`. Uploaded files and backups are in the `twigo-data` volume,

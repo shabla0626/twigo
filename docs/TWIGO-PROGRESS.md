@@ -81,5 +81,6 @@ defaults in [TWIGO-OPEN-DECISIONS.md](TWIGO-OPEN-DECISIONS.md)):
 | When (2026-11-23) | Update |
 | --- | --- |
 | after Stage 11 | File created at the founder's request; all checkpoints recorded from the git history and test logs |
+| follow-up 3 | Docker trial in WSL: image built (npm retries and cache added), 10 migrations applied in the container, Next.js listening on 0.0.0.0:1010 in the container and published on 127.0.0.1:1010; health, pages, chat WebSocket (101) verified; no secrets in the image. Trial containers left running. VPS and central Caddy still pending (no SSH access). |
 | follow-up 2 | Resend SMTP integrated (key empty by design; development always uses the local test inbox), Admin → Email extended, webhook guard; Next.js on **port 1010** with Docker Compose (`127.0.0.1:1010:1010`); central Caddy **not registered** (no SSH access; specification in [TWIGO-RESEND-CADDY-INTEGRATION-REPORT.md](TWIGO-RESEND-CADDY-INTEGRATION-REPORT.md)). Tests: 409/409 unit, 23/23 browser; Docker image not built (no Docker here). |
 | follow-up | Domain changed from twigo.stream to **twigo.space**; production server recorded as VPS `162.35.23.106`, SSH `shabla@162.35.23.106` (`.env.example`, `docs/DEPLOYMENT.md` section 0, README, reports). Nothing deployed, no DNS changed, no connection made to the server. |

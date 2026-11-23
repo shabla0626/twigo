@@ -11,6 +11,8 @@
 # Settings: copy .env.production.example to .env.production on the server and fill it in. Start with
 #   docker compose --env-file .env.production up -d --build
 # (--env-file also supplies POSTGRES_PASSWORD to the database service below).
+# A local trial on a development computer uses a different file:
+#   TWIGO_ENV_FILE=.env.docker-local docker compose --env-file .env.docker-local up -d --build
 
 name: twigo
 
@@ -22,7 +24,7 @@ services:
         - envfile
     image: twigo-app
     restart: unless-stopped
-    env_file: .env.production
+    env_file: ${TWIGO_ENV_FILE:-.env.production}
     environment:
       # Fixed here so they cannot drift from the port mapping and the volume below.
       PORT: "1010"
@@ -62,7 +64,7 @@ services:
 
 secrets:
   envfile:
-    file: ./.env.production
+    file: ${TWIGO_ENV_FILE:-.env.production}
 
 volumes:
   twigo-data:

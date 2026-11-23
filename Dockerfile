@@ -22,7 +22,11 @@ ENV NODE_ENV=production \
 # maintenance scripts (migrations, backups, creating the owner account).
 COPY package.json package-lock.json ./
 COPY prisma ./prisma
-RUN npm ci --include=dev && npm cache clean --force
+# Retries and long timeouts survive slow or briefly interrupted connections; the cache mount keeps
+# downloaded packages between builds (it is not part of the image).
+RUN --mount=type=cache,target=/root/.npm \
+    npm ci --include=dev --no-audit --no-fund \
+      --fetch-retries=6 --fetch-retry-mintimeout=20000 --fetch-retry-maxtimeout=180000 --fetch-timeout=600000
 
 COPY . .
 

@@ -109,8 +109,7 @@ https://twigo.space -> Cloudflare -> central Caddy (VPS) -> 127.0.0.1:1010 (VPS)
 - **Verified on this computer:** the production server started with no `PORT` set logged
   `server.ready … "url":"http://127.0.0.1:1010"`, and `/api/health` (200, database ok), the home page
   (200) and the chat endpoint `/socket.io/` (200) answered on port 1010.
-- **Not verified:** the Docker image was not built or run, because Docker is not installed on this
-  computer; nothing was run on the VPS.
+- **Verified in Docker on this computer** (WSL): see section G. Nothing was run on the VPS.
 
 ### Central Caddy: not registered (no access)
 
@@ -150,7 +149,7 @@ https://twigo.space -> Cloudflare -> central Caddy (VPS) -> 127.0.0.1:1010 (VPS)
 | Existing email workflows | `tests/email.test.ts`, `onboarding`, `community`, `corrective-stage3d` | Passed (part of the 409) |
 | Browser tests | `npx playwright test` (fresh production build) | **23 passed, 0 failed** (now also checks Admin → Email for accessibility) |
 | Port 1010 | production server started locally without `PORT` | **Listening on 1010**; health, home page and `/socket.io/` answered 200 |
-| Docker image build/run | — | **Not run** (Docker not installed on this computer) |
+| Docker image build/run | Docker 29.7 + Compose 5.5 in WSL (Ubuntu 24.04) | **Built and running** (section G) |
 | Domain connectivity | public DNS and HTTPS through Cloudflare | DNS resolves (proxied); HTTPS returns **Cloudflare 525** |
 | HTTPS / TLS on twigo.space | — | **Not working yet** (no certificate on the server for twigo.space) |
 | WebSocket via twigo.space | — | **Not testable** (site not deployed) |
@@ -209,6 +208,35 @@ Security checks:
 | Real email delivery through Resend | **Pending external action** (API key, deployed site) |
 | Domain `twigo.space` in configuration, links, documentation | **Completed and verified** (tests and search) |
 | DNS for twigo.space | **Exists** (Cloudflare, proxied); certificate method to be confirmed with the central Caddy |
-| Next.js on port 1010, Docker Compose, production template | **Completed; verified locally** (server on 1010); Docker image **not built** here |
+| Next.js on port 1010, Docker Compose, production template | **Completed and verified** in Docker on this computer (section G); not yet on the VPS |
 | Central Caddy registration of twigo.space | **Not completed: pending external action** (no access to the VPS; specification in section C) |
 | HTTPS on twigo.space, WebSocket through the domain | **Not completed** (site not deployed; currently Cloudflare 525) |
+
+---
+
+## G. Docker trial on this computer (WSL)
+
+Run on 23 November 2026 with Docker 29.7.2 and Compose 5.5.0 in Ubuntu 24.04 (WSL 2), from
+`/mnt/d/MyProject/Co_work`, with the git-ignored `.env.docker-local` (generated test secrets,
+`SITE_URL=http://127.0.0.1:1010`, `LOCAL_PRODUCTION_TEST=1`, Resend settings with an empty key).
+`docker-compose.yml` now takes the settings file from `TWIGO_ENV_FILE` (default `.env.production`).
+The other projects' containers on this machine were not touched; Twigo's database publishes no port, so
+it does not collide with the PostgreSQL already on 5432.
+
+| Check (founder's list) | Result |
+| --- | --- |
+| Image build | First attempt failed: one npm download timed out (`ETIMEDOUT`) after about 5 minutes. The Dockerfile now uses npm retries, long timeouts and a BuildKit download cache; the second build **succeeded** (Next.js "Compiled successfully") |
+| Migrations in the container | `dc run --rm app npm run db:deploy`: **10 migrations applied** to the container's own PostgreSQL 16 |
+| 1. Next.js listens on 1010 inside Docker | **Yes**: the only application socket in the container is `0.0.0.0:1010`; log `server.ready … "url":"http://0.0.0.0:1010"`; `PORT=1010 HOST=0.0.0.0 NODE_ENV=production` |
+| 2. Host port 1010 → container port 1010 | **Yes**: `docker port` shows `1010/tcp -> 127.0.0.1:1010` |
+| 3. No reliance on port 3000 | **Yes**: nothing listens on 3000 in the container; no 3000 in production files (automated test) |
+| 4. Response on `http://127.0.0.1:1010` from the host | **Yes**: `/api/health` 200 (`db: ok`); `/`, `/legal`, `/support`, `/login`, `/join` 200; also reachable from Windows; the join page renders in a browser without console errors |
+| Container health check | **healthy** |
+| Live chat | `/socket.io/` polling 200 offering `websocket`; a WebSocket upgrade answered **101 Switching Protocols** |
+| Secrets in the image | **None**: `/app` contains only `.env.example` and `.env.production.example` (the settings reached the build as a BuildKit secret) |
+| 5–6. Central Caddy, `https://twigo.space` | **Not done** (VPS not accessible; section C) |
+| 7. Sign-in, email, chat end to end | Covered by the automated suites against the production build (409 unit, 23 browser); not repeated by hand in the container. Email in the container: "not set up" until the key is entered (by design) |
+
+The trial containers were left running so the site can be opened at `http://127.0.0.1:1010`. Stop:
+`TWIGO_ENV_FILE=.env.docker-local docker compose --env-file .env.docker-local stop` (in WSL, in the
+project folder). The trial data lives in the volumes `twigo_twigo-data` and `twigo_twigo-postgres`.
