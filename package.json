@@ -13,6 +13,7 @@
     "db:migrate": "prisma migrate dev",
     "db:deploy": "tsx scripts/migrate.ts deploy",
     "admin:create": "tsx scripts/create-admin.ts",
+    "legal:publish-reviewed": "tsx scripts/legal-publish-reviewed.ts",
     "purge:retention": "tsx scripts/purge-retention.ts",
     "postinstall": "prisma generate",
     "db:migration": "tsx scripts/migrate.ts new",

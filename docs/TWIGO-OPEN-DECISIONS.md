@@ -21,3 +21,13 @@ public launch.
 | 13 | **Retention settings and the Privacy Policy text are not linked.** | If the owner changes a retention setting, the published policy would state the old period. | Defaults and policy text agree today. | Risk of a stale statement after a settings change. | Either make the policy read the settings, or treat a settings change as requiring a new policy version (current procedure). |
 | 14 | **Production environment values** `ORG_LEGAL_NAME`, `ORG_JURISDICTION`, `ORG_CONTACT_EMAIL` vs the new Legal Notices fields. | Two places hold similar facts. | Both exist; the production start checks the environment values; public pages use the Legal Notices. | Possible mismatch. | After item 1, enter the same values in both, or decide to drop the environment check in favour of the notices. |
 | 15 | **Electronic agreement evidence for project agreements involving money.** | A checkbox and fingerprint may not be enough evidence everywhere. | Exact-text fingerprints, timestamps and downloadable copies; the copy says it does not by itself make the agreement enforceable in every jurisdiction. | Groups may rely on records a court might not accept. | Ask the lawyer (checklist item 5); if needed, add a qualified e-signature provider later. |
+
+## Update of 23 November 2026 (founder's answers)
+
+- **Item 1 (operator):** the operator name is **Twigo**. Legal form and registration details were not given and are not shown.
+- **Item 3 (legal review):** the founder confirmed the eight documents were reviewed by a lawyer. They are published on the
+  production database with `npm run legal:publish-reviewed` (reviewer and date given as arguments, recorded in the audit log).
+- **Item 4 (contact):** public contact and privacy contact: **contact@twigo.space**.
+- **Item 14:** the Legal Notices page now takes the operator, jurisdiction and contact from `ORG_LEGAL_NAME`,
+  `ORG_JURISDICTION` and `ORG_CONTACT_EMAIL` unless the owner confirms other values in Admin → Legal → Legal notices.
+- **Still open: item 2 (jurisdiction and governing law).** Required to start the site.

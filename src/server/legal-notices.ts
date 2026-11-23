@@ -2,6 +2,7 @@ import "server-only";
 import { z } from "zod";
 import { audit } from "@/lib/audit";
 import { db } from "@/lib/db";
+import { env } from "@/lib/env";
 
 /**
  * Legal notices: who operates the site, under which law. Stored privately in OrgSetting
@@ -39,6 +40,19 @@ export async function readNotices(): Promise<Notices> {
   for (const k of NOTICE_KEYS) {
     const parsed = fieldSchema.safeParse(stored[k]);
     if (parsed.success) out[k] = parsed.data;
+  }
+  // The production settings hold facts the founder confirmed (the site refuses to start without them).
+  // They fill any field the owner has not confirmed in Admin -> Legal -> Legal notices.
+  const e = env();
+  const fromSettings: Partial<Record<NoticeKey, string>> = {
+    operatorName: e.ORG_LEGAL_NAME,
+    jurisdiction: e.ORG_JURISDICTION,
+    governingLaw: e.ORG_JURISDICTION,
+    contactEmail: e.ORG_CONTACT_EMAIL,
+    privacyContact: e.ORG_CONTACT_EMAIL,
+  };
+  for (const [k, v] of Object.entries(fromSettings) as [NoticeKey, string][]) {
+    if (v && !(out[k].confirmed && out[k].value)) out[k] = { value: v, confirmed: true };
   }
   return out;
 }

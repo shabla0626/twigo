@@ -93,7 +93,7 @@ Legend used throughout:
 | 1 | All agreed features implemented | **Met** within the agreed scope (section 1). Items that depend on outside facts are listed in section 4 |
 | 2 | Critical and high-priority defects resolved | **Met.** The independent review of 23 November found 1 high authorization defect, 1 high agreement-concurrency defect and 1 high deployment risk; all three fixed and tested (section 5) |
 | 3 | No known critical security vulnerability | **Met** for the application. The 4 npm advisories are in Prisma's command-line tool, not in the running site (unchanged, no fix available) |
-| 4 | Automated tests pass | **Met**: `npx vitest run` → **426 passed, 0 failed, 0 skipped** (36 files); `tsc` and ESLint clean |
+| 4 | Automated tests pass | **Met**: `npx vitest run` → **430 passed, 0 failed, 0 skipped** (37 files); `tsc` and ESLint clean |
 | 5 | Browser tests pass | **Met**: `npx playwright test` on a fresh production build → **23 passed, 0 failed** |
 | 6 | Complete user journeys work | **Met locally and in Docker**: the 61-step role walkthrough covers visitor → registration → email verification → application → approval → member access → idea → supporters → group formation → membership → chat, meetings, notes → project creation → agreement → acceptance by every participant → project activity, plus administrator and owner work: **61 of 61 in the Docker production build** (section 3). On the VPS: pending (section 6) |
 | 7 | Database migrations validated | **Met**: applied to test databases, the development database (with rehearsal, 0 differences) and in Docker (10 migrations) |
@@ -136,8 +136,8 @@ Docker with it); the verification script keeps WSL awake. This does not apply to
 
 | # | Item | Kind | Who |
 | --- | --- | --- | --- |
-| 1 | Legal operator, jurisdiction, governing law, contact addresses (Legal Notices; `ORG_LEGAL_NAME`, `ORG_JURISDICTION`, `ORG_CONTACT_EMAIL` — the site refuses to start without them) | Release blocker (X) | Founder |
-| 2 | Lawyer's review of the eight documents; publish reviewed versions with "ask everyone to accept again" | Release blocker (X) | Founder and lawyer |
+| 1 | Operator **Twigo** and contact **contact@twigo.space** confirmed by the founder (23 Nov; set in `.env.production.example` and shown on the Legal Notices page). **Still needed: jurisdiction / governing law** (`ORG_JURISDICTION`; the site refuses to start without it) | Release blocker (X) | Founder |
+| 2 | Legal review: the founder confirmed on 23 Nov that a lawyer reviewed the eight documents. Publication is a one-time command on the VPS with the reviewer's name and date (`npm run legal:publish-reviewed`, `docs/DEPLOYMENT.md` §6, step 4); it publishes only the exact reviewed texts | Prepared (U); run on the VPS (V) | Founder |
 | 3 | Deploy on the VPS (`docs/DEPLOYMENT.md` §5–6) and run the post-deployment checks (§6 of this report) | Release blocker (V) | Founder |
 | 4 | Register `twigo.space` in the central Caddy with Cloudflare `trusted_proxies`; Cloudflare SSL/TLS Full (strict) | Release blocker (V, X) | Founder |
 | 5 | Resend API key in `.env.production` (a new key; the one shared in chat should be deleted); one real test email | Release blocker (X) | Founder |
@@ -195,16 +195,16 @@ When all of these pass and items 1–5 of section 4 are closed, the release can 
 
 ## 7. Release package
 
-- Git tag: `twigo-rc-2026-11-23` on branch `feature/twigo-platform-transformation` (not merged
+- Git tag: `twigo-rc2-2026-11-23` on branch `feature/twigo-platform-transformation` (not merged
   into `main`, not pushed).
-- Archive for upload: `release/twigo-rc-2026-11-23.tar.gz` (all tracked files of the tag; contains no
+- Archive for upload: `release/twigo-rc2-2026-11-23.tar.gz` (all tracked files of the tag; contains no
   `.env` file, no secrets, no database, no backups) and its SHA-256 in
-  `release/twigo-rc-2026-11-23.tar.gz.sha256`.
+  `release/twigo-rc2-2026-11-23.tar.gz.sha256`.
 - Upload and unpack (from PowerShell on this computer, then on the VPS):
 
   ```
-  scp release/twigo-rc-2026-11-23.tar.gz shabla@162.35.23.106:~/
+  scp release/twigo-rc2-2026-11-23.tar.gz shabla@162.35.23.106:~/
   ssh shabla@162.35.23.106
-  mkdir -p ~/twigo && tar -xzf ~/twigo-rc-2026-11-23.tar.gz -C ~/twigo && cd ~/twigo
+  mkdir -p ~/twigo && tar -xzf ~/twigo-rc2-2026-11-23.tar.gz -C ~/twigo && cd ~/twigo
   cp .env.production.example .env.production   # fill in, then docs/DEPLOYMENT.md sections 5-6
   ```

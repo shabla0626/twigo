@@ -209,7 +209,18 @@ Production never starts from a development or demonstration database. It starts 
    dc run --rm app npm run admin:create -- --email <owner email> --name "Founder"
    ```
 
-4. `dc up -d app`. The start is refused, with the reason (`dc logs app`), if any setting from
+4. Publish the eight legal documents. The founder confirmed on 23 November 2026 that a lawyer reviewed
+   them; this marks exactly the reviewed texts (checked by fingerprint) Approved, with the reviewer
+   statement, and then Published, and writes it to the audit log:
+
+   ```bash
+   dc run --rm app npm run legal:publish-reviewed -- --owner <owner email> \
+     --reviewed-by "<lawyer or law firm>" --reviewed-on <YYYY-MM-DD> --effective <YYYY-MM-DD>
+   ```
+
+   Add `--dry-run` first to see what would change. A text that is not the reviewed one is left as it is.
+
+5. `dc up -d app`. The start is refused, with the reason (`dc logs app`), if any setting from
    section 4 is missing, if no owner exists, or if an administrator with a test address exists.
 5. Sign in at `/login`; you are sent to `/account/security` to set up two-step
    verification (authenticator app) and save your recovery codes. Further

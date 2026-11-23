@@ -26,7 +26,7 @@ PORT=$PORT HOST=127.0.0.1 SITE_URL=http://127.0.0.1:$PORT LOCAL_PRODUCTION_TEST=
   AUTH_SECRET=walkthrough-secret-that-is-long-enough-0123456789 \
   DATABASE_URL="$DB" STORAGE_DIR=.walk-storage BACKUP_DIR=.walk-backups \
   BACKUP_ENCRYPTION_KEY=walkthrough-backup-key-that-is-long-enough-42 \
-  SMTP_HOST=127.0.0.1 SMTP_PORT=$MAILPORT SMTP_SECURE=false SMTP_USER= SMTP_PASSWORD= EMAIL_FROM=no-reply@demo.test SEND_APPLICANT_CONFIRMATION=true \
+  SMTP_HOST=127.0.0.1 SMTP_PORT=$MAILPORT SMTP_SECURE=false SMTP_USER= SMTP_PASSWORD= ORG_LEGAL_NAME= ORG_JURISDICTION= ORG_CONTACT_EMAIL= EMAIL_FROM=no-reply@demo.test SEND_APPLICANT_CONFIRMATION=true \
   JOBS_ENABLED=false NEXT_DIST_DIR=.next-e2e NODE_ENV=production \
   npx tsx server.ts --production > .walk-server.log 2>&1 &
 

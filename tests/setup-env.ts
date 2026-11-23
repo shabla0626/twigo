@@ -18,6 +18,10 @@ process.env.SMTP_PASSWORD = "";
 process.env.EMAIL_FROM = "";
 process.env.RESEND_WEBHOOK_SECRET = "";
 process.env.DEV_MAIL_CATCHER = "true";
+// Organization facts from the developer's .env must not leak into tests either.
+process.env.ORG_LEGAL_NAME = "";
+process.env.ORG_JURISDICTION = "";
+process.env.ORG_CONTACT_EMAIL = "";
 process.env.ADMIN_NOTIFICATION_EMAIL = "";
 process.env.ENCRYPTION_KEY = "test-encryption-key-different-from-auth-secret-123";
 process.env.STORAGE_DIR = path.join(os.tmpdir(), "cowork-test-storage");
