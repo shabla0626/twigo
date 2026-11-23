@@ -14,6 +14,7 @@ import { revokeUserSessions } from "@/lib/auth/session";
 import { consumeToken, describeTtl, issueToken } from "@/lib/auth/tokens";
 import { PRIVACY_NOTICE_VERSION } from "@/lib/validation/application";
 import { registerSchema } from "@/lib/validation/account";
+import { recordAcceptance, registrationDocuments } from "./legal";
 
 export const TERMS_VERSION = PRIVACY_NOTICE_VERSION;
 /** Minimum time between two verification emails for the same account. */
@@ -52,20 +53,36 @@ export async function registerAccount(raw: unknown, ctx: { ipHash: string }): Pr
     return { ok: true, email, mailStatus: res.status };
   }
 
+  // The form names the exact versions it showed. If a document changed meanwhile, the person
+  // must read the new text first: an acceptance is only recorded for the text that was shown.
+  const docs = await registrationDocuments();
+  const shownIds = new Set(parsed.data.legalVersions);
+  const current = [...docs.accept, ...docs.ack];
+  // (A request without version ids accepts the current versions, which are the ones the form shows.)
+  if (shownIds.size && current.some((d) => !shownIds.has(d.versionId))) {
+    return { ok: false, error: "One of the documents changed while you were filling in the form. Please read the current version and tick the boxes again." };
+  }
+  const termsVersion = docs.accept.map((d) => `${d.key} v${d.version}`).join(", ") || TERMS_VERSION;
+
   const passwordHash = await hashPassword(password);
   const now = new Date();
-  const user = await db.user
-    .create({
-      data: {
-        email,
-        name: fullName,
-        role: "MEMBER",
-        status: "ACTIVE",
-        passwordHash,
-        passwordChangedAt: now,
-        termsAcceptedAt: now,
-        termsVersion: TERMS_VERSION,
-      },
+  const user = await db
+    .$transaction(async (tx) => {
+      const created = await tx.user.create({
+        data: {
+          email,
+          name: fullName,
+          role: "MEMBER",
+          status: "ACTIVE",
+          passwordHash,
+          passwordChangedAt: now,
+          termsAcceptedAt: now,
+          termsVersion: termsVersion.slice(0, 190),
+        },
+      });
+      for (const d of docs.accept) await recordAcceptance({ userId: created.id, key: d.key, kind: "ACCEPTED", method: "registration", versionId: d.versionId }, tx);
+      for (const d of docs.ack) await recordAcceptance({ userId: created.id, key: d.key, kind: "ACKNOWLEDGED", method: "registration", versionId: d.versionId }, tx);
+      return created;
     })
     .catch((err: unknown) => {
       // Two simultaneous sign-ups with the same address: the database keeps exactly one.

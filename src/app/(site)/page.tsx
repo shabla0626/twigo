@@ -30,7 +30,7 @@ const WHO: { photo: PhotoId; glyph: GlyphName; title: string; body: string }[] =
     photo: "home-who-learning",
     glyph: "search",
     title: "Developing contributors",
-    body: "People who want to build new capabilities, starting with suitable entry-level assignments and taking on more as they gain experience.",
+    body: "People who want to build new capabilities, starting with simpler tasks in a group and taking on more as they gain experience.",
   },
 ];
 
@@ -39,8 +39,8 @@ export default async function HomePage() {
   const founding = c.announcement.enabled
     ? c.announcement
     : {
-        title: "We are recruiting our founding contributors",
-        body: "The organization is at its very beginning. We are looking for responsible, motivated people who want to help build a collaborative working environment.",
+        title: "We are welcoming our first members",
+        body: `${brand().name} is at its very beginning. We are looking for responsible, motivated people who want to help build a collaborative community.`,
       };
 
   return (
@@ -72,7 +72,7 @@ export default async function HomePage() {
               </ButtonLink>
             </div>
             <ul className="mt-8 flex flex-wrap gap-x-6 gap-y-2 text-sm font-medium text-ink-700">
-              {["No membership fees", "Fully remote", "Terms agreed in writing"].map((t) => (
+              {["No membership fees", "No commission on your projects", "Fully remote"].map((t) => (
                 <li key={t} className="flex items-center gap-2">
                   <IconCheck className="h-4 w-4 text-accent-700" />
                   {t}
@@ -115,8 +115,8 @@ export default async function HomePage() {
           no single person could deliver.
         </p>
         <p className="text-base text-ink-600">
-          This is not an investment club, a recruitment scheme or a job board. Income comes only from real products and services for real customers, and
-          nobody earns anything from recruiting other people.
+          This is not an employer, a recruitment agency, an investment or crowdfunding platform, or a job board. Income can only come from real products
+          and services that customers pay for, and nobody earns anything from recruiting other people.
         </p>
       </SplitSection>
 
@@ -175,14 +175,14 @@ export default async function HomePage() {
             </ul>
           </div>
           <div className="rounded-3xl border border-accent-100 bg-accent-50 p-6 sm:p-8">
-            <h3 className="text-xl font-semibold text-ink-950">Compensation from real work</h3>
+            <h3 className="text-xl font-semibold text-ink-950">Your group decides. {brand().name} takes nothing.</h3>
             <p className="mt-3 leading-7 text-ink-700">
-              Compensation comes from actual customer revenue and follows terms agreed in writing before each project begins,
-              considering the work performed, time invested, complexity, responsibility and quality.
+              Income comes only from real customers. Before commercial work begins, the members of each project agree in writing how its money is shared,
+              and each of them accepts that agreement. {brand().name} takes no commission, no percentage and no ownership share of project revenue.
             </p>
             <p className="mt-4 font-medium leading-7 text-ink-800">We do not promise guaranteed income, guaranteed projects or guaranteed earnings.</p>
             <Link href="/compensation" className="mt-6 inline-flex items-center gap-1.5 font-semibold text-accent-700 hover:text-accent-800">
-              How pay works <IconArrow className="h-4 w-4" />
+              How money works <IconArrow className="h-4 w-4" />
             </Link>
           </div>
         </div>
@@ -204,7 +204,7 @@ export default async function HomePage() {
       >
         <p>{founding.body}</p>
         <div className="text-base">
-          <CheckList items={["An honest picture of where things stand today", "A say in how the organization works", "Remote, flexible participation"]} />
+          <CheckList items={["An honest picture of where things stand today", "A say in how the community works", "Remote, voluntary participation"]} />
         </div>
         <div className="pt-2">
           <ButtonLink href="/founding-contributors">
@@ -220,8 +220,9 @@ export default async function HomePage() {
         <Container className="flex items-start gap-3 py-8 text-sm leading-6 text-ink-600">
           <IconDoc className="mt-0.5 h-5 w-5 shrink-0 text-ink-500" />
           <p>
-            Transparency note: the organization is in its founding stage. There is currently one founder, no established team
-            and no completed client projects. We will not publish testimonials, results or opportunities that do not exist.
+            Transparency note: {brand().name} is a newly established online community in its founding stage. There is currently one founder, no
+            established membership, no completed projects and no project revenue. {brand().name} is a brand and a community; its legal operator has not
+            yet been formally established. We will not publish testimonials, results or opportunities that do not exist.
           </p>
         </Container>
       </section>

@@ -4,12 +4,13 @@ import type { Prisma } from "@prisma/client";
 import { db } from "../db";
 import { env } from "../env";
 import { logger } from "../logger";
+import { brand } from "@/config/brand";
 import { defaultContent } from "./defaults";
 import { CONTENT_KEYS, contentSchemas, type ContentKey, type ContentValue, type SiteContentMap } from "./schema";
 
 export function defaults(): SiteContentMap {
   const e = env();
-  return defaultContent({ name: e.ORG_NAME, contactEmail: e.ORG_CONTACT_EMAIL });
+  return defaultContent({ name: e.ORG_NAME, contactEmail: e.ORG_CONTACT_EMAIL, tagline: brand().tagline });
 }
 
 /** Loads all site content, falling back to defaults for missing or invalid entries. */

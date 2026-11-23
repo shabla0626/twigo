@@ -78,13 +78,10 @@ async function main() {
     const { launchProblems } = await import("./src/ops/launch-checks");
     const found = await launchProblems(db);
     if (found.length) refuseToStart("the database is not ready for production", found);
-    // Passages that still wait for legally reviewed text are shown publicly as highlighted placeholders.
-    const { TEXT_PLACEHOLDERS } = await import("./src/config/launch-placeholders");
-    if (TEXT_PLACEHOLDERS.length) {
-      log("launch.placeholders_remaining", {
-        warning: `${TEXT_PLACEHOLDERS.length} passage(s) on the public legal pages still show a placeholder instead of reviewed text`,
-        passages: TEXT_PLACEHOLDERS.map((p) => p.what),
-      });
+    // Legal documents that are not yet reviewed and published are shown as clearly marked drafts.
+    const unpublished = await db.legalDocument.count({ where: { versions: { none: { status: "PUBLISHED" } } } });
+    if (unpublished) {
+      log("launch.legal_documents_unpublished", { warning: `${unpublished} legal document(s) have no reviewed, published version yet; they are shown as drafts awaiting legal review` });
     }
   }
 

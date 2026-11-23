@@ -41,13 +41,27 @@ export default async function ActivatePage({ params }: { params: Promise<{ token
             </Field>
             <PasswordFields label="Password" />
             <label className="flex items-start gap-3 text-sm text-ink-700">
-              <input type="checkbox" name="agree" required className="mt-1 h-4 w-4 rounded border-ink-300 text-accent-700" />
+              <input type="checkbox" name="acceptTerms" required className="mt-1 h-4 w-4 rounded border-ink-300 text-accent-700" />
+              <span>
+                I accept the{" "}
+                <Link href="/legal/terms" target="_blank" className="font-medium text-accent-700 underline">
+                  Terms of Use
+                </Link>{" "}
+                and the{" "}
+                <Link href="/legal/community-guidelines" target="_blank" className="font-medium text-accent-700 underline">
+                  Community Guidelines
+                </Link>
+                , and understand that membership does not guarantee paid work or income.
+              </span>
+            </label>
+            <label className="flex items-start gap-3 text-sm text-ink-700">
+              <input type="checkbox" name="ackPrivacy" required className="mt-1 h-4 w-4 rounded border-ink-300 text-accent-700" />
               <span>
                 I have read the{" "}
-                <Link href="/community-rules" target="_blank" className="font-medium text-accent-700 underline">
-                  community rules
-                </Link>{" "}
-                and understand that membership does not guarantee paid work or income.
+                <Link href="/legal/privacy" target="_blank" className="font-medium text-accent-700 underline">
+                  Privacy Policy
+                </Link>
+                .
               </span>
             </label>
           </ActionForm>

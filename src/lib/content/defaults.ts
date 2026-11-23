@@ -5,83 +5,90 @@ import type { SiteContentMap } from "./schema";
  * /admin/content; overrides are stored in the SiteContent table.
  * Organization name and contact email default to environment configuration.
  */
-export function defaultContent(org: { name: string; contactEmail: string }): SiteContentMap {
+export function defaultContent(org: { name: string; contactEmail: string; tagline?: string }): SiteContentMap {
   return {
     company: {
       name: org.name,
-      tagline: "Remote collaborative project work",
-      mission:
-        "We organize people with different skills and schedules into remote teams that deliver real products and services to real customers, and we share the resulting revenue fairly, according to transparent, agreed contribution arrangements.",
+      tagline: "An Online Collaborative Community",
+      mission: `${org.name} is an independent, remote-first online collaborative community where people come together to propose ideas, develop business opportunities, form voluntary project groups, and pursue income through meaningful contributions and cooperation.`,
     },
     hero: {
-      eyebrow: "Founding stage · Now inviting founding contributors",
-      headline: "Work Together. Create Value. Share the Results.",
+      eyebrow: "An Online Collaborative Community",
+      // The founder's approved slogan, word for word.
+      headline: org.tagline || "Together We Innovate, Grow & Opportunity",
       subheadline:
-        "Bring your abilities together with others, collaborate remotely, and create meaningful opportunities through shared effort.",
+        "Bring your ideas, skills, experience, and determination. Connect with other people, build project groups, explore opportunities, and create value through cooperation.",
     },
     announcement: {
       enabled: true,
-      title: "We are recruiting our founding contributors",
-      body:
-        "The organization is at its very beginning. There is no established team and no active client projects yet. We are looking for responsible, motivated people who want to help build a collaborative working environment from the ground up.",
+      title: "We are welcoming our first members",
+      body: `${org.name} is at its very beginning. There is no established membership and no active projects yet. We are looking for responsible, motivated people who want to build a collaborative community from the ground up.`,
     },
     contact: {
       email: org.contactEmail,
-      responseNote: "We read every message. As a small founding-stage organization, replies may take a few business days.",
+      responseNote: "We read every message. As a small, newly established community, replies may take a few business days.",
     },
     faq: {
       items: [
         {
           q: "Do I need to pay to join?",
-          a: "No. There are no membership fees, registration fees, joining fees, deposits or capital contributions of any kind, now or later. Participation is based on your willingness and ability to contribute work, not on money. If anyone ever asks you to pay to participate on our behalf, it is not us.",
+          a: `No. There are no membership fees, registration fees, joining fees, deposits or capital contributions of any kind, now or later. Participation is based on your willingness to contribute, not on money. ${org.name} welcomes voluntary support from people who want to help run the community, but it is never required and gives no special rights. If anyone asks you to pay to participate on our behalf, it is not us.`,
         },
         {
           q: "Is professional experience required?",
-          a: "Not for every role. Some projects need specialized professional skills, but many tasks, such as research, data organization, quality checking or administrative support, can be done by reliable people who are willing to learn. What we look for is responsibility, reliability and the ability to complete assigned work.",
+          a: "No. Some projects need specialized professional skills, but many tasks, such as research, data organization, quality checking or administrative support, can be done by reliable people who are willing to learn. What matters is responsibility, reliability and doing what you agreed to do.",
         },
         {
           q: "Can I participate while keeping my current job?",
-          a: "Yes. That is the primary model. Participants keep their existing jobs or main sources of income and contribute during the time they have available.",
+          a: "Yes. That is the expected way to take part. Members keep their existing jobs or main sources of income and contribute during the time they have available. Participation is voluntary: you decide what to join and when to step back.",
         },
         {
           q: "Is all work performed remotely?",
-          a: "Yes. The organization is designed to be fully remote. There is no requirement to work from a physical office.",
+          a: `Yes. ${org.name} is remote-first. There is no requirement to work from a physical office.`,
         },
         {
-          q: "How are projects assigned?",
-          a: "When a real business opportunity is secured, we identify the skills it requires and invite participants whose skills and availability fit. You can accept or decline. Nobody is assigned to a project without agreeing to its scope, responsibilities and compensation terms first.",
+          q: "How do projects start?",
+          a: "From members' ideas. Any member can propose an idea. When at least two members other than the author support it, a project group forms automatically. If the group finds a real opportunity, its members write a project agreement and every participant accepts it before commercial work begins. Nobody is assigned to a project: you choose what to join.",
         },
         {
           q: "How is compensation determined?",
-          a: "Before each project begins, the people involved agree in writing on the scope of work, responsibilities and compensation terms. Compensation reflects the work actually performed, time invested, complexity and responsibility, quality of deliverables and the previously agreed terms. The revenue a customer pays for a project is disclosed to the people who work on it. Project expenses and any organizational fee are agreed in writing beforehand as well; there is no fixed organizational percentage and there are no undisclosed deductions. Compensation is paid from actual customer revenue, after the customer has paid.",
+          a: `The participants of each project decide it together, in writing, before commercial work begins: equal shares, shares based on contribution, role-based pay, fixed payments, or another arrangement they all accept. The agreement also records who contracts with the customer, who receives the customer's payment, which expenses are approved, how net revenue is calculated and when each person is paid. ${org.name} takes no commission, percentage or ownership share of project revenue, and never deducts anything.`,
         },
         {
           q: "Is income guaranteed?",
-          a: "No. We do not promise guaranteed income, guaranteed projects or guaranteed earnings. Compensation depends on securing real business opportunities, completing the work, the customer paying, and the written agreement for that project.",
+          a: "No. Joining does not guarantee a project, customers or income. Income depends on real opportunities, customer demand, completed work, the customer paying, and the agreement the participants accepted.",
         },
         {
-          q: "What happens if no suitable project is currently available?",
-          a: "Your application stays on file and you may be placed on a waitlist. We will contact you when an opportunity that matches your skills and availability arises. You have no obligation in the meantime.",
+          q: "Who owns my idea?",
+          a: `You do. Posting an idea does not transfer its ownership to ${org.name}. Ideas are visible to all approved members, so they are not confidential: share only what you are comfortable sharing. Ownership of anything a project creates is agreed by its participants before the work begins. See the Intellectual Property Policy.`,
+        },
+        {
+          q: "What happens if no suitable project is available?",
+          a: "Nothing is lost and you owe nothing. You can propose ideas, support other members' ideas, and join or leave groups whenever it suits you.",
         },
         {
           q: "Can beginners participate?",
-          a: "Yes, where suitable entry-level tasks exist. Beginners may start with simpler assignments and take on more as they gain experience. We do not currently offer formal paid training; if that changes, it will be announced here.",
+          a: "Yes. Beginners can start with simpler tasks in a group and take on more as they gain experience. There is no formal paid training at the moment; if that changes, it will be announced here.",
         },
         {
           q: "How much time should I contribute?",
-          a: "It depends on you and on the project. You tell us how many hours per week you can realistically offer, and project responsibilities are agreed with that in mind. Reliability matters more than volume: it is better to commit to a few hours and deliver consistently.",
+          a: "It depends on you and on the project. Responsibilities in a project agreement are set with each person's availability in mind. Reliability matters more than volume: it is better to commit to a few hours and deliver consistently.",
         },
         {
-          q: "How are responsibilities assigned?",
-          a: "Each project defines roles and responsibilities up front. They are matched to participants based on skills, experience and availability, and they are confirmed with each person before the project starts.",
+          q: "Who decides responsibilities?",
+          a: "The participants of each project, in the project agreement. Roles and responsibilities are matched to skills and availability and accepted by each person before the project starts.",
         },
         {
-          q: "Can participants work on multiple projects?",
-          a: "Yes, if your availability allows it and you can meet your commitments on each. We will check workload before proposing an additional project.",
+          q: "Can I work on several projects?",
+          a: "Yes, if your availability allows it and you can meet your commitments on each. Each project has its own agreement.",
         },
         {
           q: "What happens if I need to leave a project?",
-          a: "Tell the project coordinator as early as possible so the work can be handed over responsibly. How completed work is compensated when someone leaves is covered in the written agreement for that project.",
+          a: "Tell the other participants as early as possible so the work can be handed over responsibly. What happens to work already done is set in that project's agreement; leaving does not by itself cancel compensation you earned under it.",
+        },
+        {
+          q: `What is ${org.name} Community Support?`,
+          a: `A way for members and supporters to help pay for running and improving the community, if they want to. It is entirely optional, separate from all project earnings, never deducted automatically, and gives no extra rights, votes or priority. Online contributions are not available yet.`,
         },
       ],
     },

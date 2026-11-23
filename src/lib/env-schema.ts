@@ -24,7 +24,7 @@ export const envSchema = z.object({
   BACKUP_DIR: z.string().default("backups"),
   BACKUP_KEEP: z.coerce.number().int().min(1).max(365).default(14),
   BACKUP_ENCRYPTION_KEY: z.string().default(""),
-  ORG_NAME: z.string().default("CoWork"),
+  ORG_NAME: z.string().default("Twigo"),
   ORG_TAGLINE: z.string().default("Work Together. Create Value. Share the Results."),
   EMAIL_FROM_NAME: z.string().default(""),
   ORG_LEGAL_NAME: z.string().default(""),

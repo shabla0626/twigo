@@ -12,7 +12,7 @@ import { pageMetadata } from "@/lib/seo";
 export const metadata = pageMetadata(
   "/how-it-works",
   "How It Works",
-  "How joining, sharing ideas, research groups and paid projects work, in three simple parts.",
+  "How joining, sharing ideas, project groups and member-led projects work, in three simple parts.",
 );
 
 type Step = { title: string; body: string };
@@ -37,7 +37,7 @@ const PHASES: Phase[] = [
     id: "phase-2",
     label: "Part 2",
     title: "Share ideas and research them together",
-    summary: "Opportunities come from members, not only from the founder.",
+    summary: "Opportunities come from members' own ideas.",
     photo: "how-discussion",
     glyph: "clipboard",
     tone: "blue",
@@ -45,21 +45,21 @@ const PHASES: Phase[] = [
       { title: "Propose a business idea", body: "Any member can describe an opportunity in a few sentences. A business plan is not needed." },
       { title: "Support the ideas you like", body: "When two members other than the author support an idea, a research group is created automatically. Supporters become its first members." },
       { title: "Research together", body: "Each group has its own chat, shared notes and a to-do list, and holds its meetings through Google Meet. Anyone can join or leave a group at any time." },
-      { title: "Ask for a review", body: "When the group has a credible plan, it asks the organization to review it." },
+      { title: "Plan a project", body: "When the group finds a real opportunity, it creates a project and drafts the agreement for it. The group decides; nobody needs permission from the platform." },
     ],
   },
   {
     id: "phase-3",
     label: "Part 3",
     title: "Agree in writing, deliver and get paid",
-    summary: "Paid work only starts after a written agreement. Pay comes from real customers.",
+    summary: "Paid work only starts after every participant has accepted the project agreement. Money comes from real customers.",
     photo: "how-collaboration",
     glyph: "briefcase",
     tone: "gray",
     steps: [
-      { title: "Agree before any work begins", body: "For an approved project, roles, deadlines and pay are agreed in writing. You can accept or decline." },
+      { title: "Agree before any work begins", body: "The participants record scope, roles, who contracts with the customer, who receives payment, expenses and how revenue is shared. Each of them accepts it, or declines." },
       { title: "Work together and deliver", body: "The team works remotely and delivers to the customer." },
-      { title: "Get paid as agreed", body: "After the customer has paid, pay is settled according to the written agreement for that project." },
+      { title: "Get paid as agreed", body: "After the customer has paid, the agreed payment recipient pays each participant under the accepted agreement. The platform takes nothing." },
     ],
   },
 ];
@@ -154,17 +154,17 @@ export default function HowItWorksPage() {
           {[
             {
               title: "No guarantees",
-              body: "Submitting an application does not guarantee acceptance, project assignment or income. Project availability depends on securing real customer work.",
+              body: "Joining does not guarantee a project, customers or income. Income depends on real opportunities, customer demand, completed work and the arrangements the participants agree.",
               tone: "bg-amber-50 border-amber-200",
             },
             {
               title: "Written agreement first",
-              body: "No participant begins project work without knowing and agreeing in writing to the scope, responsibilities, compensation and applicable conditions.",
+              body: "No participant begins commercial work without knowing and accepting the scope, responsibilities, compensation and other terms of the project agreement.",
               tone: "bg-white border-ink-100",
             },
             {
-              title: "No fees at any stage",
-              body: "At no point in this process will you be asked to pay a fee, make a deposit or invest money.",
+              title: "No fees, no commission",
+              body: "You will never be asked to pay a fee, make a deposit or invest money, and the platform takes no commission on project revenue.",
               tone: "bg-white border-ink-100",
             },
           ].map((c, i) => (

@@ -264,6 +264,6 @@ describe("site content", () => {
   it("ignores invalid stored overrides", async () => {
     await db.siteContent.create({ data: { key: "hero", value: { headline: 123 } } });
     const c = await getSiteContent();
-    expect(c.hero.headline).toMatch(/work together/i);
+    expect(c.hero.headline).toBe("Together We Innovate, Grow & Opportunity");
   });
 });

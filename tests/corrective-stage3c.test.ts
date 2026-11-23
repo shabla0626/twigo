@@ -47,7 +47,7 @@ describe("P3-19: one rule for email addresses", () => {
     const fresh = await db.user.create({ data: { email: "fresh@example.test", name: "Fresh", role: "MEMBER", status: "ACTIVE", passwordHash: "x" } });
     for (const sample of SAMPLES) {
       const expected = normalizeEmail(sample) !== null;
-      const base = { fullName: "Ada Example", password: "a-strong-password-1", confirm: "a-strong-password-1", agree: true };
+      const base = { fullName: "Ada Example", password: "a-strong-password-1", confirm: "a-strong-password-1", acceptTerms: true, acceptGuidelines: true, ackPrivacy: true };
       expect(registerSchema.safeParse({ ...base, email: sample }).success, `sign-up: ${sample}`).toBe(expected);
       expect(loginSchema.safeParse({ email: sample, password: "x" }).success, `sign-in: ${sample}`).toBe(expected);
       expect(contactSchema.shape.email.safeParse(sample).success, `contact: ${sample}`).toBe(expected);
@@ -156,7 +156,7 @@ describe("P3-17: confirmation links", () => {
   });
 
   it("after sign-up the address is not part of the page address", async () => {
-    const to = await redirectOf(registerAction(undefined, form({ fullName: "Ada Example", email: "ada@example.test", password: "a-strong-password-1", confirm: "a-strong-password-1", agree: "on" })));
+    const to = await redirectOf(registerAction(undefined, form({ fullName: "Ada Example", email: "ada@example.test", password: "a-strong-password-1", confirm: "a-strong-password-1", acceptTerms: "on", acceptGuidelines: "on", ackPrivacy: "on" })));
     expect(to.startsWith("/verify-email?sent=1")).toBe(true);
     expect(to).not.toContain("ada");
     expect(to).not.toContain("email=");

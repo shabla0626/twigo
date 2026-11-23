@@ -1,23 +1,33 @@
+import Link from "next/link";
 import { Photo } from "@/components/photos/photo";
 import { CheckList } from "@/components/site/blocks";
 import { Card, Notice, PageHeader, Section, SectionHeading } from "@/components/ui/primitives";
 import { BalanceVisual } from "@/components/visuals/illustrations";
 import { RevenueFlow } from "@/components/visuals/revenue-flow";
+import { brand } from "@/config/brand";
 import { pageMetadata } from "@/lib/seo";
 
 export const metadata = pageMetadata(
   "/compensation",
-  "Compensation and Transparency",
-  "How compensation is determined: transparently, from actual project revenue, according to terms agreed in writing before work begins.",
+  "Money and Fairness",
+  "No fees, no commission: the members of each project decide in writing, before commercial work begins, how its revenue is shared.",
 );
 
+const ARRANGEMENTS = [
+  ["Equal distribution", "Net project revenue is divided equally between the participants."],
+  ["By contribution", "Shares follow each person's agreed contribution, for example work delivered or time invested."],
+  ["By role", "Each role has its own agreed pay or share, reflecting complexity and responsibility."],
+  ["Fixed payments", "Some or all participants receive an agreed fixed amount for their part."],
+] as const;
+
 export default function CompensationPage() {
+  const name = brand().name;
   return (
     <>
       <PageHeader
         eyebrow="Pay & fairness"
-        title="Fair results from real work"
-        intro="Participants contribute their abilities and effort to actual business projects. Compensation is determined transparently according to agreed responsibilities, work performed, and project contribution."
+        title="Your project, your agreement"
+        intro={`${name} does not employ members, contract with customers or take a share of project money. The members of each project agree in writing, before commercial work begins, how that project's revenue is shared.`}
         visual={
           <Photo
             id="compensation-header"
@@ -34,29 +44,24 @@ export default function CompensationPage() {
         <SectionHeading
           id="flow-heading"
           eyebrow="Follow the money"
-          title="From customer revenue to fair distribution"
-          intro="Compensation comes only from real customer work. This is the order in which it happens on every project."
+          title="From a customer's payment to each participant"
+          intro="Project money only comes from real customers. At every step, the participants' accepted agreement decides what happens."
         />
         <div className="mt-12">
           <RevenueFlow />
         </div>
       </Section>
 
-      {/* Factors */}
+      {/* Arrangements */}
       <Section tone="blue" labelledBy="factors-heading">
         <SectionHeading
           id="factors-heading"
-          eyebrow="Individual contributions"
-          title="How compensation is determined"
-          intro="Every project is different, so terms are set per project. The written agreement for a project considers:"
+          eyebrow="The group decides"
+          title="Ways a project can share its revenue"
+          intro={`${name} does not impose a formula or a percentage. These are common choices; the participants may also agree another arrangement, as long as every one of them accepts it.`}
         />
         <div className="mt-10 grid gap-6 sm:grid-cols-2 lg:grid-cols-4">
-          {[
-            ["Work performed", "The actual tasks and deliverables each person completes."],
-            ["Time invested", "The time required for the assigned responsibilities."],
-            ["Complexity & responsibility", "The difficulty of the work and the level of responsibility carried."],
-            ["Quality & contribution", "Quality of deliverables and individual contribution to project completion."],
-          ].map(([t, b], i) => (
+          {ARRANGEMENTS.map(([t, b], i) => (
             <Card key={t}>
               <span className="text-sm font-semibold text-accent-700">{String(i + 1).padStart(2, "0")}</span>
               <h3 className="mt-2 font-semibold text-ink-950">{t}</h3>
@@ -71,20 +76,19 @@ export default function CompensationPage() {
         <div className="grid gap-6 lg:grid-cols-2">
           <div className="rounded-3xl border border-accent-100 bg-accent-50 p-6 sm:p-8">
             <h2 id="commit-heading" className="text-2xl font-semibold text-ink-950">
-              What we commit to
+              What {name} commits to
             </h2>
             <div className="mt-6">
               <CheckList
                 items={[
-                  "No membership fee is required, ever.",
-                  "No initial financial contribution or investment is required.",
-                  "The revenue a customer pays for a project is disclosed to the people who work on that project.",
-                  "Project expenses, any organizational fee, and each person's compensation are agreed in writing before commercial work begins.",
-                  "There is no fixed organizational percentage.",
-                  "What is distributed follows actual contributions and those agreements.",
-                  "There are no undisclosed deductions.",
-                  "Compensation is paid from actual customer revenue for the project.",
-                  "Each participant's compensation terms are private between them and the organization.",
+                  "No membership fee, ever.",
+                  "No mandatory investment or capital contribution.",
+                  `No commission, percentage or ownership share of project revenue for ${name}.`,
+                  `No automatic deductions: ${name} never collects, holds or distributes project money.`,
+                  "Before commercial work begins, the participants record who contracts with the customer, who receives payment, which expenses are approved, how net revenue is calculated and how it is shared.",
+                  "Every participant must accept the agreement. Changing it creates a new version that the participants accept again.",
+                  "A project's revenue and expenses are disclosed to its participants.",
+                  `Voluntary support for ${name} is separate and never comes out of project earnings.`,
                 ]}
               />
             </div>
@@ -97,7 +101,7 @@ export default function CompensationPage() {
                 items={[
                   "Guaranteed income or earnings.",
                   "Guaranteed projects or a minimum amount of work.",
-                  "Fixed percentages or rates published in advance for all projects.",
+                  `That ${name} will find customers for you.`,
                   "Payment for recruiting other people. No one is rewarded for recruitment.",
                 ]}
               />
@@ -112,23 +116,32 @@ export default function CompensationPage() {
           <SectionHeading id="source-heading" eyebrow="Timing" title="Paid after the customer pays" />
           <div className="space-y-4 text-lg leading-8 text-ink-700">
             <p>
-              The organization earns revenue only by delivering products or services that customers pay for. The money available
-              for compensation on a project depends on that project&apos;s economics: what the customer pays, and the direct costs
-              of delivering the work.
+              Project money exists only when a customer pays for delivered work. The participants decide who contracts with the customer and who receives
+              the payment: for example one project representative, each participant directly for their own part, or a separately established project
+              entity. Naming someone coordinator does not, by itself, make them everyone&apos;s legal representative.
             </p>
             <p>
-              Because of this, compensation can only be settled after the customer has paid. The agreement for each project
-              states how and when this happens, and what applies if a customer pays late, pays partially, or a project is
+              Their agreement states when each person is paid and what happens if a customer pays late, pays partially, asks for a refund, or the project is
               cancelled.
             </p>
             <p>
-              We intentionally do not offer an &ldquo;income calculator&rdquo;. Any estimate made before a real project exists
-              would be speculation.
+              We do not offer an &ldquo;income calculator&rdquo;. Any estimate made before a real project exists would be speculation.
             </p>
-            <Notice tone="warn" title="Before any project begins">
-              Each participant receives the scope of work, responsibilities, deadlines, compensation terms and applicable
-              conditions, and agrees to them in writing. If something is unclear, ask before you start.
+            <Notice tone="warn" title="Before commercial work begins">
+              Each participant reviews the project agreement in {name} (scope, responsibilities, contracting party, payment recipient, expenses, revenue
+              formula, payment schedule, intellectual property, confidentiality, withdrawal and disputes) and accepts it. Some arrangements need legal or tax
+              advice; the project can be marked as needing that review.
             </Notice>
+            <p className="text-base">
+              Details:{" "}
+              <Link href="/legal/participation-compensation" className="font-medium text-accent-700 underline underline-offset-2">
+                Participation and Compensation Policy
+              </Link>{" "}
+              ·{" "}
+              <Link href="/support" className="font-medium text-accent-700 underline underline-offset-2">
+                Voluntary community support
+              </Link>
+            </p>
           </div>
         </div>
       </Section>

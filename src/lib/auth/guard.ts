@@ -66,7 +66,18 @@ export async function hasPermission(permission: Permission): Promise<boolean> {
 export async function requireVerifiedUser(next?: string): Promise<SessionUser> {
   const user = await requireUser(next);
   if (!user.emailVerified) redirect("/verify-email");
+  await requireCurrentAgreements(user.id);
   return user;
+}
+
+/**
+ * When a reviewed, published version of the Terms, the Guidelines or the Privacy Policy asks everyone
+ * to accept again, applicant and member pages lead to the page where that is done first. The admin
+ * area is not blocked, so the owner can always correct a publication.
+ */
+async function requireCurrentAgreements(userId: string) {
+  const { pendingReacceptance } = await import("@/server/legal");
+  if ((await pendingReacceptance(userId)).length) redirect("/legal/review");
 }
 
 /**
@@ -79,6 +90,7 @@ export async function requireMember(next = "/community"): Promise<SessionUser & 
   const user = await requireUser(next);
   if (!user.communityAccess) redirect(await destinationFor(user));
   if (!user.displayName) redirect("/community/welcome");
+  await requireCurrentAgreements(user.id);
   return user as SessionUser & { displayName: string };
 }
 

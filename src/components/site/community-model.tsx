@@ -1,9 +1,10 @@
 import Link from "next/link";
+import { brand } from "@/config/brand";
 import { IconArrow } from "../ui/icons";
 import { Section, SectionHeading } from "../ui/primitives";
 import { Reveal } from "../visuals/reveal";
 
-const STEPS = [
+const steps = (name: string) => [
   ["Join and apply", "Create a free account, then tell us about your skills and the time you have. A person reviews every application."],
   ["Share and support ideas", "Members propose business ideas and support the ones they would like to investigate."],
   [
@@ -12,12 +13,13 @@ const STEPS = [
   ],
   [
     "Agree before any paid work",
-    "Promising ideas are reviewed by the organization. Paid work only starts after a written agreement, and pay comes from real customers.",
+    `The project's members write down scope, roles and how money is shared, and each of them accepts it, before commercial work begins. ${name} takes no share.`,
   ],
 ] as const;
 
 /** The whole journey in four plain steps: join → ideas → groups → agreed paid work. */
 export function JourneySteps({ tone = "white" as "blue" | "white" | "gray" | "soft", showLink = true }) {
+  const STEPS = steps(brand().name);
   return (
     <Section tone={tone} labelledBy="journey-heading">
       <div className="flex flex-col justify-between gap-6 md:flex-row md:items-end">

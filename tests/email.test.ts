@@ -105,7 +105,7 @@ describe("email delivery (integration, local test mail server)", () => {
     await signIn(owner.id, "OWNER");
 
     // 1. Welcome + email verification (sent on registration).
-    const reg = await registerAccount({ fullName: "Ada Applicant", email: "applicant@example.test", password: "a-long-password-123", confirm: "a-long-password-123", agree: true }, { ipHash: "ip-1" });
+    const reg = await registerAccount({ fullName: "Ada Applicant", email: "applicant@example.test", password: "a-long-password-123", confirm: "a-long-password-123", acceptTerms: true, acceptGuidelines: true, ackPrivacy: true }, { ipHash: "ip-1" });
     expect(reg.ok && reg.mailStatus).toBe("sent");
     const verification = link(lastMailTo("applicant@example.test").text, "/verify-email");
     expect(verification).toBeTruthy();

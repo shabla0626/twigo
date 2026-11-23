@@ -7,24 +7,24 @@ import { pageMetadata } from "@/lib/seo";
 export const metadata = pageMetadata(
   "/about",
   "About Us",
-  "Why the organization exists, the challenges it addresses, and its commitment to fair, transparent remote collaboration.",
+  "Why this online collaborative community exists, the challenges it addresses, and its commitment to fair, transparent cooperation.",
 );
 
 const PHILOSOPHY = [
   ["Contribution, not capital", "Participation is based on willingness and ability to work, never on how much money someone has."],
   ["Every role matters", "Specialist skills are valuable, and so is careful, reliable operational work. Both are needed to deliver for customers."],
-  ["Agreements before work", "Nobody should start a project without knowing its scope, responsibilities and compensation terms."],
-  ["Honesty over hype", "We describe the organization as it actually is, including what does not exist yet."],
+  ["Agreements before work", "Nobody should start a project without knowing and accepting its scope, responsibilities and compensation terms."],
+  ["Honesty over hype", "We describe the community as it actually is, including what does not exist yet."],
   ["Accountability", "Fairness requires clear standards. Reliability, quality and honest communication are expected of everyone."],
   ["Respect", "People of every age, background and level of experience are treated as equal contributors."],
 ] as const;
 
 const PRIORITIES = [
-  "Recruit a small group of responsible, motivated founding contributors.",
-  "Understand the combined skills and availability of that group.",
-  "Identify and validate real, revenue-generating business opportunities.",
-  "Deliver first projects well, under clear written agreements.",
-  "Grow gradually as real projects and revenue allow.",
+  "Welcome a small group of responsible, motivated founding members.",
+  "Help members discover each other's skills and availability.",
+  "Support groups in finding and testing real, revenue-generating opportunities.",
+  "Make sure every project starts with a clear agreement that all its participants accept.",
+  "Grow gradually as real projects allow.",
 ];
 
 export default async function AboutPage() {
@@ -33,7 +33,7 @@ export default async function AboutPage() {
     <>
       <PageHeader
         eyebrow="About us"
-        title="Why this organization exists"
+        title="Why this community exists"
         intro={c.company.mission}
         visual={
           <Photo
@@ -66,8 +66,8 @@ export default async function AboutPage() {
               content, support and coordination. A single individual rarely covers all of that well.
             </p>
             <p>
-              {c.company.name} was established to close that gap: to organize people with complementary abilities into remote
-              teams that can take on real projects together, and to share the resulting revenue fairly.
+              {c.company.name} was established to close that gap: a place where people with complementary abilities can meet, form
+              groups and take on real projects together, on terms they agree among themselves.
             </p>
           </div>
         </div>
@@ -93,9 +93,9 @@ export default async function AboutPage() {
           <div>
             <SectionHeading id="today-heading" eyebrow="Honestly, today" title="An initiative in its founding stage" />
             <p className="mt-5 text-lg leading-8 text-ink-700">
-              The organization was conceived by one founder, who is responsible for establishing and managing it during this
-              initial period. There is not yet an established team of participants, and there are no completed client projects
-              to point to.
+              {c.company.name} was conceived by one founder, who is responsible for establishing and managing it during this
+              initial period. It is currently a brand and an online community; its legal operator and jurisdiction have not yet
+              been formally confirmed. There is not yet an established membership, and there are no completed projects to point to.
             </p>
           </div>
           <div>
@@ -127,8 +127,8 @@ export default async function AboutPage() {
               results justify it.
             </p>
             <p>
-              Whatever its size, the organization intends to remain fair and transparent: clear agreements, documented
-              distribution rules, and respect for everyone&apos;s contribution.
+              Whatever its size, {c.company.name} intends to remain fair and transparent: no fees, no commission on members&apos;
+              projects, agreements decided by the people who do the work, and open reporting of any voluntary support it receives.
             </p>
           </div>
         </div>

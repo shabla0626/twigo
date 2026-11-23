@@ -257,6 +257,9 @@
   .prose-body ul {
     @apply mt-4 list-disc space-y-2 pl-6 text-ink-700;
   }
+  .prose-body ol {
+    @apply mt-4 list-decimal space-y-2 pl-6 text-ink-700;
+  }
   .prose-body li {
     @apply leading-7;
   }

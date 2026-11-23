@@ -4,7 +4,7 @@
 import { readdirSync, readFileSync, statSync } from "node:fs";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
-import { outstandingLaunchItems, SETTING_PLACEHOLDER_USES, TEXT_PLACEHOLDERS } from "@/config/launch-placeholders";
+import { outstandingLaunchItems } from "@/config/launch-placeholders";
 
 function files(dir: string, out: string[] = []): string[] {
   for (const name of readdirSync(dir)) {
@@ -18,22 +18,21 @@ const read = (p: string) => readFileSync(p, "utf8");
 const SITE = files("src/app/(site)");
 const text = (p: string) => read(p);
 
-describe("P2-20: every public placeholder is known and listed for the owner", () => {
-  it("the list matches the placeholders that are really in the public pages", () => {
-    const uses = SITE.reduce((n, f) => n + (text(f).match(/<Placeholder>/g)?.length ?? 0), 0);
-    expect(uses).toBe(TEXT_PLACEHOLDERS.length + SETTING_PLACEHOLDER_USES);
+describe("P2-20 (updated for Twigo): no unfinished placeholder is public; open points are listed for the owner", () => {
+  it("no public page or component shows a bracketed placeholder", () => {
+    const offenders = [...SITE, ...files("src/components/site"), ...files("src/content/legal")].filter((f) => /<Placeholder>|\[(Company Name|Legal Address|Legal entity name|Jurisdiction)\]/.test(text(f)));
+    expect(offenders).toEqual([]);
   });
 
-  it("with nothing supplied all ten items are listed; supplying the three settings leaves the legal texts", () => {
-    const nothing = outstandingLaunchItems({ legalName: "", jurisdiction: "", contactEmail: "" });
-    expect(nothing).toHaveLength(TEXT_PLACEHOLDERS.length + 3);
-    expect(nothing.map((i) => i.what)).toEqual(expect.arrayContaining(["Legal name of the organization", "Governing law and jurisdiction", "Official contact email address"]));
-    const set = outstandingLaunchItems({ legalName: "Organization LLC", jurisdiction: "Somewhere", contactEmail: "hello@organization.org" });
-    expect(set).toEqual(TEXT_PLACEHOLDERS);
-    for (const item of nothing) {
-      expect(item.pages.length).toBeGreaterThan(0);
-      for (const page of item.pages) expect(page.href.startsWith("/")).toBe(true);
-    }
+  it("the owner's list names every unconfirmed notice and every unpublished document", () => {
+    const items = outstandingLaunchItems({
+      legalDocs: [{ key: "terms", title: "Terms of Use", status: "PENDING_LEGAL_REVIEW" }, { key: "cookies", title: "Cookie Policy", status: "PUBLISHED" }],
+      unconfirmedNotices: ["Legal operator name", "Jurisdiction"],
+      contactEmail: "",
+    });
+    expect(items.map((i) => i.what)).toEqual(["Legal operator name not confirmed", "Jurisdiction not confirmed", "Official contact email address", "Terms of Use: legal review and publication"]);
+    for (const item of items) for (const page of item.pages) expect(page.href.startsWith("/")).toBe(true);
+    expect(outstandingLaunchItems({ legalDocs: [{ key: "terms", title: "Terms of Use", status: "PUBLISHED" }], unconfirmedNotices: [], contactEmail: "a@b.example" })).toEqual([]);
   });
 });
 
@@ -42,15 +41,18 @@ describe("P2-19: the public revenue explanation says what was decided, and nothi
   const flow = text("src/components/visuals/revenue-flow.tsx");
   const faq = text("src/lib/content/defaults.ts");
 
-  it("states disclosure, prior written agreement of expenses and fees, and no fixed percentage", () => {
-    expect(page).toContain("The revenue a customer pays for a project is disclosed to the people who work on that project.");
-    expect(page).toContain("Project expenses, any organizational fee, and each person's compensation are agreed in writing before commercial work begins.");
-    expect(page).toContain("There is no fixed organizational percentage.");
-    expect(page).toContain("What is distributed follows actual contributions and those agreements.");
-    expect(page).toContain("There are no undisclosed deductions.");
-    expect(flow).toContain("Agreed expenses and fees");
+  // Founder's Twigo decision (23 November 2026) replaces decision 3: the platform takes no commission at all;
+  // the participants of each project decide how its revenue is shared.
+  it("states no fee, no commission, no automatic deduction, and that the participants decide", () => {
+    expect(page).toContain("No membership fee, ever.");
+    expect(page).toContain("No commission, percentage or ownership share of project revenue for ${name}.");
+    expect(page).toContain("No automatic deductions: ${name} never collects, holds or distributes project money.");
+    expect(page).toContain("Every participant must accept the agreement.");
+    expect(page).toContain("Voluntary support for ${name} is separate and never comes out of project earnings.");
     expect(flow).toContain("Nothing else is deducted.");
-    expect(faq).toContain("there is no fixed organizational percentage and there are no undisclosed deductions");
+    expect(flow).toContain("receives nothing");
+    expect(faq).toContain("takes no commission, percentage or ownership share of project revenue, and never deducts anything");
+    for (const source of [page, flow, faq]) expect(source).not.toMatch(/organizational fee|organizational percentage/);
   });
 
   it("publishes no percentage and no amount", () => {

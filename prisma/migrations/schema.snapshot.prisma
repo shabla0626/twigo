@@ -4,11 +4,11 @@
 // tables except the published-project summary fields.
 
 generator client {
-  provider   = "prisma-client-js"
+  provider        = "prisma-client-js"
   // Rust-free client: queries run through the node-postgres driver adapter.
   // No native query-engine DLL is generated (it crashes on some Windows
   // builds and gets locked by running processes).
-  engineType = "client"
+  engineType      = "client"
   // Loads related records (user + profile, group + members, ...) in ONE SQL
   // query with JOINs instead of one query per relation: fewer database round trips.
   previewFeatures = ["relationJoins"]
@@ -177,36 +177,45 @@ model User {
   createdAt             DateTime            @default(now())
   updatedAt             DateTime            @updatedAt
 
-  participant       Participant?             @relation(fields: [participantId], references: [id], onDelete: SetNull)
-  applicant         Applicant?
-  notes             ApplicationNote[]
-  auditLogs         AuditLog[]
-  sessions          Session[]
-  tokens            AccountToken[]
-  recoveryCodes     RecoveryCode[]
-  profile           MemberProfile?
-  ideas             BusinessIdea[]
-  ideaRevisions     IdeaRevision[]
-  endorsements      IdeaEndorsement[]
-  comments          Comment[]
-  discussions       GroupDiscussion[]
-  memberships       GroupMembership[]
-  announcements     GroupAnnouncement[]
-  messages          ChatMessage[]
-  readStates        ChannelReadState[]
-  files             StoredFile[]
-  meetingsStarted   GroupMeeting[]
-  attendance        MeetingAttendance[]
-  researchNotes     ResearchNote[]
-  tasksAssigned     ResearchTask[]           @relation("TaskAssignee")
-  tasksCreated      ResearchTask[]           @relation("TaskCreator")
-  decisions         GroupDecision[]
-  links             GroupLink[]
-  notifications     Notification[]
-  notificationPrefs NotificationPreference[]
-  reports           ContentReport[]          @relation("Reporter")
-  reportsResolved   ContentReport[]          @relation("Resolver")
-  emailsSent        EmailDelivery[]
+  participant            Participant?                  @relation(fields: [participantId], references: [id], onDelete: SetNull)
+  applicant              Applicant?
+  notes                  ApplicationNote[]
+  auditLogs              AuditLog[]
+  sessions               Session[]
+  tokens                 AccountToken[]
+  recoveryCodes          RecoveryCode[]
+  profile                MemberProfile?
+  ideas                  BusinessIdea[]
+  ideaRevisions          IdeaRevision[]
+  endorsements           IdeaEndorsement[]
+  comments               Comment[]
+  discussions            GroupDiscussion[]
+  memberships            GroupMembership[]
+  announcements          GroupAnnouncement[]
+  messages               ChatMessage[]
+  readStates             ChannelReadState[]
+  files                  StoredFile[]
+  meetingsStarted        GroupMeeting[]
+  attendance             MeetingAttendance[]
+  researchNotes          ResearchNote[]
+  tasksAssigned          ResearchTask[]                @relation("TaskAssignee")
+  tasksCreated           ResearchTask[]                @relation("TaskCreator")
+  decisions              GroupDecision[]
+  links                  GroupLink[]
+  notifications          Notification[]
+  notificationPrefs      NotificationPreference[]
+  reports                ContentReport[]               @relation("Reporter")
+  reportsResolved        ContentReport[]               @relation("Resolver")
+  emailsSent             EmailDelivery[]
+  // Twigo: legal acceptances, group-led project agreements, privacy requests
+  legalAcceptances       LegalAcceptance[]
+  legalVersionsCreated   LegalDocumentVersion[]        @relation("LegalVersionCreator")
+  projectsCoordinated    GroupProject[]                @relation("ProjectCoordinator")
+  projectsCreated        GroupProject[]                @relation("ProjectCreator")
+  agreementVersions      ProjectAgreementVersion[]
+  agreementParticipation ProjectAgreementParticipant[]
+  privacyRequests        PrivacyRequest[]              @relation("PrivacyRequester")
+  privacyRequestsHandled PrivacyRequest[]              @relation("PrivacyHandler")
 
   @@index([role, status])
   @@index([membershipStatus])
@@ -685,6 +694,7 @@ enum NotificationType {
   DISCUSSION_REPLY
   ADMIN_MESSAGE
   IDEA_CHANGED
+  PROJECT_AGREEMENT
 }
 
 enum ReportTarget {
@@ -704,6 +714,8 @@ enum ReportReason {
   UNAUTHORIZED_SOLICITATION
   ILLEGAL_ACTIVITY
   PRIVACY_VIOLATION
+  INTELLECTUAL_PROPERTY
+  DISPUTE
   OTHER
 }
 
@@ -727,28 +739,32 @@ enum EmailStatus {
 }
 
 model BusinessIdea {
-  id               String       @id @default(cuid())
-  authorId         String?
-  title            String
-  summary          String
-  description      String?
-  problem          String?
-  proposal         String?
-  customers        String?
-  revenueModel     String?
-  skillsNeeded     String?
-  timeEstimate     String?
-  links            String[]
-  category         IdeaCategory
-  status           IdeaStatus   @default(OPEN)
-  endorsementCount Int          @default(0)
-  commentCount     Int          @default(0)
-  lastActivityAt   DateTime     @default(now())
-  editedAt         DateTime?
-  removedAt        DateTime?
-  removedReason    String?
-  createdAt        DateTime     @default(now())
-  updatedAt        DateTime     @updatedAt
+  id                    String       @id @default(cuid())
+  authorId              String?
+  title                 String
+  summary               String
+  description           String?
+  problem               String?
+  proposal              String?
+  customers             String?
+  revenueModel          String?
+  skillsNeeded          String?
+  timeEstimate          String?
+  // Added for Twigo: what the work would involve, first objectives, how the author would like to collaborate.
+  expectedActivities    String?
+  objectives            String?
+  collaborationApproach String?
+  links                 String[]
+  category              IdeaCategory
+  status                IdeaStatus   @default(OPEN)
+  endorsementCount      Int          @default(0)
+  commentCount          Int          @default(0)
+  lastActivityAt        DateTime     @default(now())
+  editedAt              DateTime?
+  removedAt             DateTime?
+  removedReason         String?
+  createdAt             DateTime     @default(now())
+  updatedAt             DateTime     @updatedAt
 
   author       User?             @relation(fields: [authorId], references: [id], onDelete: SetNull)
   endorsements IdeaEndorsement[]
@@ -861,6 +877,7 @@ model ResearchGroup {
   links         GroupLink[]
   files         StoredFile[]
   project       Project?
+  groupProjects GroupProject[]
 
   @@index([status, lastActivityAt])
   @@index([category])
@@ -954,7 +971,7 @@ model ChatMessage {
   replyToId String?
   editedAt  DateTime?
   deletedAt DateTime?
-  createdAt DateTime  @default(now())
+  createdAt DateTime        @default(now())
 
   channel     GroupChannel  @relation(fields: [channelId], references: [id], onDelete: Cascade)
   replyTo     ChatMessage?  @relation("MessageReplies", fields: [replyToId], references: [id], onDelete: SetNull)
@@ -1214,4 +1231,252 @@ model JobRun {
   error      String?
 
   @@index([job, startedAt])
+}
+
+// ================================================================ Twigo: legal documents
+
+/// Life cycle of one version of a legal document. A generated or edited text starts as DRAFT
+/// or PENDING_LEGAL_REVIEW; only the owner can mark it APPROVED (after a legal review) and then
+/// PUBLISHED. Publishing a version marks the previously published one SUPERSEDED.
+enum LegalDocumentStatus {
+  DRAFT
+  PENDING_LEGAL_REVIEW
+  APPROVED
+  PUBLISHED
+  SUPERSEDED
+}
+
+/// ACCEPTED: a person agreed to a document (Terms, Guidelines, Group Participation Agreement).
+/// ACKNOWLEDGED: a person confirmed they received and read it (Privacy Policy). Not consent.
+enum AcceptanceKind {
+  ACCEPTED
+  ACKNOWLEDGED
+}
+
+model LegalDocument {
+  id        String   @id @default(cuid())
+  key       String   @unique
+  title     String
+  summary   String
+  sortOrder Int      @default(0)
+  createdAt DateTime @default(now())
+
+  versions LegalDocumentVersion[]
+}
+
+/// The text of one version never changes after it leaves DRAFT; contentHash is the SHA-256
+/// fingerprint of exactly that text.
+model LegalDocumentVersion {
+  id                   String              @id @default(cuid())
+  documentId           String
+  version              Int
+  status               LegalDocumentStatus @default(DRAFT)
+  content              String
+  contentHash          String
+  changeSummary        String?
+  materialChange       Boolean             @default(false)
+  requiresReacceptance Boolean             @default(false)
+  effectiveDate        DateTime?
+  createdById          String?
+  createdAt            DateTime            @default(now())
+  submittedAt          DateTime?
+  approvedAt           DateTime?
+  approvedById         String?
+  approvalNote         String?
+  publishedAt          DateTime?
+  publishedById        String?
+  supersededAt         DateTime?
+
+  document    LegalDocument     @relation(fields: [documentId], references: [id], onDelete: Restrict)
+  createdBy   User?             @relation("LegalVersionCreator", fields: [createdById], references: [id], onDelete: SetNull)
+  acceptances LegalAcceptance[]
+
+  @@unique([documentId, version])
+  @@index([documentId, status])
+}
+
+model LegalAcceptance {
+  id          String         @id @default(cuid())
+  userId      String
+  versionId   String
+  documentKey String
+  version     Int
+  contentHash String
+  kind        AcceptanceKind
+  /// How it was given: registration, activation, reacceptance, group-join, idea-support.
+  method      String
+  /// For group-join / idea-support: the group or idea id.
+  context     String?
+  acceptedAt  DateTime       @default(now())
+
+  user         User                 @relation(fields: [userId], references: [id], onDelete: Cascade)
+  legalVersion LegalDocumentVersion @relation(fields: [versionId], references: [id], onDelete: Restrict)
+
+  @@index([userId, documentKey])
+  @@index([versionId])
+}
+
+// ================================================================ Twigo: member-led projects and agreements
+
+enum GroupProjectStatus {
+  PLANNING
+  AGREEMENT_PENDING
+  ACTIVE
+  COMPLETED
+  CANCELLED
+}
+
+enum ProjectAgreementStatus {
+  DRAFT
+  OPEN
+  ACCEPTED
+  SUPERSEDED
+  WITHDRAWN
+}
+
+/// A project created by a group. The platform is not a party to it and takes no share of its revenue.
+model GroupProject {
+  id               String             @id @default(cuid())
+  groupId          String
+  name             String
+  objective        String
+  status           GroupProjectStatus @default(PLANNING)
+  coordinatorId    String?
+  needsLegalReview Boolean            @default(false)
+  legalReviewNote  String?
+  createdById      String?
+  createdAt        DateTime           @default(now())
+  updatedAt        DateTime           @updatedAt
+  activatedAt      DateTime?
+  closedAt         DateTime?
+
+  group       ResearchGroup             @relation(fields: [groupId], references: [id], onDelete: Restrict)
+  coordinator User?                     @relation("ProjectCoordinator", fields: [coordinatorId], references: [id], onDelete: SetNull)
+  createdBy   User?                     @relation("ProjectCreator", fields: [createdById], references: [id], onDelete: SetNull)
+  versions    ProjectAgreementVersion[]
+
+  @@index([groupId])
+}
+
+/// One version of a project agreement. `terms` holds the structured answers; `content` is the
+/// readable text built from them, and `contentHash` its fingerprint. Neither changes after DRAFT.
+model ProjectAgreementVersion {
+  id          String                 @id @default(cuid())
+  projectId   String
+  version     Int
+  status      ProjectAgreementStatus @default(DRAFT)
+  terms       Json
+  content     String
+  contentHash String
+  changeNote  String?
+  createdById String?
+  createdAt   DateTime               @default(now())
+  openedAt    DateTime?
+  acceptedAt  DateTime?
+  closedAt    DateTime?
+
+  project      GroupProject                  @relation(fields: [projectId], references: [id], onDelete: Restrict)
+  createdBy    User?                         @relation(fields: [createdById], references: [id], onDelete: SetNull)
+  participants ProjectAgreementParticipant[]
+
+  @@unique([projectId, version])
+}
+
+model ProjectAgreementParticipant {
+  id                   String    @id @default(cuid())
+  versionId            String
+  userId               String?
+  displayName          String
+  role                 String?
+  responsibilities     String
+  expectedContribution String?
+  compensation         String
+  acceptedAt           DateTime?
+  acceptedHash         String?
+  declinedAt           DateTime?
+  declineNote          String?
+  withdrewAt           DateTime?
+  withdrawalNote       String?
+
+  version ProjectAgreementVersion @relation(fields: [versionId], references: [id], onDelete: Restrict)
+  user    User?                   @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@unique([versionId, userId])
+  @@index([userId])
+}
+
+// ================================================================ Twigo: voluntary community support
+
+/// Records kept by the owner. Individual entries are never public; only published report totals are.
+enum SupportEntryKind {
+  CONTRIBUTION
+  OPERATING_EXPENSE
+  DEVELOPMENT_EXPENSE
+  OTHER_EXPENSE
+}
+
+model SupportLedgerEntry {
+  id              String           @id @default(cuid())
+  kind            SupportEntryKind
+  amountMinor     Int
+  currency        String
+  occurredOn      DateTime
+  description     String
+  contributorName String?
+  createdById     String?
+  createdAt       DateTime         @default(now())
+
+  @@index([occurredOn])
+}
+
+model SupportReport {
+  id          String    @id @default(cuid())
+  title       String
+  periodStart DateTime
+  periodEnd   DateTime
+  currency    String
+  note        String?
+  /// Totals frozen when the report is published (contributions, expenses by kind, balance).
+  totals      Json?
+  published   Boolean   @default(false)
+  publishedAt DateTime?
+  createdById String?
+  createdAt   DateTime  @default(now())
+}
+
+// ================================================================ Twigo: privacy requests
+
+enum PrivacyRequestKind {
+  ACCESS
+  CORRECTION
+  DELETION
+  WITHDRAW_CONSENT
+  OBJECTION
+  OTHER
+}
+
+enum PrivacyRequestStatus {
+  OPEN
+  IN_PROGRESS
+  COMPLETED
+  REJECTED
+}
+
+model PrivacyRequest {
+  id          String               @id @default(cuid())
+  userId      String?
+  email       String
+  kind        PrivacyRequestKind
+  details     String
+  status      PrivacyRequestStatus @default(OPEN)
+  response    String?
+  createdAt   DateTime             @default(now())
+  updatedAt   DateTime             @updatedAt
+  handledById String?
+  handledAt   DateTime?
+
+  user      User? @relation("PrivacyRequester", fields: [userId], references: [id], onDelete: SetNull)
+  handledBy User? @relation("PrivacyHandler", fields: [handledById], references: [id], onDelete: SetNull)
+
+  @@index([status, createdAt])
 }

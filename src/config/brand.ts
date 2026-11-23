@@ -7,6 +7,8 @@
 
 export type Brand = {
   name: string;
+  /** What kind of organization it is, in a few words ("An Online Collaborative Community"). */
+  identity: string;
   legalName: string;
   tagline: string;
   /** Short description used for SEO / social sharing defaults. */
@@ -22,7 +24,7 @@ export type Brand = {
 
 export function brand(): Brand {
   const e = process.env;
-  const name = e.ORG_NAME || "CoWork";
+  const name = e.ORG_NAME || "Twigo";
   const siteUrl = e.SITE_URL || "http://localhost:3000";
   let domain = "";
   try {
@@ -32,10 +34,11 @@ export function brand(): Brand {
   }
   return {
     name,
+    identity: "An Online Collaborative Community",
     legalName: e.ORG_LEGAL_NAME || "",
-    tagline: e.ORG_TAGLINE || "Work Together. Create Value. Share the Results.",
-    description:
-      "A founding-stage, fully remote organization where members propose business ideas, form research groups and build legitimate projects together. No fees. No guaranteed income.",
+    // The founder's approved slogan, kept word for word.
+    tagline: e.ORG_TAGLINE || "Together We Innovate, Grow & Opportunity",
+    description: `${name} is an independent, remote-first online collaborative community where people come together to propose ideas, develop business opportunities, form voluntary project groups, and pursue income through meaningful contributions and cooperation. No fees. No guaranteed income.`,
     siteUrl,
     domain,
     contactEmail: e.ORG_CONTACT_EMAIL || "",

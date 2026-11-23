@@ -1,6 +1,8 @@
 "use server";
 
 import { redirect } from "next/navigation";
+import { REGISTRATION_ACCEPT, REGISTRATION_ACK } from "@/content/legal";
+import { recordAcceptance } from "@/server/legal";
 import { PENDING_EMAIL_COOKIE } from "@/lib/auth/constants";
 import { cookies } from "next/headers";
 import { z } from "zod";
@@ -73,7 +75,16 @@ export async function registerAction(_prev: FormState, fd: FormData): Promise<Fo
   // Honeypot: real people never fill this hidden field.
   if (String(fd.get("website") ?? "")) redirect("/verify-email?sent=1");
   const res = await registerAccount(
-    { fullName: fd.get("fullName"), email: fd.get("email"), password: fd.get("password"), confirm: fd.get("confirm"), agree: fd.get("agree") === "on" },
+    {
+      fullName: fd.get("fullName"),
+      email: fd.get("email"),
+      password: fd.get("password"),
+      confirm: fd.get("confirm"),
+      acceptTerms: fd.get("acceptTerms") === "on",
+      acceptGuidelines: fd.get("acceptGuidelines") === "on",
+      ackPrivacy: fd.get("ackPrivacy") === "on",
+      legalVersions: fd.getAll("legalVersion").map(String),
+    },
     { ipHash: (await ctx()).ipHash },
   );
   if (!res.ok) return { error: res.error, fieldErrors: res.fieldErrors };
@@ -158,9 +169,13 @@ export async function activateAction(_prev: FormState, fd: FormData): Promise<Fo
   const token = String(fd.get("token") ?? "");
   const password = String(fd.get("password") ?? "");
   if (password !== String(fd.get("confirm") ?? "")) return { error: "The two passwords do not match." };
-  if (fd.get("agree") !== "on") return { error: "Please confirm that you have read the community rules." };
+  if (fd.get("acceptTerms") !== "on") return { error: "Please accept the Terms of Use and the Community Guidelines." };
+  if (fd.get("ackPrivacy") !== "on") return { error: "Please confirm that you have read the Privacy Policy." };
   const res = await activateAccount(token, { password, displayName: String(fd.get("displayName") ?? "") });
   if (!res.ok) return { error: res.error };
+  // The versions current at this moment are the ones the person was shown.
+  for (const key of REGISTRATION_ACCEPT) await recordAcceptance({ userId: res.userId, key, kind: "ACCEPTED", method: "activation" });
+  for (const key of REGISTRATION_ACK) await recordAcceptance({ userId: res.userId, key, kind: "ACKNOWLEDGED", method: "activation" });
   const s = await createSession(res.userId, res.role, await ctx());
   await setSessionCookie(s.token, s.expiresAt);
   redirect(res.role === "MEMBER" ? "/continue" : "/account/security?required=2fa");

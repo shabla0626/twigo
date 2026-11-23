@@ -120,9 +120,8 @@ export default async function ParticipationPage() {
         <div className="mt-8">
           {opportunities.length === 0 ? (
             <Notice>
-              There are no confirmed project opportunities published at the moment. The organization is recruiting its founding
-              contributors first. You are welcome to apply; we will contact suitable applicants when real opportunities become
-              available.
+              There are no confirmed project opportunities published at the moment. The community is welcoming its first members.
+              Projects start from members&apos; own ideas and groups; you are welcome to join and take part.
             </Notice>
           ) : (
             <ul className="grid gap-6 md:grid-cols-2">

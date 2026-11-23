@@ -56,8 +56,8 @@ export function SiteFooter({
             © {year} {legalName || orgName}. All rights reserved.
           </p>
           <p>
-            Fully remote · Contribution-based · Transparent
-            {showPhotoNote && <span className="block sm:inline"> · Photographs are illustrative and do not depict members of the organization.</span>}
+            Voluntary · No fees · No commission · Transparent
+            {showPhotoNote && <span className="block sm:inline"> · Photographs are illustrative and do not depict members of the community.</span>}
           </p>
         </Container>
       </div>

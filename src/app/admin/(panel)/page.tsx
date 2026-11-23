@@ -2,6 +2,8 @@ import Link from "next/link";
 import { AdminHeader, Panel, StatCard, fmtDate } from "@/components/admin/ui";
 import { Badge } from "@/components/ui/primitives";
 import { outstandingLaunchItems } from "@/config/launch-placeholders";
+import { legalIndex } from "@/server/legal";
+import { unconfirmedNotices } from "@/server/legal-notices";
 import { requireAdmin } from "@/lib/auth/guard";
 import { can } from "@/lib/auth/permissions";
 import { getSiteContent } from "@/lib/content";
@@ -50,7 +52,11 @@ export default async function OverviewPage() {
     { n: openInquiries, one: "open customer inquiry", many: "open customer inquiries", href: "/admin/inquiries", perm: "inquiries.manage" as const },
   ].filter((w) => w.n > 0 && can(admin.role, w.perm));
 
-  const launch = outstandingLaunchItems({ legalName: e.ORG_LEGAL_NAME, jurisdiction: e.ORG_JURISDICTION, contactEmail: content.contact.email || e.ORG_CONTACT_EMAIL });
+  const launch = outstandingLaunchItems({
+    legalDocs: (await legalIndex()).map((d) => ({ key: d.key, title: d.title, status: d.version.status })),
+    unconfirmedNotices: await unconfirmedNotices(),
+    contactEmail: content.contact.email || e.ORG_CONTACT_EMAIL,
+  });
 
   return (
     <>
@@ -111,11 +117,11 @@ export default async function OverviewPage() {
 
         <Panel title={`Before launch (${launch.length} open)`}>
           {launch.length === 0 ? (
-            <p className="text-sm text-ink-600">Nothing is open: the public pages show no placeholder.</p>
+            <p className="text-sm text-ink-600">Nothing is open: every legal document is published and every legal notice is confirmed.</p>
           ) : (
             <>
               <p className="text-sm leading-6 text-ink-700">
-                The public pages never invent missing facts. Where something is missing they show a highlighted placeholder. These are still open:
+                The public pages never invent missing facts; where something is not yet confirmed, they say so in plain words. These are still open:
               </p>
               <ul className="mt-3 space-y-3 text-sm">
                 {launch.map((item) => (

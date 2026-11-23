@@ -11,10 +11,18 @@ const PATHS = [
   "/faq",
   "/contact",
   "/work-with-us",
-  "/community-rules",
+  "/support",
   "/join",
-  "/privacy",
-  "/terms",
+  "/legal",
+  "/legal/terms",
+  "/legal/privacy",
+  "/legal/community-guidelines",
+  "/legal/intellectual-property",
+  "/legal/participation-compensation",
+  "/legal/group-participation",
+  "/legal/cookies",
+  "/legal/community-support",
+  "/legal/notices",
 ];
 
 export default function sitemap(): MetadataRoute.Sitemap {

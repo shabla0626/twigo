@@ -34,12 +34,13 @@ describe("labels stay in sync with Prisma enums", () => {
 });
 
 describe("registration and application validation", () => {
-  const ok = { fullName: "Ada Example", email: "  Ada@Example.TEST ", password: "a-long-password-1", confirm: "a-long-password-1", agree: true };
+  const ok = { fullName: "Ada Example", email: "  Ada@Example.TEST ", password: "a-long-password-1", confirm: "a-long-password-1", acceptTerms: true, acceptGuidelines: true, ackPrivacy: true };
 
   it("registration accepts valid input, normalizes the email and requires consent and matching passwords", () => {
     const r = registerSchema.safeParse(ok);
     expect(r.success && r.data.email).toBe("ada@example.test");
-    expect(registerSchema.safeParse({ ...ok, agree: false }).success).toBe(false);
+    // Three separate statements: each one is required on its own.
+    for (const k of ["acceptTerms", "acceptGuidelines", "ackPrivacy"]) expect(registerSchema.safeParse({ ...ok, [k]: false }).success, k).toBe(false);
     expect(registerSchema.safeParse({ ...ok, confirm: "different-password-1" }).success).toBe(false);
     expect(registerSchema.safeParse({ ...ok, email: "nope" }).success).toBe(false);
     expect(registerSchema.safeParse({ ...ok, fullName: "" }).success).toBe(false);
@@ -172,7 +173,8 @@ describe("content and honesty guards", () => {
 
   it("FAQ covers the required questions", () => {
     const qs = content.faq.items.map((i) => i.q.toLowerCase()).join("\n");
-    for (const q of ["pay to join", "professional experience", "current job", "remotely", "projects assigned", "compensation determined", "income guaranteed", "no suitable project", "beginners", "how much time", "responsibilities assigned", "multiple projects", "leave a project"]) {
+    // Twigo: projects start from members' ideas (nobody assigns them), and two questions were added.
+    for (const q of ["pay to join", "professional experience", "current job", "remotely", "how do projects start", "compensation determined", "income guaranteed", "no suitable project", "beginners", "how much time", "who decides responsibilities", "several projects", "leave a project", "who owns my idea", "community support"]) {
       expect(qs).toContain(q);
     }
   });

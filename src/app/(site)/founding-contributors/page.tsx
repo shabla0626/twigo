@@ -18,7 +18,7 @@ export default async function FoundingContributorsPage() {
     <>
       <PageHeader
         eyebrow="Founding contributors"
-        title="Help build the organization from the ground up"
+        title="Help build the community from the ground up"
         intro={c.announcement.body}
         actions={
           <>
@@ -48,8 +48,8 @@ export default async function FoundingContributorsPage() {
             <SectionHeading id="invitation-heading" eyebrow="An honest invitation" title="Joining now means joining at the very beginning." />
             <div className="mt-5 space-y-4 text-lg leading-8 text-ink-700">
               <p>
-                There is no established team to slot into and no list of paid projects waiting. Founding contributors help
-                shape how the organization works: its processes, standards and first projects.
+                There is no established membership to slot into and no list of paid projects waiting. Founding members help
+                shape how the community works: its processes, standards and first projects.
               </p>
               <p>
                 That also means patience. It will take time to secure and deliver the first real projects, and we cannot say
@@ -65,7 +65,7 @@ export default async function FoundingContributorsPage() {
                   "Fully remote participation from wherever you are",
                   "Flexible availability that fits around your current job",
                   "A place for different levels of professional experience",
-                  "A real say in how the organization develops",
+                  "A real say in how the community develops",
                   "Shared responsibility and honest communication",
                   "Fair, written compensation terms before any project work",
                   "No joining fees, capital contributions or investments, ever",

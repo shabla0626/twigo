@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { Card, PageHeader, Placeholder, Section } from "@/components/ui/primitives";
+import { Card, PageHeader, Section } from "@/components/ui/primitives";
 import { getSiteContent } from "@/lib/content";
 import { issueFormToken } from "@/lib/security";
 import { pageMetadata } from "@/lib/seo";
@@ -10,7 +10,7 @@ import { Photo } from "@/components/photos/photo";
 export const metadata = pageMetadata(
   "/contact",
   "Contact",
-  "Contact the organization about participating, business inquiries or general questions.",
+  "Contact us about participating, business inquiries or general questions.",
 );
 
 export const dynamic = "force-dynamic";
@@ -49,7 +49,7 @@ export default async function ContactPage() {
                     {c.contact.email}
                   </a>
                 ) : (
-                  <Placeholder>Official contact email to be confirmed</Placeholder>
+                  <span className="text-sm leading-6 text-ink-600">An email address will be published once it is confirmed. Until then, please use the form.</span>
                 )}
               </p>
               {c.contact.responseNote && <p className="mt-3 text-sm leading-6 text-ink-600">{c.contact.responseNote}</p>}

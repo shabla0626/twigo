@@ -29,6 +29,7 @@ export const NOTIFICATION_TYPES: Record<NotificationType, { label: string; email
   DISCUSSION_REPLY: { label: "Replies in group discussions I started", emailDefault: false },
   ADMIN_MESSAGE: { label: "Messages from the organization", emailDefault: true },
   IDEA_CHANGED: { label: "Changes to ideas I support", emailDefault: true },
+  PROJECT_AGREEMENT: { label: "Project agreements I take part in (new versions, acceptances)", emailDefault: true },
 };
 
 export type NotifyInput = {

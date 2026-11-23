@@ -6,7 +6,7 @@ import { Reveal } from "../visuals/reveal";
 
 export function CtaBand({
   title = "Help build something worthwhile from the beginning.",
-  body = "Create a free account and tell us about your skills and availability. Applications are reviewed individually; applying does not guarantee acceptance, project assignment or income.",
+  body = "Create a free account and tell us about your skills and availability. Every application is read by a person; joining does not guarantee a project or income.",
 }: {
   title?: string;
   body?: string;

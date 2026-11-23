@@ -16,7 +16,7 @@ import { getMyApplication, saveApplicationStep, submitMyApplication, withdrawMyA
 import { changeUnverifiedEmail, registerAccount, sendVerificationEmail, verifyEmailToken } from "@/server/onboarding";
 import { PASSWORD, applicationAnswers, cookieJar, createApplicantAccount, createLegacyApplication, createMember, createUser, resetDb, signIn, submitTestApplication } from "./helpers";
 
-const NEW = { fullName: "Nora New", email: "nora@example.test", password: "a-long-password-123", confirm: "a-long-password-123", agree: true };
+const NEW = { fullName: "Nora New", email: "nora@example.test", password: "a-long-password-123", confirm: "a-long-password-123", acceptTerms: true, acceptGuidelines: true, ackPrivacy: true };
 const ip = (n = "ip-1") => ({ ipHash: n });
 
 /** What the session layer says about a user right now (what every page, API and socket checks). */
@@ -59,9 +59,9 @@ describe("account registration", () => {
   });
 
   it("rejects invalid input with friendly field errors and creates nothing", async () => {
-    const bad = await registerAccount({ ...NEW, email: "not-an-email", confirm: "different-123456", agree: false }, ip());
+    const bad = await registerAccount({ ...NEW, email: "not-an-email", confirm: "different-123456", acceptTerms: false }, ip());
     expect(bad.ok).toBe(false);
-    if (!bad.ok) expect(Object.keys(bad.fieldErrors ?? {})).toEqual(expect.arrayContaining(["email", "confirm", "agree"]));
+    if (!bad.ok) expect(Object.keys(bad.fieldErrors ?? {})).toEqual(expect.arrayContaining(["email", "confirm", "acceptTerms"]));
     const weak = await registerAccount({ ...NEW, password: "short1", confirm: "short1" }, ip());
     expect(!weak.ok && weak.fieldErrors?.password?.[0]).toMatch(/at least 12/);
     expect(await db.user.count()).toBe(0);

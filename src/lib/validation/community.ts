@@ -144,6 +144,8 @@ export const REPORT_REASONS = {
   UNAUTHORIZED_SOLICITATION: "Unauthorized solicitation or advertising",
   ILLEGAL_ACTIVITY: "Illegal business activity",
   PRIVACY_VIOLATION: "Privacy or confidentiality violation",
+  INTELLECTUAL_PROPERTY: "Uses someone else's work without permission",
+  DISPUTE: "A dispute between members (for example about a project or its agreement)",
   OTHER: "Something else",
 } as const;
 
