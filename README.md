@@ -19,6 +19,7 @@ Twigo transformation report: **[docs/TWIGO-IMPLEMENTATION-REPORT.md](docs/TWIGO-
 Phase 1 status, test evidence and open items: **[docs/PHASE-1-REPORT.md](docs/PHASE-1-REPORT.md)**.
 Architecture: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md). Deployment and costs:
 [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md).
+One click from Windows: `.\deploy-twigo.ps1` ([docs/ONE-CLICK-DEPLOYMENT.md](docs/ONE-CLICK-DEPLOYMENT.md)).
 
 ## What's included
 

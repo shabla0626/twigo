@@ -8,11 +8,14 @@ bash ~/Server/deploy-twigo.sh
 
 ## 1. Upload three files (from this computer)
 
-From the project folder on Windows (PowerShell), upload the script, the release archive and its
-checksum into `~/Server/` on the VPS:
+Easiest: in the project folder on Windows, run `.\deploy-twigo.ps1`. It checks the release, uploads the
+three files below and runs the command above ([ONE-CLICK-DEPLOYMENT.md](ONE-CLICK-DEPLOYMENT.md)).
+
+By hand, from the project folder on Windows (PowerShell): upload the script, the release archive and its
+checksum, as named in `release/release-manifest.json`, into `~/Server/` on the VPS:
 
 ```powershell
-scp release/deploy-twigo.sh release/twigo-rc3-2026-11-23.tar.gz release/twigo-rc3-2026-11-23.tar.gz.sha256 shabla@162.35.23.106:~/Server/
+scp release/deploy-twigo.sh release/<release>.tar.gz release/<release>.tar.gz.sha256 shabla@162.35.23.106:~/Server/
 ```
 
 The VPS then looks like this (`.env.production` is yours and stays where it is):
@@ -20,8 +23,8 @@ The VPS then looks like this (`.env.production` is yours and stays where it is):
 ```
 /home/shabla/Server/
     deploy-twigo.sh
-    twigo-rc3-2026-11-23.tar.gz
-    twigo-rc3-2026-11-23.tar.gz.sha256
+    <release>.tar.gz
+    <release>.tar.gz.sha256
     twigo/
         .env.production
 ```

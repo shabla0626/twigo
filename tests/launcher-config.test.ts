@@ -51,7 +51,8 @@ describe("one-click launcher (deploy-twigo.ps1)", () => {
   it("runs the existing server script with the exact archive and keeps its exit code", () => {
     expect(launcher).toContain('TWIGO_ARCHIVE="$D/$A" bash "$D/deploy-twigo.sh"');
     expect(launcher).toContain('if [ "$rc" -ne 0 ]; then exit "$rc"; fi');
-    expect(launcher).toMatch(/Show-Summary \$rc\n\s+exit \$rc\n/);
+    expect(launcher).toMatch(/Show-Summary \$rc\n\s+Exit-Launcher \$rc\n/);
+    expect(launcher).toMatch(/function Exit-Launcher\(\[int\]\$Code\) \{[\s\S]*?\n  exit \$Code\n\}/);
     expect(launcher).toContain("sha256sum -c -");
   });
 

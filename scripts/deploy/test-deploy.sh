@@ -186,8 +186,9 @@ else result fail "failed health check (exit $rc)"; tail -30 "$ROOT/last-run.txt"
 # A closed SSH session sends SIGHUP to the whole session; here: to the script's own process group, once the
 # build has started (after the swap). The run must stop, put the previous version back and keep it serving.
 pack "$ROOT/base" twigo-test-hup.tar.gz
+: > "$ROOT/last-run.txt"   # the previous run's output must not count as "step 6 reached"
 setsid bash "$SERVER/deploy-twigo.sh" > "$ROOT/last-run.txt" 2>&1 < /dev/null & DPID=$!
-for _ in $(seq 1 1500); do said "[6/10]" && break; sleep 0.2; done
+for _ in $(seq 1 1500); do grep -qF "[6/10]" "$ROOT/last-run.txt" && break; sleep 0.2; done
 PGID="$(ps -o pgid= -p "$DPID" | tr -d ' ')"
 [[ -n "$PGID" ]] && kill -HUP -- "-$PGID"
 wait "$DPID"; rc=$?

@@ -100,13 +100,25 @@ function Show-Summary([int]$Code) {
   }
 }
 
+# Started from File Explorer (right-click, Run with PowerShell), the window would close at once: keep it
+# open until Enter so the summary can be read. From a PowerShell window nothing waits.
+function Exit-Launcher([int]$Code) {
+  $fromExplorer = $false
+  try {
+    $parentId = (Get-CimInstance Win32_Process -Filter "ProcessId=$PID" -ErrorAction Stop).ParentProcessId
+    $fromExplorer = ((Get-Process -Id $parentId -ErrorAction Stop).ProcessName -eq "explorer")
+  } catch { $fromExplorer = $false }
+  if ($fromExplorer) { Write-Host ""; [void](Read-Host "Press Enter to close this window") }
+  exit $Code
+}
+
 function Stop-Launcher([int]$Code, [string]$Stage, [string]$Message, [string[]]$Help = @()) {
   $S.Stage = $Stage
   Write-Host ""
   Write-Host "      FAILED: $Message" -ForegroundColor Red
   foreach ($h in $Help) { if ($h) { Write-Host "      $h" } }
   Show-Summary $Code
-  exit $Code
+  Exit-Launcher $Code
 }
 
 # ---------------------------------------------------------------------------------------------- tools
@@ -417,7 +429,7 @@ try {
     $S.Stage = ""
     $S.Files = "none (check only): $scriptName, $archiveName, $sumName"
     Show-Summary 0
-    exit 0
+    Exit-Launcher 0
   }
 
   # ============================================================ 2. SSH connection and server folder
@@ -505,13 +517,14 @@ echo TWIGO_PROBE_END
   $scpOpts = @()
   if ($SshConfigFile) { $scpOpts += @("-F", $SshConfigFile) }
   $scpOpts += @("-o", "ConnectTimeout=20", "-o", "ServerAliveInterval=15", "-o", "ServerAliveCountMax=8")
-  # Relative names from the release folder: exactly these three files, nothing else.
-  $up = Invoke-Tool $scp ($scpOpts + @($scriptName, $archiveName, $sumName, "${Target}:$RemoteDir/.twigo-upload/")) -WorkDir $ReleaseDir
+  Write-Info "$([math]::Round($archiveBytes / 1MB, 1)) MB in total; scp shows its progress below."
+  # Relative names from the release folder: exactly these three files, nothing else. Live, so scp's own
+  # progress and any error message appear directly.
+  $up = Invoke-Tool $scp ($scpOpts + @($scriptName, $archiveName, $sumName, "${Target}:$RemoteDir/.twigo-upload/")) -WorkDir $ReleaseDir -Live
   if ($up.Code -ne 0) {
-    $kind = Get-SshProblem $up.Err
-    $why = if ($kind -eq "auth") { "the server refused the sign-in during the upload" } elseif ($kind -eq "hostkey") { "the host key was not accepted" } else { "the copy did not complete" }
-    $S.Files = "upload FAILED ($why); nothing was deployed"
-    Stop-Launcher 8 $stage "The upload failed: $why (scp exit $($up.Code))." (@(Get-ErrorLines ($up.Err + $up.Out)) + @("Nothing was deployed. Run again; if it keeps failing, see docs\ONE-CLICK-DEPLOYMENT.md."))
+    $S.Files = "upload FAILED (scp exit $($up.Code)); nothing was deployed"
+    Stop-Launcher 8 $stage "The upload failed (scp exit $($up.Code)); scp's own message is shown above." @(
+      "Nothing was deployed. Run again; if it keeps failing, see docs\ONE-CLICK-DEPLOYMENT.md, section 4.")
   }
   $S.Files = "$scriptName, $archiveName, $sumName (uploaded; checked on the server before use)"
   Write-Ok "uploaded $scriptName, $archiveName ($([math]::Round($archiveBytes / 1MB, 1)) MB), $sumName"
@@ -558,7 +571,7 @@ exit 9
       }
     }
     Show-Summary 0
-    exit 0
+    Exit-Launcher 0
   }
 
   # Failed: say where, and whether the site still answers on the server.
@@ -579,11 +592,11 @@ exit 9
   if ($rc -ge 10 -and $rc -le 20) { Write-Info "The server script's own report and log path are shown above; fix the problem it names, then run .\deploy-twigo.ps1 again." }
   if ($rc -eq 255) { Write-Info "If the connection dropped, the server script stops and puts the previous version back; its log is in $RemoteDir/logs/." }
   Show-Summary $rc
-  exit $rc
+  Exit-Launcher $rc
 } catch {
   $S.Stage = "launcher error"
   Write-Host ""
   Write-Host "      UNEXPECTED ERROR: $($_.Exception.Message)" -ForegroundColor Red
   Show-Summary 1
-  exit 1
+  Exit-Launcher 1
 }
