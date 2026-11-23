@@ -1,0 +1,69 @@
+# Twigo production on the VPS (162.35.23.106).
+#
+#   https://twigo.space -> central Caddy (already on the server) -> 127.0.0.1:1010 on the host
+#                       -> container port 1010 -> Next.js (server.ts, with the live chat)
+#
+# Next.js itself listens on 1010 in the container, and the host publishes the same port, on the
+# loopback interface only: the site is reached through the central Caddy, never directly.
+# This project contains no Caddy of its own; twigo.space is registered with the server's central
+# Caddy (docs/DEPLOYMENT.md, section 5).
+#
+# Settings: copy .env.production.example to .env.production on the server and fill it in. Start with
+#   docker compose --env-file .env.production up -d --build
+# (--env-file also supplies POSTGRES_PASSWORD to the database service below).
+
+name: twigo
+
+services:
+  app:
+    build:
+      context: .
+      secrets:
+        - envfile
+    image: twigo-app
+    restart: unless-stopped
+    env_file: .env.production
+    environment:
+      # Fixed here so they cannot drift from the port mapping and the volume below.
+      PORT: "1010"
+      HOST: "0.0.0.0"
+      DATABASE_URL: "postgresql://twigo:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env.production}@db:5432/twigo?schema=public"
+      STORAGE_DIR: /data/storage
+      BACKUP_DIR: /data/backups
+    ports:
+      - "127.0.0.1:1010:1010"
+    volumes:
+      - twigo-data:/data
+    depends_on:
+      db:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:1010/api/health').then((r)=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 60s
+
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: twigo
+      POSTGRES_USER: twigo
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env.production}
+    volumes:
+      - twigo-postgres:/var/lib/postgresql/data
+    # No published port: only the app container can reach the database.
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U twigo -d twigo"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+secrets:
+  envfile:
+    file: ./.env.production
+
+volumes:
+  twigo-data:
+  twigo-postgres:

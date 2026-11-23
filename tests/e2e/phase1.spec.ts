@@ -699,7 +699,7 @@ test("29. Twigo: the group plans a project, every participant accepts its agreem
 
 test("30. Twigo: new owner and member pages open and pass the accessibility check", async () => {
   const owner = sessions.admin!.page;
-  for (const p of ["/admin/legal", "/admin/legal/terms", "/admin/legal/notices", "/admin/legal/acceptances", "/admin/agreements", "/admin/support", "/admin/privacy-requests"]) {
+  for (const p of ["/admin/legal", "/admin/legal/terms", "/admin/legal/notices", "/admin/legal/acceptances", "/admin/agreements", "/admin/support", "/admin/privacy-requests", "/admin/email"]) {
     await owner.goto(p);
     await expect(owner, p).toHaveURL(new RegExp(`${p}$`));
     await a11y(owner, p);

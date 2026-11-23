@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { env } from "@/lib/env";
 import { logger } from "@/lib/logger";
-import { applyProviderEvent, verifyWebhookSignature } from "@/lib/email/webhook";
+import { applyProviderEvent, verifyWebhookSignature, webhookSecretProblem } from "@/lib/email/webhook";
 
 export const dynamic = "force-dynamic";
 
@@ -14,6 +14,10 @@ export const dynamic = "force-dynamic";
 export async function POST(req: Request) {
   const secret = env().RESEND_WEBHOOK_SECRET;
   if (!secret) return NextResponse.json({ error: "Webhook not configured" }, { status: 404 });
+  if (webhookSecretProblem(secret, env().SMTP_PASSWORD)) {
+    logger.error("email.webhook_misconfigured", { reason: "the signing secret is an API key" });
+    return NextResponse.json({ error: "Webhook not configured" }, { status: 503 });
+  }
   const raw = await req.text();
   if (raw.length > 256 * 1024) return NextResponse.json({ error: "Too large" }, { status: 413 });
   const ok = verifyWebhookSignature(raw, { id: req.headers.get("svix-id"), timestamp: req.headers.get("svix-timestamp"), signature: req.headers.get("svix-signature") }, secret);

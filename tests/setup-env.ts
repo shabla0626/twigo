@@ -9,6 +9,15 @@ process.env.AUTH_SECRET = "test-secret-that-is-long-enough-for-hs256-signing";
 process.env.SITE_URL = "http://localhost:3000";
 process.env.ORG_NAME = "TestOrg";
 process.env.SMTP_HOST = "";
+// The database client loads the developer's .env for every setting not set here, so all email
+// settings are fixed explicitly: tests never inherit a real provider, login or key from .env.
+process.env.SMTP_PORT = "587";
+process.env.SMTP_SECURE = "";
+process.env.SMTP_USER = "";
+process.env.SMTP_PASSWORD = "";
+process.env.EMAIL_FROM = "";
+process.env.RESEND_WEBHOOK_SECRET = "";
+process.env.DEV_MAIL_CATCHER = "true";
 process.env.ADMIN_NOTIFICATION_EMAIL = "";
 process.env.ENCRYPTION_KEY = "test-encryption-key-different-from-auth-secret-123";
 process.env.STORAGE_DIR = path.join(os.tmpdir(), "cowork-test-storage");

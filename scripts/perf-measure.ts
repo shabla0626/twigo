@@ -91,6 +91,8 @@ async function main() {
       JOBS_ENABLED: "false",
       DEV_MAIL_CATCHER: "false",
       SMTP_HOST: "",
+      SMTP_USER: "",
+      SMTP_PASSWORD: "",
       LOCAL_PRODUCTION_TEST: "1",
       AUTH_SECRET: PERF_AUTH_SECRET,
       ENCRYPTION_KEY: PERF_ENCRYPTION_KEY,

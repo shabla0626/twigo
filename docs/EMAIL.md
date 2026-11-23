@@ -13,7 +13,30 @@ the code; they come from settings.
 | `EMAIL_FROM` | Sender address. Must be on a domain verified with the provider |
 | `EMAIL_FROM_NAME` | Sender name shown to recipients (defaults to the organization name) |
 | `RESEND_WEBHOOK_SECRET` | Optional. Lets Resend confirm "Delivered" or "Bounced" |
-| `DEV_MAIL_CATCHER` | `"false"` stops `npm run dev` from starting the local test mail server |
+| `DEV_MAIL_CATCHER` | Development only. `"false"` lets `npm run dev` use the configured provider instead of the local test inbox |
+| `DEV_MAIL_PORT`, `DEV_MAIL_UI_PORT` | Development only. Ports of the local test inbox (default 2525 and 8025) |
+
+**Twigo's settings** (Resend, domain `twigo.space` verified in Resend):
+
+```
+SMTP_HOST=smtp.resend.com
+SMTP_PORT=465
+SMTP_SECURE=true
+SMTP_USER=resend
+SMTP_PASSWORD=
+EMAIL_FROM="Twigo <noreply@twigo.space>"
+```
+
+`SMTP_PASSWORD` is the Resend API key; the founder enters it after `SMTP_PASSWORD=` in `.env`
+(it is deliberately empty in the repository). While it is empty, **no connection is attempted** and
+every attempt is recorded as "Not sent: email not set up" with the reason ("SMTP_PASSWORD is empty"),
+in Admin → Email; nothing is reported as sent, and the production server logs
+`email.credentials_missing` once at start. After entering the key, restart the site.
+
+**Development never sends real email.** With `npm run dev`, every email goes to the local test inbox
+(`http://127.0.0.1:8025`), whatever `SMTP_HOST` says and even if the API key is in `.env`; the key is not
+used. Only `DEV_MAIL_CATCHER="false"` changes that. The production site (`npm start`) never uses the
+local test inbox.
 
 Secrets (`SMTP_PASSWORD`, `RESEND_WEBHOOK_SECRET`) stay on the server only. They are never
 shown in the admin panel, never sent to browsers, and `.env` must never be committed.
@@ -22,20 +45,10 @@ shown in the admin panel, never sent to browsers, and `.env` must never be commi
 
 ## 1. Local testing (free, nothing leaves your computer)
 
-**Settings** (already in your development `.env`):
+**Settings:** none needed. In development the local test inbox is always used (see above).
 
-```
-SMTP_HOST="127.0.0.1"
-SMTP_PORT="2525"
-SMTP_SECURE="false"
-SMTP_USER=""
-SMTP_PASSWORD=""
-EMAIL_FROM="no-reply@cowork.test"
-```
-
-**Start it.** `npm run dev` now starts the local test mail server automatically whenever
-`SMTP_HOST` is `127.0.0.1` or `localhost`. To run it on its own (for example, next to an
-already-running site):
+**Start it.** `npm run dev` starts the local test mail server automatically (unless
+`DEV_MAIL_CATCHER="false"`). To run it on its own (for example, next to an already-running site):
 
 ```powershell
 npm run mail:dev
@@ -98,13 +111,12 @@ address if you want replies. It does not need its own mailbox for sending.
 On the **server** (production `.env` or your host's secret settings, never in Git):
 
 ```
-SMTP_HOST="smtp.resend.com"
-SMTP_PORT="465"
-SMTP_SECURE="true"
-SMTP_USER="resend"
-SMTP_PASSWORD="re_your_api_key"
-EMAIL_FROM="no-reply@mail.your-domain"
-EMAIL_FROM_NAME="Your organization name"
+SMTP_HOST=smtp.resend.com
+SMTP_PORT=465
+SMTP_SECURE=true
+SMTP_USER=resend
+SMTP_PASSWORD=          <- paste the Resend API key after the = sign
+EMAIL_FROM="Twigo <noreply@twigo.space>"
 ```
 
 Restart the site, then:
@@ -121,7 +133,9 @@ To see **"Delivered"** or **"Delivery failed"**:
 1. The site must be online at a public `https://` address. Resend cannot reach `localhost`.
 2. In Resend open **Webhooks → Add endpoint**, URL `https://<your-site>/api/email/webhook`,
    and select at least `email.delivered`, `email.bounced` and `email.failed`.
+   For Twigo: `https://twigo.space/api/email/webhook`.
 3. Copy the **signing secret** (starts with `whsec_`) into `RESEND_WEBHOOK_SECRET`, then restart.
+   It is a different value from the API key; the site refuses an API key (`re_…`) here.
 
 Only correctly signed requests can change a status. A request without a valid signature is refused.
 

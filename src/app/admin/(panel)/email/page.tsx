@@ -9,6 +9,7 @@ import { requireAdmin } from "@/lib/auth/guard";
 import { can } from "@/lib/auth/permissions";
 import { emailConfigProblem, localInboxUrl, smtpSettings } from "@/lib/email";
 import { EMAIL_STATUS_INFO, RETRYABLE } from "@/lib/email/status";
+import { webhookSecretProblem } from "@/lib/email/webhook";
 import { TEMPLATES, TEMPLATE_KEYS } from "@/lib/email/templates";
 import { pageHref, pageNumber, pageWindow } from "@/lib/paging";
 import { checkEmailConnectionAction, retryEmailAction, sendTestToMeAction } from "../../actions/community";
@@ -38,7 +39,9 @@ export default async function EmailAdminPage({ searchParams }: Props) {
   const s = smtpSettings();
   const inbox = localInboxUrl();
   const problem = emailConfigProblem();
-  const webhook = Boolean(env().RESEND_WEBHOOK_SECRET);
+  const webhookProblem = webhookSecretProblem(env().RESEND_WEBHOOK_SECRET, env().SMTP_PASSWORD);
+  const webhook = Boolean(env().RESEND_WEBHOOK_SECRET) && !webhookProblem;
+  const c = s.configured;
 
   return (
     <>
@@ -52,18 +55,19 @@ export default async function EmailAdminPage({ searchParams }: Props) {
           {problem
             ? problem.message
             : s.local
-              ? `Using the LOCAL TEST mail server. Emails are captured on this computer${inbox ? ` (open ${inbox} to read them)` : ""} and are NOT delivered to real inboxes.`
+              ? `Using the LOCAL TEST mail server. Emails are captured on this computer${inbox ? ` (open ${inbox} to read them)` : ""} and are NOT delivered to real inboxes.${s.devCatcher && c.host && c.provider !== "Local test mail server" ? ` This is the development server: the configured provider (${c.provider}) is used only by the production site.` : ""}`
               : `Sending through ${s.provider}. “Accepted by provider” means the provider took the message; “Delivered” appears only when the provider confirms it${webhook ? "" : " (delivery tracking is off until RESEND_WEBHOOK_SECRET is set)"}.`}
         </div>
         <dl className="mt-4 grid gap-x-8 gap-y-2 text-sm sm:grid-cols-2">
           {[
-            ["Provider", s.provider],
-            ["Server", s.host ? `${s.host}:${s.port}` : "not set"],
-            ["Secure connection (TLS)", s.secure ? "Yes (from the start)" : "STARTTLS / none"],
-            ["Login user", s.user || "none"],
-            ["Password / API key", s.hasPassword ? "set (hidden)" : "not set"],
+            ["Sending through now", s.devCatcher ? `${s.provider}, ${s.host}:${s.port}` : s.provider],
+            ["Configured provider", c.provider],
+            ["SMTP host and port", c.host ? `${c.host}:${c.port}` : "not set"],
+            ["Encryption (TLS)", c.secure ? "TLS from the start (port 465)" : c.host && !s.local ? "STARTTLS required" : "none (local test only)"],
+            ["Login user", c.user || "none"],
+            ["Credentials (API key)", c.hasPassword ? "configured (never shown)" : c.user ? "MISSING: SMTP_PASSWORD is empty" : "not needed"],
             ["Sender (EMAIL_FROM)", s.from || "not set"],
-            ["Delivery confirmation (webhook)", webhook ? "on" : "off"],
+            ["Delivery confirmation (webhook)", webhookProblem ? "misconfigured" : webhook ? "on" : "off (RESEND_WEBHOOK_SECRET not set)"],
           ].map(([k, v]) => (
             <div key={k} className="flex justify-between gap-4 border-b border-ink-100 py-1.5">
               <dt className="text-ink-600">{k}</dt>
@@ -71,7 +75,8 @@ export default async function EmailAdminPage({ searchParams }: Props) {
             </div>
           ))}
         </dl>
-        <p className="mt-3 text-xs text-ink-500">These values come from the server’s environment settings (.env). Secrets are never shown here.</p>
+        {webhookProblem && <p className="mt-3 text-sm text-red-800">{webhookProblem}</p>}
+        <p className="mt-3 text-xs text-ink-500">These values come from the server’s environment settings (.env). Secrets are never shown here. After changing them, restart the site.</p>
         <div className="mt-4 grid gap-4 sm:grid-cols-2">
           <ActionForm action={checkEmailConnectionAction} submitLabel="Check connection" pendingLabel="Checking…" variant="secondary">
             <p className="text-sm text-ink-600">Connects and logs in to the email server. Sends nothing.</p>

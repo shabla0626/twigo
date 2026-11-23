@@ -6,24 +6,26 @@ Nothing has been deployed yet. The founder chose **one always-on server** and ha
 
 | Setting | Value |
 | --- | --- |
-| Public address | `https://twigo.space` (the site's only canonical address; `www.twigo.space` should redirect to it) |
+| Public address | `https://twigo.space` (canonical; `www.twigo.space` redirects to it) |
 | `SITE_URL` | `https://twigo.space` (exactly; see section 4) |
-| Server | VPS at `162.35.23.106` |
-| SSH access | `ssh shabla@162.35.23.106` |
-| App directory / service | `/srv/cowork`, systemd unit `cowork.service`, running as its own `cowork` user (section 5) |
-| Email sender | `no-reply@twigo.space` once the domain is verified with the email provider ([EMAIL.md](EMAIL.md)) |
+| DNS | Cloudflare (nameservers `paityn` / `sullivan.ns.cloudflare.com`), records **proxied** |
+| Server | VPS at `162.35.23.106`, SSH `ssh shabla@162.35.23.106` |
+| Reverse proxy and HTTPS | The server's **existing, centrally managed Caddy**. Twigo has no Caddy of its own: no Caddyfile, no Caddy service or container in this project. Twigo is *registered* with the central system (section 5) |
+| App | Docker Compose (`docker-compose.yml`): Next.js (inside `server.ts`, with the live chat) listens on **`0.0.0.0:1010` in the container**; the host publishes the **same port on `127.0.0.1:1010`** only. No port 3000 anywhere in production |
+| Database | PostgreSQL 16 container `db`, reachable only by the app container (no published port) |
+| Central Caddy upstream | `127.0.0.1:1010` (if the central Caddy runs on the host); see section 5 if it runs in Docker |
+| Email | Resend SMTP, sender `Twigo <noreply@twigo.space>` ([EMAIL.md](EMAIL.md)) |
 
-Still to do by the founder before the first start (none of this has been done from this project):
+Architecture:
 
-1. DNS at the domain registrar: an `A` record for `twigo.space` and for `www.twigo.space` pointing to
-   `162.35.23.106` (and `AAAA` records only if the VPS has an IPv6 address).
-2. On the VPS: Node.js 20.9+ (tested on 24), PostgreSQL 14+, Caddy (or nginx), a firewall allowing only
-   ports 22, 80 and 443. Prefer SSH keys over passwords for `shabla`, and do not run the app as `shabla`
-   or `root`.
-3. Name the VPS provider and the server location in the Privacy Policy (a new version, reviewed), and
-   enter the legal details in Admin → Legal → Legal notices.
+```
+https://twigo.space -> Cloudflare (proxy) -> central Caddy on the VPS (HTTPS)
+                    -> 127.0.0.1:1010 on the VPS -> container port 1010 -> Next.js (server.ts + Socket.IO)
+                                                                          -> db container (PostgreSQL)
+```
 
-Then follow sections 3 to 6.
+Status on 23 November 2026: not deployed; the public address answers with Cloudflare error 525
+(Cloudflare cannot make a secure connection to the server, because nothing serves `twigo.space` there yet).
 
 ## 1. What runs where
 
@@ -114,7 +116,7 @@ address; on a real site the start is refused if it is set.
 | `DATABASE_URL` | As above |
 | `SITE_URL` | Public HTTPS URL, written exactly as people reach the site (scheme, host and, if not the default, port; no path). It is used for the origin checks of the live chat **and of file uploads**: a different spelling (for example `www.` missing, or `http://`) makes chat and uploads refuse every request. Also used for the CSP. Needed at build time too |
 | `TRUSTED_PROXY_HOPS` | `1` behind one reverse proxy (Caddy, nginx), `0` when reached directly. See section 5 |
-| `PORT`, `HOST` | Default 3000 / 0.0.0.0 |
+| `PORT`, `HOST` | Production: **1010** / `0.0.0.0` (fixed in `docker-compose.yml`; `server.ts` also defaults to 1010 in production). Development (`npm run dev`): 3000 / 127.0.0.1. `HOSTNAME` is not used: Docker sets it to the container's name |
 | `AUTH_SECRET` | ≥ 32 random chars (form tokens, IP hashing) |
 | `ENCRYPTION_KEY` | ≥ 32 random chars, different from `AUTH_SECRET` (encrypts 2FA secrets). **Losing it disables everyone's 2FA**: keep it in your password manager |
 | `SESSION_TTL_HOURS` / `MEMBER_SESSION_TTL_HOURS` | Admin 8 h, member 14 days by default. Independently of this, an owner or administrator who does nothing for 60 minutes must sign in again (fixed, `ADMIN_IDLE_MINUTES` in `src/lib/auth/constants.ts`) |
@@ -125,58 +127,50 @@ address; on a real site the start is refused if it is set.
 | `STORAGE_DIR`, `MAX_UPLOAD_MB` | Persistent disk path; default 10 MB |
 | `JOBS_ENABLED`, `BACKUP_DIR`, `BACKUP_KEEP`, `BACKUP_ENCRYPTION_KEY` | Daily jobs; set the encryption key |
 
-## 5. Build, migrate, start
+## 5. Build, migrate, start (Docker, port 1010)
+
+On the VPS, in the project folder, with `.env.production` filled in from `.env.production.example`
+(Docker Engine with the Compose plugin is needed). Every command passes `--env-file .env.production`
+so Compose can fill in `POSTGRES_PASSWORD`:
 
 ```bash
-npm ci
-npm run build          # prisma generate + next build (webpack)
-npm run db:backup -- --label pre-release   # before every migration
-npm run db:deploy      # apply migrations (or: npx prisma migrate deploy)
-npm start              # tsx server.ts --production
+alias dc='docker compose --env-file .env.production'
+dc build                                   # image; Next.js build reads .env.production as a build secret
+dc up -d db                                # database first
+dc run --rm app npm run db:backup -- --label pre-release   # before every migration (skip on the very first start)
+dc run --rm app npm run db:deploy          # apply migrations
+dc up -d app                               # Next.js on 0.0.0.0:1010 in the container, 127.0.0.1:1010 on the host
+curl -s http://127.0.0.1:1010/api/health   # from the VPS: {"status":"ok","db":"ok",...}
+docker port twigo-app-1                    # should show 1010/tcp -> 127.0.0.1:1010
 ```
 
-Reverse proxy: forward `Upgrade`/`Connection` headers for `/socket.io` and set
-`X-Forwarded-For`. **Set `TRUSTED_PROXY_HOPS` to the number of proxies in front of the
-app** (1 for a single Caddy or nginx; 0 only when the app is reached directly). The app
-counts sign-in and form attempts per visitor address and takes that address from the
-position in `X-Forwarded-For` written by your own proxy, never from what a visitor
-sends. The startup log line `server.ready` states which source is in use. To check a
-new deployment: sign in from two different networks and confirm in **Admin → Audit
-log** that the two sign-ins are not blocked together after one of them makes repeated
-wrong attempts. With nginx use `proxy_set_header X-Forwarded-For
-$proxy_add_x_forwarded_for;`. Minimal Caddyfile:
+The site listens on **1010** in the container and on the host (`127.0.0.1:1010:1010`); there is no
+other application port. Updating: `git pull`, then `dc build`, backup, `dc run --rm app npm run db:deploy`,
+`dc up -d app`. Logs: `dc logs -f app`. Uploaded files and backups are in the `twigo-data` volume,
+the database in `twigo-postgres`; `docker compose down` keeps both (never add `-v`).
 
-```
-twigo.space {
-  reverse_proxy 127.0.0.1:3000
-}
+**Reverse proxy: the server's central Caddy.** Do not install or configure another Caddy for
+Twigo. Register `twigo.space` with the server's existing Caddy management system, upstream
+**`127.0.0.1:1010`** when the central Caddy runs directly on the host (the exact specification is in
+[TWIGO-RESEND-CADDY-INTEGRATION-REPORT.md](TWIGO-RESEND-CADDY-INTEGRATION-REPORT.md), section C).
+If the central Caddy itself runs in a Docker container, `127.0.0.1` inside it is that container, not
+the host: then let Caddy reach the host's port 1010 the way the server's other sites do (for example
+`host.docker.internal:1010` with `extra_hosts: ["host.docker.internal:host-gateway"]` on the Caddy
+container, and publish Twigo as `"<docker-bridge-ip>:1010:1010"` instead of `127.0.0.1`). The app
+port stays 1010 in every case. Caddy forwards WebSocket upgrades (`/socket.io`) and sets
+`X-Forwarded-For`/`X-Forwarded-Proto` by itself.
 
-www.twigo.space {
-  redir https://twigo.space{uri} permanent
-}
-```
+**`TRUSTED_PROXY_HOPS`** is the number of proxies in front of the app that add to
+`X-Forwarded-For`. With the Cloudflare proxy **and** Caddy that is **2**: Cloudflare writes the
+visitor's address, Caddy adds Cloudflare's. With `1` every visitor would appear to be a Cloudflare
+address and share one sign-in limit. Use `2` only while the server accepts web traffic exclusively
+from Cloudflare (otherwise someone reaching the server directly could choose their own address);
+without the Cloudflare proxy use `1`. The startup log line `server.ready` states which source is in
+use. To check a new deployment: sign in from two different networks and confirm in **Admin → Audit
+log** that the two sign-ins are not blocked together after one of them makes repeated wrong attempts.
 
-Caddy obtains the HTTPS certificates itself once the DNS records point to the server.
-
-Keep the process running and restart it on failure with systemd (or pm2):
-
-```ini
-# /etc/systemd/system/cowork.service
-[Unit]
-Description=Twigo
-After=network.target postgresql.service
-
-[Service]
-WorkingDirectory=/srv/cowork
-EnvironmentFile=/srv/cowork/.env.production
-ExecStart=/usr/bin/npm start
-Restart=always
-RestartSec=5
-User=cowork
-
-[Install]
-WantedBy=multi-user.target
-```
+Docker restarts the containers after a failure or a server reboot (`restart: unless-stopped`) and
+checks `/api/health` every 30 seconds.
 
 Run **one instance** unless you also move rate limiting (`src/lib/rate-limit.ts`, chat
 limits in `src/realtime/server.ts`) to Redis and add the Socket.IO Redis adapter;
@@ -186,16 +180,16 @@ cross-instance events already work through `LISTEN/NOTIFY`.
 
 Production never starts from a development or demonstration database. It starts empty:
 
-1. Create the production database as UTF-8 (section 3) and set `DATABASE_URL`.
-2. `npm run db:deploy` (creates all tables; no data).
+1. The `db` container creates an empty UTF-8 database (`dc up -d db`, section 5).
+2. `dc run --rm app npm run db:deploy` (creates all tables; no data).
 3. Create the one legitimate owner. The password is typed at a prompt and never shown:
 
    ```bash
-   npm run admin:create -- --email founder@your-domain --name "Founder"
+   dc run --rm app npm run admin:create -- --email <owner email> --name "Founder"
    ```
 
-4. `npm start`. The start is refused, with the reason, if any setting from section 4 is
-   missing, if no owner exists, or if an administrator with a test address exists.
+4. `dc up -d app`. The start is refused, with the reason (`dc logs app`), if any setting from
+   section 4 is missing, if no owner exists, or if an administrator with a test address exists.
 5. Sign in at `/login`; you are sent to `/account/security` to set up two-step
    verification (authenticator app) and save your recovery codes. Further
    administrators are invited from `/admin/admins`.
@@ -214,6 +208,8 @@ settings (support threshold, retention periods) use their defaults until changed
 | Production | created as described above | Real people only |
 
 **Command-line account tools** (need access to the server; every use is audited):
+
+Run them as `dc run --rm app npm run admin:create -- ...` on the VPS.
 
 ```bash
 # Reset an administrator's password (the role is kept, all their sessions end)

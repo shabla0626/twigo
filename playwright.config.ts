@@ -26,6 +26,12 @@ const env = {
   SMTP_HOST: "127.0.0.1",
   SMTP_PORT: String(E2E.smtpPort),
   EMAIL_FROM: "no-reply@e2e.test",
+  // Set explicitly: Next.js fills every unset variable from the developer's .env (which may hold the
+  // real Resend login); the tests must only ever talk to the local catcher, without a login.
+  SMTP_SECURE: "false",
+  SMTP_USER: "",
+  SMTP_PASSWORD: "",
+  RESEND_WEBHOOK_SECRET: "",
   ADMIN_NOTIFICATION_EMAIL: "",
   SEND_APPLICANT_CONFIRMATION: "true",
   JOBS_ENABLED: "false",

@@ -28,6 +28,7 @@ playwright-report/
 # Secrets and local settings (only .env.example is tracked)
 .env.*
 !.env.example
+!.env.production.example
 # Database files, backups and exports, wherever they are written
 *.cwbak
 *.cwbak.gz

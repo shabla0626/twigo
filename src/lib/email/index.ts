@@ -6,7 +6,7 @@ import { brand } from "@/config/brand";
 import { db } from "../db";
 import { env } from "../env";
 import { logger } from "../logger";
-import { SECRET_TEMPLATES, classifySmtpError, isLocalTestMail, isValidSender } from "./status";
+import { SECRET_TEMPLATES, classifySmtpError, devMailCatcherPort, isLocalTestMail, isValidSender } from "./status";
 import { TEMPLATES, renderTemplate, type EmailMessage, type TemplateKey } from "./templates";
 
 /**
@@ -22,35 +22,51 @@ export type SendResult =
 
 let transporter: Transporter | null = null;
 
+const providerName = (host: string) => (/(^|\.)resend\.com$/i.test(host) ? "Resend" : isLocalTestMail(host) ? "Local test mail server" : host ? "SMTP" : "None");
+
+/**
+ * The settings actually used to send (`configured` = what the server settings say). In development the
+ * local test inbox is used instead of the configured provider (see devMailCatcherPort). Never contains
+ * the password: only whether one is set.
+ */
 export function smtpSettings() {
   const e = env();
-  const secure = e.SMTP_SECURE ?? e.SMTP_PORT === 465;
-  return {
+  const configured = {
+    provider: providerName(e.SMTP_HOST),
     host: e.SMTP_HOST,
     port: e.SMTP_PORT,
-    secure,
+    secure: e.SMTP_SECURE ?? e.SMTP_PORT === 465,
     user: e.SMTP_USER,
     hasPassword: Boolean(e.SMTP_PASSWORD),
-    from: e.EMAIL_FROM,
-    local: isLocalTestMail(e.SMTP_HOST),
-    provider: /resend\.com$/i.test(e.SMTP_HOST) ? "Resend" : isLocalTestMail(e.SMTP_HOST) ? "Local test mail server" : e.SMTP_HOST ? "SMTP" : "None",
   };
+  const catcher = devMailCatcherPort();
+  if (catcher !== null) {
+    return { ...configured, provider: "Local test mail server (development)", host: "127.0.0.1", port: catcher, secure: false, user: "", hasPassword: false, from: e.EMAIL_FROM, local: true, devCatcher: true, configured };
+  }
+  return { ...configured, from: e.EMAIL_FROM, local: isLocalTestMail(e.SMTP_HOST), devCatcher: false, configured };
 }
 
 export function emailConfigured(): boolean {
-  const e = env();
-  return Boolean(e.SMTP_HOST && e.EMAIL_FROM);
+  return emailConfigProblem() === null;
 }
 
-/** Configuration problems that make sending impossible, before any connection is tried. */
+/**
+ * Configuration problems that make sending impossible. When one is found no connection is attempted,
+ * the attempt is recorded with this status and message, and nothing is reported as sent.
+ */
 export function emailConfigProblem(): { status: EmailStatus; message: string } | null {
   const e = env();
-  if (!e.SMTP_HOST || !e.EMAIL_FROM)
-    return { status: "NOT_CONFIGURED", message: "Email is not set up (SMTP_HOST and EMAIL_FROM in the server settings). Nothing was sent." };
+  const s = smtpSettings();
+  if (!e.EMAIL_FROM) return { status: "NOT_CONFIGURED", message: "Email is not set up: EMAIL_FROM is empty in the server settings (.env). Nothing was sent." };
   if (!isValidSender(e.EMAIL_FROM))
     return { status: "SENDER_REJECTED", message: `EMAIL_FROM ("${e.EMAIL_FROM}") is not a valid email address. Nothing was sent.` };
+  if (s.devCatcher) return null;
+  if (!e.SMTP_HOST) return { status: "NOT_CONFIGURED", message: "Email is not set up: SMTP_HOST is empty in the server settings (.env). Nothing was sent." };
   if (e.SMTP_USER && !e.SMTP_PASSWORD)
-    return { status: "AUTH_FAILED", message: "SMTP_USER is set but SMTP_PASSWORD (the API key) is empty. Nothing was sent." };
+    return {
+      status: "NOT_CONFIGURED",
+      message: `The ${s.provider === "Resend" ? "Resend API key" : "email password"} is missing: SMTP_PASSWORD is empty in the server settings (.env). No connection was attempted and nothing was sent.`,
+    };
   return null;
 }
 
@@ -62,7 +78,10 @@ function getTransporter(): Transporter {
     host: s.host,
     port: s.port,
     secure: s.secure,
-    auth: e.SMTP_USER ? { user: e.SMTP_USER, pass: e.SMTP_PASSWORD } : undefined,
+    // The local development inbox needs no login; the provider's login is never sent to it.
+    auth: !s.devCatcher && e.SMTP_USER ? { user: e.SMTP_USER, pass: e.SMTP_PASSWORD } : undefined,
+    // Encrypted from the start on port 465; on other ports STARTTLS is required, except for the local test inbox.
+    requireTLS: !s.secure && !s.local,
     // Fail fast instead of hanging a request when the server is down.
     connectionTimeout: 10_000,
     greetingTimeout: 10_000,
@@ -104,8 +123,9 @@ export async function sendEmail(message: EmailMessage, deliveryId?: string): Pro
   const problem = emailConfigProblem();
   if (problem) {
     if (problem.status === "NOT_CONFIGURED") {
-      // Development convenience only: show what would have been sent.
+      // Development convenience only: show what would have been sent. The reason (never a secret) is logged everywhere.
       if (process.env.NODE_ENV === "development") logger.info("email.dev_outbox", { to: message.to, subject: message.subject, text: message.text });
+      logger.warn("email.not_configured", { deliveryId: deliveryId ?? null, reason: problem.message });
       return { status: "not_configured", error: problem.message };
     }
     return { status: "failed", kind: problem.status, error: problem.message };

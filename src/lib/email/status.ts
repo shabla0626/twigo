@@ -88,6 +88,18 @@ export function isValidSender(from: string): boolean {
   return /^[^@\s<>"]+@[^@\s<>"]+\.[^@\s<>"]+$/.test(addr.trim());
 }
 
+/**
+ * Development only: every email goes to the local test inbox (scripts/dev-mail.ts), whatever SMTP_HOST
+ * says, so a developer can keep the real provider settings (and even its key) in .env without ever
+ * sending a real email by accident. Opt out with DEV_MAIL_CATCHER="false". Returns the SMTP port of the
+ * local catcher, or null when it is not in use (always null in production and in automated tests).
+ */
+export function devMailCatcherPort(): number | null {
+  if (process.env.NODE_ENV !== "development" || process.env.DEV_MAIL_CATCHER === "false") return null;
+  const port = Number(process.env.DEV_MAIL_PORT || 2525);
+  return Number.isInteger(port) && port > 0 ? port : 2525;
+}
+
 export function isLocalHost(host: string) {
   return ["127.0.0.1", "localhost", "::1", "[::1]"].includes(host.trim().toLowerCase());
 }

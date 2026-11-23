@@ -25,6 +25,16 @@ export function verifyWebhookSignature(
   });
 }
 
+/**
+ * The webhook signing secret must be its own value ("whsec_..."), never the SMTP API key: a key that
+ * can send email must not also be able to forge delivery reports.
+ */
+export function webhookSecretProblem(secret: string, smtpPassword: string): string | null {
+  if (!secret) return null;
+  if (secret === smtpPassword || /^re_/i.test(secret)) return "RESEND_WEBHOOK_SECRET contains an API key. Use the webhook's own signing secret (it starts with whsec_).";
+  return null;
+}
+
 type ProviderEvent = {
   type?: string;
   created_at?: string;

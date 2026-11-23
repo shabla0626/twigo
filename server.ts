@@ -14,10 +14,15 @@ import { loadDotEnv } from "./scripts/load-env";
 import { CLIENT_ADDRESS_HEADER, resolveClientAddress } from "./src/lib/client-address";
 
 if (process.argv.includes("--production")) (process.env as Record<string, string>).NODE_ENV = "production";
+// Without --production this is the development server: say so explicitly, so every module (for example
+// the email rule that keeps development mail on this computer) sees the same mode from the start.
+else (process.env as Record<string, string>).NODE_ENV ??= "development";
 loadDotEnv();
 
 const dev = process.env.NODE_ENV !== "production";
-const port = Number(process.env.PORT || 3000);
+// Production listens on 1010 (founder decision: the same port inside Docker and on the host, and the
+// central Caddy's upstream). Development keeps 3000. PORT overrides both.
+const port = Number(process.env.PORT || (dev ? 3000 : 1010));
 // 127.0.0.1 rather than "localhost": some Windows setups block IPv6 loopback (::1).
 const hostname = process.env.HOST || (dev ? "127.0.0.1" : "0.0.0.0");
 
@@ -51,12 +56,14 @@ async function main() {
   const g = globalThis as unknown as { prisma?: ReturnType<typeof createPrismaClient> };
   const db = (g.prisma ??= createPrismaClient());
 
-  // Development only: when .env points email at this computer, start the local
-  // test mail server (SMTP + web inbox) so sending never fails with ECONNREFUSED.
-  const smtpHost = (process.env.SMTP_HOST || "").toLowerCase();
-  if (dev && process.env.DEV_MAIL_CATCHER !== "false" && ["127.0.0.1", "localhost"].includes(smtpHost)) {
+  // Development only: all email goes to the local test mail server (SMTP + web inbox), whatever
+  // SMTP_HOST says, so a real provider key in .env never sends real email from a development computer.
+  // DEV_MAIL_CATCHER="false" turns this off. Production never starts or uses it.
+  const { devMailCatcherPort } = await import("./src/lib/email/status");
+  const catcherPort = devMailCatcherPort();
+  if (dev && catcherPort !== null) {
     const { startLocalMail } = await import("./scripts/dev-mail");
-    const mail = await startLocalMail({ smtpPort: Number(process.env.SMTP_PORT || 2525) }).catch((err: Error) => {
+    const mail = await startLocalMail({ smtpPort: catcherPort }).catch((err: Error) => {
       log("devmail.failed", { error: err.message });
       return null;
     });
@@ -82,6 +89,11 @@ async function main() {
     const unpublished = await db.legalDocument.count({ where: { versions: { none: { status: "PUBLISHED" } } } });
     if (unpublished) {
       log("launch.legal_documents_unpublished", { warning: `${unpublished} legal document(s) have no reviewed, published version yet; they are shown as drafts awaiting legal review` });
+    }
+    // The site still starts without the email provider's key, but no email can be sent: say so at once
+    // (every attempt is also recorded as "Not sent: email not set up" in Admin → Email). Never logs the key.
+    if (settings.SMTP_USER && !settings.SMTP_PASSWORD) {
+      log("email.credentials_missing", { warning: `SMTP_PASSWORD is empty: no email will be sent through ${settings.SMTP_HOST} until the API key is set and the site is restarted` });
     }
   }
 
