@@ -16,7 +16,7 @@ resumed from the last checkpoint if it is interrupted.
 | Last checkpoint | commit `adc7638`, tag `twigo-complete-2026-11-23` |
 | Code backup | `backups/cowork-code-twigo-2026-11-23.bundle` (verified); the original `backups/cowork-code-pre-twigo.bundle` is untouched |
 | Database | development database `cowork` has migration `20261123120000_twigo_platform`: 10 migrations, 56 tables, 279 rows |
-| Last test results | 409/409 automated, 23/23 browser (after the Resend and port-1010 work); 61/61 walkthrough steps (before it); `tsc` and ESLint clean |
+| Last test results | 426/426 automated, 23/23 browser, 61/61 walkthrough in the Docker production build; `tsc` and ESLint clean |
 | Waiting on the founder | the open decisions in [TWIGO-OPEN-DECISIONS.md](TWIGO-OPEN-DECISIONS.md), above all the legal operator, jurisdiction and a lawyer's review |
 | Needed now | restart the development server on port 3000 (`npm run dev`) |
 
@@ -81,6 +81,7 @@ defaults in [TWIGO-OPEN-DECISIONS.md](TWIGO-OPEN-DECISIONS.md)):
 | When (2026-11-23) | Update |
 | --- | --- |
 | after Stage 11 | File created at the founder's request; all checkpoints recorded from the git history and test logs |
+| release review | Independent review found 20 defects (3 high); all fixed with 17 new tests. 426/426 automated, 23/23 browser, Docker build: 61/61 walkthrough, restore verified, graceful stop. Status: **PRODUCTION RELEASE CANDIDATE — PENDING VERIFICATION**, tag `twigo-rc-2026-11-23`; see docs/TWIGO-RELEASE-REPORT.md. |
 | follow-up 3 | Docker trial in WSL: image built (npm retries and cache added), 10 migrations applied in the container, Next.js listening on 0.0.0.0:1010 in the container and published on 127.0.0.1:1010; health, pages, chat WebSocket (101) verified; no secrets in the image. Trial containers left running. VPS and central Caddy still pending (no SSH access). |
 | follow-up 2 | Resend SMTP integrated (key empty by design; development always uses the local test inbox), Admin → Email extended, webhook guard; Next.js on **port 1010** with Docker Compose (`127.0.0.1:1010:1010`); central Caddy **not registered** (no SSH access; specification in [TWIGO-RESEND-CADDY-INTEGRATION-REPORT.md](TWIGO-RESEND-CADDY-INTEGRATION-REPORT.md)). Tests: 409/409 unit, 23/23 browser; Docker image not built (no Docker here). |
 | follow-up | Domain changed from twigo.stream to **twigo.space**; production server recorded as VPS `162.35.23.106`, SSH `shabla@162.35.23.106` (`.env.example`, `docs/DEPLOYMENT.md` section 0, README, reports). Nothing deployed, no DNS changed, no connection made to the server. |

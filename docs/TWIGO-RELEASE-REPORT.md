@@ -93,13 +93,13 @@ Legend used throughout:
 | 1 | All agreed features implemented | **Met** within the agreed scope (section 1). Items that depend on outside facts are listed in section 4 |
 | 2 | Critical and high-priority defects resolved | **Met.** The independent review of 23 November found 1 high authorization defect, 1 high agreement-concurrency defect and 1 high deployment risk; all three fixed and tested (section 5) |
 | 3 | No known critical security vulnerability | **Met** for the application. The 4 npm advisories are in Prisma's command-line tool, not in the running site (unchanged, no fix available) |
-| 4 | Automated tests pass | <!--C4--> |
-| 5 | Browser tests pass | <!--C5--> |
-| 6 | Complete user journeys work | <!--C6--> |
+| 4 | Automated tests pass | **Met**: `npx vitest run` → **426 passed, 0 failed, 0 skipped** (36 files); `tsc` and ESLint clean |
+| 5 | Browser tests pass | **Met**: `npx playwright test` on a fresh production build → **23 passed, 0 failed** |
+| 6 | Complete user journeys work | **Met locally and in Docker**: the 61-step role walkthrough covers visitor → registration → email verification → application → approval → member access → idea → supporters → group formation → membership → chat, meetings, notes → project creation → agreement → acceptance by every participant → project activity, plus administrator and owner work: **61 of 61 in the Docker production build** (section 3). On the VPS: pending (section 6) |
 | 7 | Database migrations validated | **Met**: applied to test databases, the development database (with rehearsal, 0 differences) and in Docker (10 migrations) |
-| 8 | Backup and recovery tested | <!--C8--> |
-| 9 | Docker production build succeeds | <!--C9--> |
-| 10 | Next.js runs on port 1010 | <!--C10--> |
+| 8 | Backup and recovery tested | **Met in Docker**: the owner's "Back up now" backup (encrypted) was restored into a separate database inside the Docker setup and verified table by table. On the VPS: pending (section 6) |
+| 9 | Docker production build succeeds | **Met**: image built from `Dockerfile` with Docker 29.7 / Compose 5.5 (BuildKit) in WSL Ubuntu 24.04 |
+| 10 | Next.js runs on port 1010 | **Met (D)**: the only application socket in the container is `0.0.0.0:1010`; `docker port` → `1010/tcp -> 127.0.0.1:1010`; nothing on 3000 |
 | 11 | No development-only secrets in production configuration | **Met**: `.env.production.example` has empty secrets; startup refuses development values; the image contains no settings file |
 | 12 | Email integration correctly implemented | **Met in software; real delivery pending** the Resend key (X) |
 | 13 | Central Caddy integration correctly prepared | **Prepared (U)**, registration itself awaits the founder (V) |
@@ -111,7 +111,26 @@ only be completed on the server, and the legal documents are still awaiting a la
 
 ## 3. Verification in the Docker production build
 
-<!--DOCKER-->
+Run with `bash scripts/audit/docker-verify.sh` (development computer only; never on the VPS). It builds
+the production image, seeds a throw-away demo database inside the Docker PostgreSQL, starts the app with
+`docker-compose.yml` plus `docker-compose.verify.yml` (which only adds a test mail catcher sharing the
+app's network and points the app at the demo database), then runs the browser walkthrough against
+`http://127.0.0.1:1010`. Final run on 23 November 2026:
+
+| Check | Result |
+| --- | --- |
+| Image build | Succeeded |
+| Next.js listening port inside the container | `0.0.0.0:1010` (the only application socket) |
+| Host port | `1010/tcp -> 127.0.0.1:1010` |
+| Health | `{"status":"ok","db":"ok"}` |
+| Role walkthrough (visitor, applicant, member, group, administrator, owner) | **61 of 61 steps passed**; screenshots in `docs/twigo-docker-screenshots/` |
+| Uploads (profile photo, chat attachment, group file) into the `twigo-data` volume as the unprivileged user | Passed (walkthrough steps) |
+| Chat in two sessions, live | Passed (walkthrough) |
+| Owner backup → restore into `twigo_restorecheck` | **Restore verified** (every table) |
+| `docker stop` | **Exit code 0**, `server.shutdown` logged (graceful) |
+
+Environment note: on this computer Docker runs inside WSL, and Windows stops an idle WSL VM (taking
+Docker with it); the verification script keeps WSL awake. This does not apply to the VPS.
 
 ## 4. Remaining issues and release blockers
 
@@ -176,4 +195,16 @@ When all of these pass and items 1–5 of section 4 are closed, the release can 
 
 ## 7. Release package
 
-<!--PACKAGE-->
+- Git tag: `twigo-rc-2026-11-23` on branch `feature/twigo-platform-transformation` (not merged
+  into `main`, not pushed).
+- Archive for upload: `release/twigo-rc-2026-11-23.tar.gz` (all tracked files of the tag; contains no
+  `.env` file, no secrets, no database, no backups) and its SHA-256 in
+  `release/twigo-rc-2026-11-23.tar.gz.sha256`.
+- Upload and unpack (from PowerShell on this computer, then on the VPS):
+
+  ```
+  scp release/twigo-rc-2026-11-23.tar.gz shabla@162.35.23.106:~/
+  ssh shabla@162.35.23.106
+  mkdir -p ~/twigo && tar -xzf ~/twigo-rc-2026-11-23.tar.gz -C ~/twigo && cd ~/twigo
+  cp .env.production.example .env.production   # fill in, then docs/DEPLOYMENT.md sections 5-6
+  ```

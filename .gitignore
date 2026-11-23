@@ -70,3 +70,6 @@ Thumbs.db
 # Local Docker verification output
 /.verify-mail/
 /.verify-build.log
+
+# Release archives (built from a tag with git archive)
+/release/
