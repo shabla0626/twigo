@@ -44,4 +44,6 @@ USER node
 
 EXPOSE 1010
 
-CMD ["node_modules/.bin/tsx", "server.ts", "--production"]
+# Node itself is the main process (tsx only compiles TypeScript): a stop signal reaches the server
+# directly, which then finishes requests and closes the database before exiting.
+CMD ["node", "--import", "tsx", "server.ts", "--production"]

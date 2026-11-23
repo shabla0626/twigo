@@ -87,7 +87,7 @@ export async function storeUpload(userId: string, input: UploadInput): Promise<U
     data: {
       ownerId: userId,
       scope: input.scope,
-      groupId: input.groupId ?? null,
+      groupId: input.scope === "PROFILE_PHOTO" ? null : (input.groupId ?? null),
       originalName: safeFileName(input.name, ext),
       mimeType: mime,
       size: bytes.length,
@@ -136,6 +136,7 @@ export async function listGroupFiles(groupId: string, viewerId?: string) {
     where: {
       groupId,
       deletedAt: null,
+      scope: { in: ["GROUP_FILE", "CHAT_ATTACHMENT"] },
       NOT: [
         // A file chosen in the chat box but never sent belongs to no message: it is not group content.
         { scope: "CHAT_ATTACHMENT", messageId: null },

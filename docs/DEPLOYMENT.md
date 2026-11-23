@@ -139,6 +139,7 @@ dc build                                   # image; Next.js build reads .env.pro
 dc up -d db                                # database first
 dc run --rm app npm run db:backup -- --label pre-release   # before every migration (skip on the very first start)
 dc run --rm app npm run db:deploy          # apply migrations
+# first start only: create the owner now (section 6), or the start is refused ("no owner")
 dc up -d app                               # Next.js on 0.0.0.0:1010 in the container, 127.0.0.1:1010 on the host
 curl -s http://127.0.0.1:1010/api/health   # from the VPS: {"status":"ok","db":"ok",...}
 docker port twigo-app-1                    # should show 1010/tcp -> 127.0.0.1:1010
@@ -158,7 +159,8 @@ dc build && dc up -d db && dc run --rm app npm run db:deploy && dc up -d app
 ```
 
 The site listens on **1010** in the container and on the host (`127.0.0.1:1010:1010`); there is no
-other application port. Updating: `git pull`, then `dc build`, backup, `dc run --rm app npm run db:deploy`,
+other application port. Updating: copy the new release onto the server (replace the project folder,
+keeping `.env.production`), then `dc build`, backup, `dc run --rm app npm run db:deploy`,
 `dc up -d app`. Logs: `dc logs -f app`. Uploaded files and backups are in the `twigo-data` volume,
 the database in `twigo-postgres`; `docker compose down` keeps both (never add `-v`).
 
@@ -172,6 +174,12 @@ the host: then let Caddy reach the host's port 1010 the way the server's other s
 container, and publish Twigo as `"<docker-bridge-ip>:1010:1010"` instead of `127.0.0.1`). The app
 port stays 1010 in every case. Caddy forwards WebSocket upgrades (`/socket.io`) and sets
 `X-Forwarded-For`/`X-Forwarded-Proto` by itself.
+
+**Required behind Cloudflare:** Caddy must trust Cloudflare's addresses, or it replaces the
+visitor's address with Cloudflare's and every visitor shares one sign-in limit. In the central Caddy's
+global options: `servers { trusted_proxies static <Cloudflare IPv4 and IPv6 ranges> }` (the ranges are
+published at https://www.cloudflare.com/ips/), or the `cloudflare` IP-source module. If this is missing,
+the app logs `proxy.forwarded_chain_too_short` (at most once an hour).
 
 **`TRUSTED_PROXY_HOPS`** is the number of proxies in front of the app that add to
 `X-Forwarded-For`. With the Cloudflare proxy **and** Caddy that is **2**: Cloudflare writes the
@@ -252,24 +260,45 @@ development scripts create UTF-8 databases automatically.
 
 ## 8. Backups and restore
 
-* The server writes a logical backup of every table daily to `BACKUP_DIR` (gzip,
-  AES-256-GCM if `BACKUP_ENCRYPTION_KEY` is set) and keeps the newest `BACKUP_KEEP`.
-  Manual: `npm run db:backup` or **Admin → Backups → Back up now**.
-* **Copy backups off the server** daily (e.g. `rclone` to object storage). A backup on
-  the same disk does not survive disk loss.
-* If your host offers managed database backups / point-in-time recovery, enable them too;
-  `pg_dump --format=custom` is also fine as an additional copy.
-* **Restore test** (never overwrites the live database):
+In Docker (section 5, `dc` = `docker compose --env-file .env.production`):
+
+* The app writes a logical backup of every table daily to `/data/backups` in the `twigo-data`
+  volume (`JOBS_ENABLED=true`), compressed and encrypted with `BACKUP_ENCRYPTION_KEY`
+  (AES-256-GCM; nothing is written unencrypted), and keeps the newest `BACKUP_KEEP`.
+  Manual: **Admin → Backups → Back up now**, or `dc exec app npm run db:backup -- --label manual`.
+* **Copy backups and uploaded files off the server** daily. A backup on the same disk does not
+  survive disk loss. Example (from the VPS, into a folder that your off-site job copies):
 
   ```bash
-  npm run db:restore -- backups/<file> --into cowork_restore_check
+  docker run --rm -v twigo_twigo-data:/data -v /srv/twigo-offsite:/out alpine \
+    sh -c 'cp -a /data/backups /out/ && tar -czf /out/storage.tgz -C /data storage'
   ```
 
-  It creates the new database, runs migrations, loads every table and verifies row
-  counts and checksums table by table. Verified on the development machine on
-  2026-11-21 (see `docs/PHASE-1-REPORT.md`). Repeat at least quarterly.
-* Uploaded files in `STORAGE_DIR` are **not** in the database backup: back up that
-  directory too (same off-site copy job).
+  Keep `BACKUP_ENCRYPTION_KEY` in your password manager: without it the backups cannot be read.
+* **Restore test** (never touches the live database; the target name must contain "restore"):
+
+  ```bash
+  dc exec app ls -t /data/backups                       # newest first
+  dc exec app npm run db:restore -- /data/backups/<file> --into twigo_restore_check
+  dc exec db dropdb -U twigo twigo_restore_check         # afterwards
+  ```
+
+  It creates the database, runs the migrations, loads every table and verifies row counts and
+  checksums table by table. Verified in the Docker production build on this project's development
+  computer on 23 November 2026 (docs/TWIGO-RELEASE-REPORT.md). Repeat after deployment and at least
+  quarterly.
+* **Rollback to a backup** (after a failed release): restore into a new database whose name contains
+  `restore` (above), then point the app at it and restart:
+
+  ```bash
+  TWIGO_DB_NAME=twigo_restore_check dc up -d app
+  ```
+
+  `TWIGO_DB_NAME` (default `twigo`) is read by `docker-compose.yml`; changing `DATABASE_URL` in
+  `.env.production` has no effect, because Compose sets it.
+* `POSTGRES_PASSWORD` is applied only when the database volume is first created. To change it later,
+  change it inside PostgreSQL first (`dc exec db psql -U twigo -c "ALTER USER twigo PASSWORD '...'"`),
+  then in `.env.production`, then `dc up -d app`.
 
 ## 9. Monitoring
 

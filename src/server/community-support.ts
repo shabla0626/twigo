@@ -44,6 +44,7 @@ export async function addEntry(ownerId: string, raw: unknown) {
   const p = entrySchema.safeParse(raw);
   if (!p.success) return { ok: false as const, error: p.error.issues[0]?.message ?? "Some values are not valid." };
   const amountMinor = Math.round(Number(p.data.amount) * 100);
+  if (amountMinor <= 0 || amountMinor > 2_000_000_000) return { ok: false as const, error: "Enter an amount between 0.01 and 20,000,000.00." };
   const e = await db.supportLedgerEntry.create({
     data: { kind: p.data.kind, amountMinor, currency: p.data.currency, occurredOn: p.data.occurredOn, description: p.data.description, contributorName: p.data.contributorName || null, createdById: ownerId },
   });

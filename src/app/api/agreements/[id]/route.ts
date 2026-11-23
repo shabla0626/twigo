@@ -1,6 +1,8 @@
 import { NextResponse, type NextRequest } from "next/server";
+import { audit } from "@/lib/audit";
 import { getCurrentUser } from "@/lib/auth/guard";
 import { can } from "@/lib/auth/permissions";
+import { env } from "@/lib/env";
 import { AGREEMENT_STATUS_LABELS, agreementForDownload } from "@/server/community/group-projects";
 
 export const dynamic = "force-dynamic";
@@ -13,8 +15,13 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
   const user = await getCurrentUser();
   if (!user || !user.communityAccess) return new NextResponse("Not found", { status: 404 });
   const { id } = await params;
-  const v = await agreementForDownload(user.id, id, { owner: can(user.role, "compensation.view") });
+  // The owner may open any group's financial terms, but only with the same safeguards as the admin area
+  // (two-step verification) and with an audit entry; members use their own group or participant access.
+  const ownerAccess = can(user.role, "compensation.view") && (!env().ADMIN_REQUIRE_2FA || user.totpEnabled);
+  const asMember = await agreementForDownload(user.id, id);
+  const v = asMember ?? (ownerAccess ? await agreementForDownload(user.id, id, { owner: true }) : null);
   if (!v || v.status === "DRAFT") return new NextResponse("Not found", { status: 404 });
+  if (!asMember) await audit(user.id, "agreement.downloaded_by_owner", "ProjectAgreementVersion", v.id, { projectId: v.projectId, version: v.version });
   const lines = [
     `Project: ${v.project.name}`,
     `Group: ${v.project.group.name}`,

@@ -11,7 +11,7 @@ import { createServer } from "node:http";
 import path from "node:path";
 import next from "next";
 import { loadDotEnv } from "./scripts/load-env";
-import { CLIENT_ADDRESS_HEADER, resolveClientAddress } from "./src/lib/client-address";
+import { CLIENT_ADDRESS_HEADER, forwardedChainTooShort, resolveClientAddress } from "./src/lib/client-address";
 
 if (process.argv.includes("--production")) (process.env as Record<string, string>).NODE_ENV = "production";
 // Without --production this is the development server: say so explicitly, so every module (for example
@@ -105,8 +105,15 @@ async function main() {
   // The address each request really came from (used to count sign-in and form attempts).
   // Always overwritten here, so a value sent by a visitor is never used.
   const trustedHops = Math.max(0, Math.trunc(Number(process.env.TRUSTED_PROXY_HOPS || 0)) || 0);
+  let chainWarnedAt = 0;
   const httpServer = createServer((req, res) => {
     req.headers[CLIENT_ADDRESS_HEADER] = resolveClientAddress(req.socket.remoteAddress, req.headers["x-forwarded-for"], trustedHops);
+    if (forwardedChainTooShort(req.headers["x-forwarded-for"], trustedHops) && Date.now() - chainWarnedAt > 3_600_000) {
+      chainWarnedAt = Date.now();
+      log("proxy.forwarded_chain_too_short", {
+        warning: `X-Forwarded-For has fewer entries than TRUSTED_PROXY_HOPS=${trustedHops}: all visitors would share one sign-in limit. Configure the reverse proxy to keep the forwarded chain (Caddy: trusted_proxies for Cloudflare), or lower TRUSTED_PROXY_HOPS (docs/DEPLOYMENT.md, section 5).`,
+      });
+    }
     void handle(req, res);
   });
 

@@ -1,0 +1,36 @@
+# LOCAL VERIFICATION ONLY. Never use this file on the VPS.
+#
+# Runs the production image exactly as in docker-compose.yml, but for an end-to-end check on a
+# development computer:
+# - the app uses a throw-away demo database (twigo_walk_demo, filled by scripts/seed-demo.ts);
+# - a test mail catcher shares the app container's network, so the app sends to 127.0.0.1:2525
+#   (captured, never delivered) and the captured mail is written to ./.verify-mail for the checks.
+#
+#   export TWIGO_ENV_FILE=.env.docker-local
+#   docker compose -f docker-compose.yml -f docker-compose.verify.yml --env-file .env.docker-local up -d
+#
+# Driven by scripts/audit/docker-verify.sh.
+
+services:
+  app:
+    environment:
+      DATABASE_URL: "postgresql://twigo:${POSTGRES_PASSWORD:?}@db:5432/twigo_walk_demo?schema=public"
+      SMTP_HOST: 127.0.0.1
+      SMTP_PORT: "2525"
+      SMTP_SECURE: "false"
+      SMTP_USER: ""
+      SMTP_PASSWORD: ""
+      EMAIL_FROM: no-reply@demo.test
+      SEND_APPLICANT_CONFIRMATION: "true"
+
+  mail:
+    image: twigo-app
+    command: ["node_modules/.bin/tsx", "scripts/dev-mail.ts"]
+    network_mode: "service:app"
+    environment:
+      DEV_MAIL_DIR: /mail
+      NODE_ENV: development
+    volumes:
+      - ./.verify-mail:/mail
+    depends_on:
+      - app

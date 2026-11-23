@@ -15,11 +15,11 @@
  * Kept free of `server-only` so CLI scripts and the server scheduler can use it.
  */
 import { createCipheriv, createDecipheriv, createHash, randomBytes, scryptSync } from "node:crypto";
-import { createReadStream, createWriteStream, existsSync, mkdirSync, readdirSync, readFileSync, statSync, unlinkSync, writeFileSync } from "node:fs";
+import { createReadStream, existsSync, mkdirSync, readdirSync, readFileSync, renameSync, statSync, unlinkSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { createInterface } from "node:readline";
 import { createUtf8Database } from "./create-database";
-import { Readable } from "node:stream";
+import { Readable, Writable } from "node:stream";
 import { pipeline } from "node:stream/promises";
 import { createGunzip, createGzip } from "node:zlib";
 import { Client } from "pg";
@@ -153,14 +153,25 @@ export async function createBackup(opts: BackupOptions): Promise<BackupResult> {
         yield "\\.\n";
       }
     }
-    await pipeline(Readable.from(generate()), createGzip(), createWriteStream(gzPath));
-
-    let file = gzPath;
-    if (opts.encryptionKey) {
-      file = `${gzPath}.enc`;
-      writeFileSync(file, encrypt(readFileSync(gzPath), opts.encryptionKey));
-      unlinkSync(gzPath);
-    }
+    // Compressed in memory (the data already is), so personal data is never written to disk unencrypted
+    // when a key is set; the file is written under a temporary name and renamed only when complete, so an
+    // interrupted backup never leaves a partial file that looks like a backup.
+    const chunks: Buffer[] = [];
+    await pipeline(
+      Readable.from(generate()),
+      createGzip(),
+      new Writable({
+        write(chunk: Buffer, _enc, cb) {
+          chunks.push(chunk);
+          cb();
+        },
+      }),
+    );
+    const gz = Buffer.concat(chunks);
+    const file = opts.encryptionKey ? `${gzPath}.enc` : gzPath;
+    const tmp = `${file}.tmp`;
+    writeFileSync(tmp, opts.encryptionKey ? encrypt(gz, opts.encryptionKey) : gz, { mode: 0o600 });
+    renameSync(tmp, file);
     const deleted = opts.keep ? pruneBackups(opts.dir, database, opts.keep) : [];
     return { file, manifest, bytes: statSync(file).size, deleted };
   } catch (err) {

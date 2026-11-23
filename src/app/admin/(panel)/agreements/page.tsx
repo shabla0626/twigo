@@ -4,6 +4,7 @@ import { Badge } from "@/components/ui/primitives";
 import { requireAdmin } from "@/lib/auth/guard";
 import { can } from "@/lib/auth/permissions";
 import { db } from "@/lib/db";
+import { AGREEMENT_STATUSES } from "@/lib/labels";
 import { AGREEMENT_STATUS_LABELS, PROJECT_STATUS_LABELS } from "@/server/community/group-projects";
 
 /**
@@ -22,6 +23,17 @@ export default async function AdminAgreementsPage() {
       versions: { orderBy: { version: "desc" }, take: 1, include: { participants: { select: { acceptedAt: true } } } },
     },
   });
+  // Owner only: the compensation records of the earlier, administrator-run projects, in one list.
+  const earlier = owner
+    ? await db.compensationAgreement.findMany({
+        orderBy: { updatedAt: "desc" },
+        take: 200,
+        select: {
+          id: true, basis: true, amountMinor: true, currency: true, status: true, agreedAt: true, updatedAt: true,
+          assignment: { select: { project: { select: { id: true, title: true } }, participant: { select: { applicant: { select: { fullName: true } } } } } },
+        },
+      })
+    : [];
   return (
     <>
       <AdminHeader
@@ -60,6 +72,30 @@ export default async function AdminAgreementsPage() {
           })}
         </Table>
       </div>
+      {owner && (
+        <section className="mt-10" aria-labelledby="earlier-heading">
+          <h2 id="earlier-heading" className="text-lg font-semibold text-ink-950">Earlier compensation records (owner only)</h2>
+          <p className="mt-1 text-sm text-ink-600">Records of the earlier, administrator-run projects. Open a project to see or change its terms.</p>
+          <div className="mt-4">
+            <Table head={["Project", "Person", "Basis", "Amount", "Status", "Updated"]} empty={earlier.length === 0 ? <Empty>No earlier compensation records.</Empty> : undefined}>
+              {earlier.map((c) => (
+                <tr key={c.id}>
+                  <td className="px-4 py-3">
+                    <Link href={`/admin/projects/${c.assignment.project.id}`} className="underline underline-offset-2">
+                      {c.assignment.project.title}
+                    </Link>
+                  </td>
+                  <td className="px-4 py-3">{c.assignment.participant.applicant.fullName}</td>
+                  <td className="px-4 py-3 text-ink-700">{c.basis ?? "—"}</td>
+                  <td className="px-4 py-3 tabular-nums">{c.amountMinor != null ? `${c.currency ?? ""} ${(c.amountMinor / 100).toFixed(2)}` : "—"}</td>
+                  <td className="px-4 py-3">{AGREEMENT_STATUSES[c.status]}</td>
+                  <td className="px-4 py-3 text-ink-600">{fmtDate(c.updatedAt)}</td>
+                </tr>
+              ))}
+            </Table>
+          </div>
+        </section>
+      )}
     </>
   );
 }

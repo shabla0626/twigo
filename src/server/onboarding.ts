@@ -9,6 +9,7 @@ import { normalizeEmail } from "@/lib/validation/email";
 import { TOKEN_TTL_HOURS } from "@/lib/auth/constants";
 import { hashPassword, passwordPolicyError, simulatePasswordCheck } from "@/lib/auth/password";
 import { logger } from "@/lib/logger";
+import { REGISTRATION_ACCEPT, REGISTRATION_ACK } from "@/content/legal";
 import { grantAcceptedMembership } from "./membership-grant";
 import { revokeUserSessions } from "@/lib/auth/session";
 import { consumeToken, describeTtl, issueToken } from "@/lib/auth/tokens";
@@ -32,6 +33,8 @@ export type RegisterResult =
  * cannot be used to find out who is registered: in that case the owner of
  * the address gets an email saying they already have an account.
  */
+class DocumentsChanged extends Error {}
+
 export async function registerAccount(raw: unknown, ctx: { ipHash: string }): Promise<RegisterResult> {
   const parsed = registerSchema.safeParse(raw);
   if (!parsed.success) return { ok: false, fieldErrors: parsed.error.flatten().fieldErrors };
@@ -62,6 +65,11 @@ export async function registerAccount(raw: unknown, ctx: { ipHash: string }): Pr
   if (shownIds.size && current.some((d) => !shownIds.has(d.versionId))) {
     return { ok: false, error: "One of the documents changed while you were filling in the form. Please read the current version and tick the boxes again." };
   }
+  // Every document the form asks about must exist in a version people can read; otherwise no account
+  // could be created with a complete record of what was accepted.
+  if (docs.accept.length !== REGISTRATION_ACCEPT.length || docs.ack.length !== REGISTRATION_ACK.length) {
+    return { ok: false, error: "Sign-up is briefly unavailable while our policies are being updated. Please try again later." };
+  }
   const termsVersion = docs.accept.map((d) => `${d.key} v${d.version}`).join(", ") || TERMS_VERSION;
 
   const passwordHash = await hashPassword(password);
@@ -80,15 +88,22 @@ export async function registerAccount(raw: unknown, ctx: { ipHash: string }): Pr
           termsVersion: termsVersion.slice(0, 190),
         },
       });
-      for (const d of docs.accept) await recordAcceptance({ userId: created.id, key: d.key, kind: "ACCEPTED", method: "registration", versionId: d.versionId }, tx);
-      for (const d of docs.ack) await recordAcceptance({ userId: created.id, key: d.key, kind: "ACKNOWLEDGED", method: "registration", versionId: d.versionId }, tx);
+      for (const [list, kind] of [[docs.accept, "ACCEPTED"], [docs.ack, "ACKNOWLEDGED"]] as const) {
+        for (const d of list) {
+          const rec = await recordAcceptance({ userId: created.id, key: d.key, kind, method: "registration", versionId: d.versionId }, tx);
+          // The document changed between reading and saving: create nothing (the transaction is undone).
+          if (!rec) throw new DocumentsChanged();
+        }
+      }
       return created;
     })
     .catch((err: unknown) => {
+      if (err instanceof DocumentsChanged) return "changed" as const;
       // Two simultaneous sign-ups with the same address: the database keeps exactly one.
       if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === "P2002") return null;
       throw err;
     });
+  if (user === "changed") return { ok: false, error: "One of the documents changed while you were filling in the form. Please read the current version and tick the boxes again." };
   if (!user) return { ok: true, email, mailStatus: "skipped" };
   await audit(user.id, "account.registered", "User", user.id);
   const res = await sendVerificationEmail(user.id, { ignoreCooldown: true });

@@ -104,7 +104,7 @@ export async function privacyRequestStatusAction(fd: FormData) {
   if ((status === "COMPLETED" || status === "REJECTED") && response.length < 5) {
     redirect(withFlash("/admin/privacy-requests", { error: "Write what was done (or why the request is refused) before closing it." }));
   }
-  await db.privacyRequest.update({ where: { id }, data: { status, response: response || null, handledById: owner.id, handledAt: new Date() } });
+  await db.privacyRequest.update({ where: { id }, data: { status, ...(response ? { response } : {}), handledById: owner.id, handledAt: new Date() } });
   await audit(owner.id, "privacy.request_updated", "PrivacyRequest", id, { status });
   redirect(withFlash("/admin/privacy-requests", { ok: "Request updated." }));
 }

@@ -66,3 +66,7 @@ Thumbs.db
 /.walk-backups/
 /.walk-server.log
 /.retest/
+
+# Local Docker verification output
+/.verify-mail/
+/.verify-build.log

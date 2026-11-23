@@ -177,16 +177,31 @@ export async function acceptancesOf(userId: string) {
  */
 export const pendingReacceptance = cache(async (userId: string) => {
   const required = [...REGISTRATION_ACCEPT, ...REGISTRATION_ACK];
-  const versions = await db.legalDocumentVersion.findMany({
-    where: { status: "PUBLISHED", requiresReacceptance: true, document: { key: { in: required } } },
-    select: { id: true, version: true, document: { select: { key: true, title: true } } },
+  // For each document: the newest version that was ever published with "ask everyone to accept again"
+  // (still published, or since replaced by a later minor version), and the version published now.
+  const flagged = await db.legalDocumentVersion.findMany({
+    where: { requiresReacceptance: true, publishedAt: { not: null }, document: { key: { in: required } } },
+    orderBy: { version: "desc" },
+    select: { version: true, documentId: true },
   });
-  if (!versions.length) return [];
-  const done = await db.legalAcceptance.findMany({ where: { userId, versionId: { in: versions.map((v) => v.id) } }, select: { versionId: true } });
-  const doneIds = new Set(done.map((d) => d.versionId));
-  return versions
-    .filter((v) => !doneIds.has(v.id))
-    .map((v) => ({ key: v.document.key as LegalKey, title: v.document.title, version: v.version, versionId: v.id, kind: (REGISTRATION_ACK as string[]).includes(v.document.key) ? ("ACKNOWLEDGED" as const) : ("ACCEPTED" as const) }));
+  if (!flagged.length) return [];
+  const needFrom = new Map<string, number>();
+  for (const f of flagged) if (!needFrom.has(f.documentId)) needFrom.set(f.documentId, f.version);
+  const current = await db.legalDocumentVersion.findMany({
+    where: { status: "PUBLISHED", documentId: { in: [...needFrom.keys()] } },
+    orderBy: { version: "desc" },
+    select: { id: true, version: true, documentId: true, document: { select: { key: true, title: true } } },
+  });
+  const out = [];
+  const seen = new Set<string>();
+  for (const v of current) {
+    if (seen.has(v.documentId)) continue;
+    seen.add(v.documentId);
+    // Accepting the flagged version or any later one satisfies the requirement.
+    const ok = await db.legalAcceptance.count({ where: { userId, legalVersion: { documentId: v.documentId, version: { gte: needFrom.get(v.documentId)! } } } });
+    if (!ok) out.push({ key: v.document.key as LegalKey, title: v.document.title, version: v.version, versionId: v.id, kind: (REGISTRATION_ACK as string[]).includes(v.document.key) ? ("ACKNOWLEDGED" as const) : ("ACCEPTED" as const) });
+  }
+  return out;
 });
 
 // ---------------------------------------------------------------- owner: versions and states
@@ -252,6 +267,8 @@ export async function changeStatus(
     } else if (to === "DRAFT") {
       if (v.status !== "PENDING_LEGAL_REVIEW") return { ok: false as const, error: "Only a version awaiting review can return to draft." };
       if (v._count.acceptances > 0) return { ok: false as const, error: "People have already accepted this exact text, so it cannot be changed. Start a new version instead." };
+      const otherDraft = await tx.legalDocumentVersion.count({ where: { documentId: v.documentId, status: "DRAFT" } });
+      if (otherDraft) return { ok: false as const, error: "Another version is already a draft. Finish or discard that one first." };
       await tx.legalDocumentVersion.update({ where: { id: v.id }, data: { status: "DRAFT", submittedAt: null } });
     } else if (to === "APPROVED") {
       if (v.status !== "PENDING_LEGAL_REVIEW") return { ok: false as const, error: "Only a version awaiting legal review can be approved." };
@@ -260,10 +277,12 @@ export async function changeStatus(
       await tx.legalDocumentVersion.update({ where: { id: v.id }, data: { status: "APPROVED", approvedAt: now, approvedById: ownerId, approvalNote: note.slice(0, 1000) } });
     } else if (to === "PUBLISHED") {
       if (v.status !== "APPROVED") return { ok: false as const, error: "Only an approved version can be published." };
+      const newer = await tx.legalDocumentVersion.count({ where: { documentId: v.documentId, status: "PUBLISHED", version: { gt: v.version } } });
+      if (newer) return { ok: false as const, error: "A newer version is already published. Start a new version from it instead." };
       // Every earlier version that was shown or published is replaced by this one (an older text that was
       // still awaiting review would otherwise stay listed as current next to the published one).
       await tx.legalDocumentVersion.updateMany({
-        where: { documentId: v.documentId, version: { lt: v.version }, status: { in: ["PUBLISHED", "APPROVED", "PENDING_LEGAL_REVIEW"] } },
+        where: { documentId: v.documentId, id: { not: v.id }, OR: [{ status: "PUBLISHED" }, { version: { lt: v.version }, status: { in: ["APPROVED", "PENDING_LEGAL_REVIEW"] } }] },
         data: { status: "SUPERSEDED", supersededAt: now },
       });
       await tx.legalDocumentVersion.update({ where: { id: v.id }, data: { status: "PUBLISHED", publishedAt: now, publishedById: ownerId, effectiveDate: input.effectiveDate ?? now } });

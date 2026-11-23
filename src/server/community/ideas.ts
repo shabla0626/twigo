@@ -128,7 +128,10 @@ export async function closeIdea(userId: string, ideaId: string) {
   const idea = await db.businessIdea.findUnique({ where: { id: ideaId }, include: { group: { select: { id: true } } } });
   if (!idea || idea.authorId !== userId) return { ok: false as const, error: "Only the author can close this idea." };
   if (idea.group) return { ok: false as const, error: "This idea already has a project group; it stays open as its origin." };
-  await db.businessIdea.update({ where: { id: ideaId }, data: { status: "CLOSED" } });
+  if (idea.status !== "OPEN") return { ok: false as const, error: idea.status === "CLOSED" ? "This idea is already closed." : "This idea can no longer be changed." };
+  // Conditional update: if a group was formed (or a moderator acted) in the meantime, nothing changes.
+  const changed = await db.businessIdea.updateMany({ where: { id: ideaId, status: "OPEN" }, data: { status: "CLOSED" } });
+  if (!changed.count) return { ok: false as const, error: "This idea changed in the meantime. Please reload." };
   return { ok: true as const };
 }
 

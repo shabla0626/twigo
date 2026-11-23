@@ -28,3 +28,4 @@ docs/ux-review
 *.cwbak*
 *.dump
 *.pgdump
+.verify-*

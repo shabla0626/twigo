@@ -108,7 +108,7 @@ Use any address on the verified domain, for example `no-reply@mail.<your-domain>
 address if you want replies. It does not need its own mailbox for sending.
 
 ### Step 5: Connect it to the site
-On the **server** (production `.env` or your host's secret settings, never in Git):
+On the **server**, in `.env.production` (never in Git):
 
 ```
 SMTP_HOST=smtp.resend.com
@@ -119,7 +119,7 @@ SMTP_PASSWORD=          <- paste the Resend API key after the = sign
 EMAIL_FROM="Twigo <noreply@twigo.space>"
 ```
 
-Restart the site, then:
+Apply it with `docker compose --env-file .env.production up -d app` (a plain `restart` does not re-read the file), then:
 1. **Admin → Email → Check connection.** This logs in to Resend without sending anything.
 2. **Admin → Email → Send a test email to me**, then check that inbox (and its spam folder).
 3. Send yourself a real password reset and an invitation to a test address before inviting members.

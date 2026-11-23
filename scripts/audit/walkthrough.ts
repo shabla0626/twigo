@@ -74,6 +74,19 @@ async function expectText(p: Page, text: string | RegExp, timeout = 15000) {
   await p.getByText(text).first().waitFor({ state: "visible", timeout });
 }
 
+/**
+ * Changes an application's status on the admin page and waits until it is really saved: after a change
+ * the status list no longer offers the new (current) status. Waiting for the "Status updated." text
+ * alone is not enough, because the previous change left the same text on the page.
+ */
+async function setApplicationStatus(p: Page, status: string, message?: string) {
+  await p.getByLabel("New status").selectOption(status);
+  if (message) await p.locator('textarea[name="interviewDetails"]').fill(message);
+  await p.getByRole("button", { name: "Update status" }).click();
+  await p.waitForFunction((v) => !Array.from(document.querySelectorAll("#status option")).some((o) => (o as HTMLOptionElement).value === v), status, { timeout: 30000 });
+  await expectText(p, /Status updated\./);
+}
+
 /** Requests of each page that have started and not finished (named in the error when a page does not load). */
 const openRequests = new WeakMap<Page, Map<object, string>>();
 async function session(b: Browser): Promise<{ ctx: BrowserContext; page: Page }> {
@@ -233,26 +246,16 @@ async function openApplicationOf(p: Page, name: string) {
   }, { page: np, shotName: "received" });
   await step("the administrator asks for an interview; Nina sees the details", async () => {
     await openApplicationOf(op, "Nina Novak");
-    await op.getByLabel("New status").selectOption("UNDER_REVIEW");
-    await op.getByRole("button", { name: "Update status" }).click();
-    await expectText(op, /Status updated\./);
-    await op.getByLabel("New status").selectOption("INTERVIEW_REQUESTED");
-    const details = op.locator('textarea[name="interviewDetails"]');
-    if (await details.count()) await details.fill("A short video call on Tuesday at 10:00. Reply with another time if that does not suit you.");
-    await op.getByRole("button", { name: "Update status" }).click();
-    await expectText(op, /Status updated\./);
+    await setApplicationStatus(op, "UNDER_REVIEW");
+    await setApplicationStatus(op, "INTERVIEW_REQUESTED", "A short video call on Tuesday at 10:00. Reply with another time if that does not suit you.");
     await go(np, "/application");
     await expectText(np, "Interview details");
   }, { page: np, shotName: "interview" });
   await step("waitlisted, then declined: Nina can see it and may apply again, but cannot enter", async () => {
-    await op.getByLabel("New status").selectOption("WAITLISTED");
-    await op.getByRole("button", { name: "Update status" }).click();
-    await expectText(op, /Status updated\./);
+    await setApplicationStatus(op, "WAITLISTED");
     await go(np, "/application");
     await expectText(np, "Waitlisted");
-    await op.getByLabel("New status").selectOption("DECLINED");
-    await op.getByRole("button", { name: "Update status" }).click();
-    await expectText(op, /Status updated\./);
+    await setApplicationStatus(op, "DECLINED");
     await go(np, "/application");
     await expectText(np, "Declined");
     await go(np, "/community");

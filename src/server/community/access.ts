@@ -25,9 +25,20 @@ export type GroupAccess = {
  * (overview, discussions, member list) only require an active organization
  * member; private parts require an ACTIVE group membership.
  */
-export async function groupAccess(groupIdOrSlug: string, userId: string): Promise<GroupAccess | null> {
-  const group = await db.researchGroup.findFirst({ where: { OR: [{ id: groupIdOrSlug }, { slug: groupIdOrSlug }] } });
-  if (!group) return null;
+export async function groupAccess(groupId: string, userId: string): Promise<GroupAccess | null> {
+  // By id only. A lookup by "id or slug" could resolve a value to a different group than the one the
+  // caller then writes to (a slug can be made equal to another group's id through an idea's title).
+  const group = await db.researchGroup.findUnique({ where: { id: groupId } });
+  return group ? accessFor(group, userId) : null;
+}
+
+/** For the group pages, whose address contains the slug. */
+export async function groupAccessBySlug(slug: string, userId: string): Promise<GroupAccess | null> {
+  const group = await db.researchGroup.findUnique({ where: { slug } });
+  return group ? accessFor(group, userId) : null;
+}
+
+async function accessFor(group: ResearchGroup, userId: string): Promise<GroupAccess> {
   const membership = await db.groupMembership.findUnique({ where: { groupId_userId: { groupId: group.id, userId } } });
   const isMember = membership?.status === "ACTIVE" && !group.suspendedAt;
   return {

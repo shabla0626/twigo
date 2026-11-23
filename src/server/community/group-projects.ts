@@ -113,13 +113,26 @@ type Result<T = object> = ({ ok: true } & T) | { ok: false; error: string };
 
 // ---------------------------------------------------------------- reading
 
-async function projectWithAccess(projectId: string, userId: string) {
+/**
+ * Reading needs an active group membership; changing anything also needs the group to be open (an
+ * archived or suspended group's projects are read-only, like the rest of its content).
+ */
+async function projectWithAccess(projectId: string, userId: string, opts: { write?: boolean } = {}) {
   const project = await db.groupProject.findUnique({ where: { id: projectId } });
   if (!project) throw new AccessError("Project not found.");
-  const a = await requireGroupMember(project.groupId, userId);
+  const a = opts.write ? await requireOpenGroupMember(project.groupId, userId) : await requireGroupMember(project.groupId, userId);
   const canEdit = a.isCoordinator || project.coordinatorId === userId;
   return { project, access: a, canEdit };
 }
+
+const CLOSED_PROJECT = ["COMPLETED", "CANCELLED"];
+
+/** Serializes every change to one project's agreements (lock order: project row, then version rows). */
+async function lockProject(tx: Prisma.TransactionClient, projectId: string) {
+  await tx.$queryRaw`SELECT "id" FROM "GroupProject" WHERE "id" = ${projectId} FOR UPDATE`;
+}
+
+class Refusal extends Error {}
 
 export async function listGroupProjects(groupId: string, userId: string) {
   await requireGroupMember(groupId, userId);
@@ -206,7 +219,7 @@ export async function createGroupProject(userId: string, groupId: string, input:
 }
 
 export async function updateProjectBasics(userId: string, projectId: string, input: { name: string; objective: string; coordinatorId: string }): Promise<Result> {
-  const { project, canEdit } = await projectWithAccess(projectId, userId);
+  const { project, canEdit } = await projectWithAccess(projectId, userId, { write: true });
   if (!canEdit) return { ok: false, error: "Only the project coordinator or the group coordinator can change the project." };
   if (!(await activeMemberIds(project.groupId)).includes(input.coordinatorId)) return { ok: false, error: "The project coordinator must be an active member of the group." };
   const name = input.name.trim();
@@ -219,7 +232,7 @@ export async function updateProjectBasics(userId: string, projectId: string, inp
 
 /** Creates or updates the one draft of the agreement. Drafts are visible to the group, never binding. */
 export async function saveAgreementDraft(userId: string, projectId: string, termsRaw: unknown, participantsRaw: unknown, changeNote: string): Promise<Result<{ versionId: string }>> {
-  const { project, canEdit } = await projectWithAccess(projectId, userId);
+  const { project, canEdit } = await projectWithAccess(projectId, userId, { write: true });
   if (!canEdit) return { ok: false, error: "Only the project coordinator or the group coordinator can edit the draft agreement." };
   if (project.status === "COMPLETED" || project.status === "CANCELLED") return { ok: false, error: "This project is closed." };
   const terms = termsSchema.safeParse(termsRaw);
@@ -245,7 +258,7 @@ export async function saveAgreementDraft(userId: string, projectId: string, term
     const content = agreementText({ projectName: project.name, groupName: group.name, version, terms: terms.data, participants: withNames });
     const data = { terms: terms.data as Prisma.InputJsonValue, content, contentHash: sha256(content), changeNote: changeNote.trim().slice(0, 1000) || null };
     const v = draft
-      ? await tx.projectAgreementVersion.update({ where: { id: draft.id }, data })
+      ? await tx.projectAgreementVersion.update({ where: { id: draft.id, status: "DRAFT" }, data })
       : await tx.projectAgreementVersion.create({ data: { ...data, projectId, version, createdById: userId } });
     await tx.projectAgreementParticipant.deleteMany({ where: { versionId: v.id } });
     if (withNames.length) {
@@ -260,26 +273,32 @@ export async function saveAgreementDraft(userId: string, projectId: string, term
 
 /** Freezes the draft and asks every listed participant to accept exactly this text. */
 export async function openForAcceptance(userId: string, versionId: string): Promise<Result> {
-  const v = await db.projectAgreementVersion.findUnique({ where: { id: versionId }, include: { participants: true } });
-  if (!v) return { ok: false, error: "Agreement not found." };
-  const { project, canEdit } = await projectWithAccess(v.projectId, userId);
+  const found = await db.projectAgreementVersion.findUnique({ where: { id: versionId }, select: { projectId: true } });
+  if (!found) return { ok: false, error: "Agreement not found." };
+  const { project, canEdit } = await projectWithAccess(found.projectId, userId, { write: true });
   if (!canEdit) return { ok: false, error: "Only the project coordinator or the group coordinator can ask for acceptance." };
-  if (v.status !== "DRAFT") return { ok: false, error: "Only a draft can be opened for acceptance." };
-  const terms = termsSchema.parse(v.terms);
-  const missing = REQUIRED.filter(([k]) => !String(terms[k] ?? "").trim()).map(([, label]) => label);
-  if (terms.contractingModel === "UNDECIDED") missing.unshift("Contracting arrangement");
-  if (!v.participants.length) missing.push("At least one participant");
-  if (v.participants.some((p) => !p.responsibilities.trim() || !p.compensation.trim())) missing.push("Responsibilities and compensation for every participant");
-  if (missing.length) return { ok: false, error: `Please complete before asking for acceptance: ${missing.join(", ")}.` };
+  if (CLOSED_PROJECT.includes(project.status)) return { ok: false, error: "This project is closed." };
   const eligible = new Set(await activeMemberIds(project.groupId));
-  if (v.participants.some((p) => !p.userId || !eligible.has(p.userId))) return { ok: false, error: "A listed participant is no longer an active member of the group. Update the participants first." };
-
-  await db.$transaction(async (tx) => {
-    await tx.projectAgreementVersion.updateMany({ where: { projectId: v.projectId, status: "OPEN" }, data: { status: "WITHDRAWN", closedAt: new Date() } });
-    await tx.projectAgreementVersion.update({ where: { id: v.id }, data: { status: "OPEN", openedAt: new Date() } });
-    if (project.status === "PLANNING") await tx.groupProject.update({ where: { id: project.id }, data: { status: "AGREEMENT_PENDING" } });
-    await tx.auditLog.create({ data: { actorId: userId, action: "project.agreement_opened", entityType: "ProjectAgreementVersion", entityId: v.id, metadata: { version: v.version, contentHash: v.contentHash } } });
-  });
+  let v: Prisma.ProjectAgreementVersionGetPayload<{ include: { participants: true } }>;
+  try {
+    v = await db.$transaction(async (tx) => {
+      await lockProject(tx, project.id);
+      // Read again under the lock: what is checked is exactly what becomes OPEN.
+      const cur = await tx.projectAgreementVersion.findUnique({ where: { id: versionId }, include: { participants: true } });
+      if (!cur || cur.status !== "DRAFT") throw new Refusal("Only a draft can be opened for acceptance.");
+      const problem = openProblem(cur, eligible);
+      if (problem) throw new Refusal(problem);
+      await tx.projectAgreementVersion.updateMany({ where: { projectId: cur.projectId, status: "OPEN" }, data: { status: "WITHDRAWN", closedAt: new Date() } });
+      await tx.projectAgreementVersion.update({ where: { id: cur.id, status: "DRAFT" }, data: { status: "OPEN", openedAt: new Date() } });
+      const p = await tx.groupProject.findUniqueOrThrow({ where: { id: project.id } });
+      if (p.status === "PLANNING") await tx.groupProject.update({ where: { id: project.id }, data: { status: "AGREEMENT_PENDING" } });
+      await tx.auditLog.create({ data: { actorId: userId, action: "project.agreement_opened", entityType: "ProjectAgreementVersion", entityId: cur.id, metadata: { version: cur.version, contentHash: cur.contentHash } } });
+      return cur;
+    });
+  } catch (e) {
+    if (e instanceof Refusal) return { ok: false, error: e.message };
+    throw e;
+  }
   const slug = (await db.researchGroup.findUniqueOrThrow({ where: { id: project.groupId }, select: { slug: true } })).slug;
   await notify(
     v.participants.map((p) => p.userId!).filter((id) => id !== userId),
@@ -288,19 +307,40 @@ export async function openForAcceptance(userId: string, versionId: string): Prom
   return { ok: true };
 }
 
+/** Why a draft cannot be put to the participants yet (null when it can). */
+function openProblem(v: Prisma.ProjectAgreementVersionGetPayload<{ include: { participants: true } }>, eligible: Set<string>): string | null {
+  const terms = termsSchema.parse(v.terms);
+  const missing = REQUIRED.filter(([k]) => !String(terms[k] ?? "").trim()).map(([, label]) => label);
+  if (terms.contractingModel === "UNDECIDED") missing.unshift("Contracting arrangement");
+  if (!v.participants.length) missing.push("At least one participant");
+  if (v.participants.some((p) => !p.responsibilities.trim() || !p.compensation.trim())) missing.push("Responsibilities and compensation for every participant");
+  if (missing.length) return `Please complete before asking for acceptance: ${missing.join(", ")}.`;
+  if (v.participants.some((p) => !p.userId || !eligible.has(p.userId))) return "A listed participant is no longer an active member of the group. Update the participants first.";
+  return null;
+}
+
 /** A participant accepts the exact text they were shown (its fingerprint must match). */
 export async function acceptAgreement(userId: string, versionId: string, fingerprint: string): Promise<Result<{ allAccepted: boolean }>> {
   const v = await db.projectAgreementVersion.findUnique({ where: { id: versionId }, include: { participants: true } });
   if (!v) return { ok: false, error: "Agreement not found." };
-  await projectWithAccess(v.projectId, userId);
+  const { project: owning } = await projectWithAccess(v.projectId, userId, { write: true });
+  if (CLOSED_PROJECT.includes(owning.status)) return { ok: false, error: "This project is closed." };
   if (v.status !== "OPEN") return { ok: false, error: "This version is not waiting for acceptance." };
   if (fingerprint !== v.contentHash) return { ok: false, error: "The agreement text changed after you opened it. Please reload and read it again." };
   const me = v.participants.find((p) => p.userId === userId);
   if (!me) return { ok: false, error: "You are not a participant in this version." };
   if (me.acceptedAt) return { ok: true, allAccepted: v.participants.every((p) => p.acceptedAt || p.userId === userId) };
 
-  const all = await db.$transaction(async (tx) => {
+  let all: boolean;
+  try {
+   all = await db.$transaction(async (tx) => {
+    await lockProject(tx, v.projectId);
     await tx.$queryRaw`SELECT "id" FROM "ProjectAgreementVersion" WHERE "id" = ${v.id} FOR UPDATE`;
+    // Read again under the lock: a version withdrawn or replaced meanwhile can no longer be accepted.
+    const cur = await tx.projectAgreementVersion.findUniqueOrThrow({ where: { id: v.id }, select: { status: true, contentHash: true } });
+    if (cur.status !== "OPEN" || cur.contentHash !== fingerprint) throw new Refusal("This version is no longer waiting for acceptance. Please reload.");
+    const p = await tx.groupProject.findUniqueOrThrow({ where: { id: v.projectId }, select: { status: true } });
+    if (CLOSED_PROJECT.includes(p.status)) throw new Refusal("This project is closed.");
     await tx.projectAgreementParticipant.update({ where: { id: me.id }, data: { acceptedAt: new Date(), acceptedHash: v.contentHash, declinedAt: null, declineNote: null } });
     const waiting = await tx.projectAgreementParticipant.count({ where: { versionId: v.id, acceptedAt: null } });
     if (waiting === 0) {
@@ -310,7 +350,11 @@ export async function acceptAgreement(userId: string, versionId: string, fingerp
     }
     await tx.auditLog.create({ data: { actorId: userId, action: "project.agreement_accepted", entityType: "ProjectAgreementVersion", entityId: v.id, metadata: { version: v.version, contentHash: v.contentHash } } });
     return waiting === 0;
-  });
+   });
+  } catch (e) {
+    if (e instanceof Refusal) return { ok: false, error: e.message };
+    throw e;
+  }
   if (all) {
     const project = await db.groupProject.findUniqueOrThrow({ where: { id: v.projectId } });
     const slug = (await db.researchGroup.findUniqueOrThrow({ where: { id: project.groupId }, select: { slug: true } })).slug;
@@ -327,12 +371,19 @@ export async function acceptAgreement(userId: string, versionId: string, fingerp
 export async function declineAgreement(userId: string, versionId: string, note: string): Promise<Result> {
   const v = await db.projectAgreementVersion.findUnique({ where: { id: versionId }, include: { participants: true } });
   if (!v) return { ok: false, error: "Agreement not found." };
-  await projectWithAccess(v.projectId, userId);
+  await projectWithAccess(v.projectId, userId, { write: true });
   if (v.status !== "OPEN") return { ok: false, error: "This version is not waiting for acceptance." };
   const me = v.participants.find((p) => p.userId === userId);
   if (!me) return { ok: false, error: "You are not a participant in this version." };
   if (me.acceptedAt) return { ok: false, error: "You already accepted this version. Ask for a new version if something must change." };
-  await db.projectAgreementParticipant.update({ where: { id: me.id }, data: { declinedAt: new Date(), declineNote: note.trim().slice(0, 1000) || null } });
+  const done = await db.$transaction(async (tx) => {
+    await lockProject(tx, v.projectId);
+    const cur = await tx.projectAgreementParticipant.findUniqueOrThrow({ where: { id: me.id }, select: { acceptedAt: true, version: { select: { status: true } } } });
+    if (cur.version.status !== "OPEN" || cur.acceptedAt) return false;
+    await tx.projectAgreementParticipant.update({ where: { id: me.id }, data: { declinedAt: new Date(), declineNote: note.trim().slice(0, 1000) || null } });
+    return true;
+  });
+  if (!done) return { ok: false, error: "This version is no longer waiting for your answer. Please reload." };
   await audit(userId, "project.agreement_declined", "ProjectAgreementVersion", v.id, { version: v.version });
   return { ok: true };
 }
@@ -341,16 +392,20 @@ export async function declineAgreement(userId: string, versionId: string, note: 
 export async function withdrawOpenVersion(userId: string, versionId: string): Promise<Result> {
   const v = await db.projectAgreementVersion.findUnique({ where: { id: versionId } });
   if (!v) return { ok: false, error: "Agreement not found." };
-  const { canEdit } = await projectWithAccess(v.projectId, userId);
+  const { canEdit } = await projectWithAccess(v.projectId, userId, { write: true });
   if (!canEdit) return { ok: false, error: "Only the project coordinator or the group coordinator can do this." };
   if (v.status !== "OPEN") return { ok: false, error: "Only a version waiting for acceptance can be withdrawn." };
-  await db.projectAgreementVersion.update({ where: { id: v.id }, data: { status: "WITHDRAWN", closedAt: new Date() } });
+  const changed = await db.$transaction(async (tx) => {
+    await lockProject(tx, v.projectId);
+    return (await tx.projectAgreementVersion.updateMany({ where: { id: v.id, status: "OPEN" }, data: { status: "WITHDRAWN", closedAt: new Date() } })).count;
+  });
+  if (!changed) return { ok: false, error: "This version is no longer waiting for acceptance. Please reload." };
   await audit(userId, "project.agreement_withdrawn", "ProjectAgreementVersion", v.id, { version: v.version });
   return { ok: true };
 }
 
 export async function setLegalReview(userId: string, projectId: string, needed: boolean, note: string): Promise<Result> {
-  const { canEdit } = await projectWithAccess(projectId, userId);
+  const { canEdit } = await projectWithAccess(projectId, userId, { write: true });
   if (!canEdit) return { ok: false, error: "Only the project coordinator or the group coordinator can do this." };
   if (!needed && note.trim().length < 10) return { ok: false, error: "Say how the review was done or why it is not needed (at least 10 characters)." };
   await db.groupProject.update({ where: { id: projectId }, data: { needsLegalReview: needed, legalReviewNote: note.trim().slice(0, 1000) || null } });
@@ -360,7 +415,7 @@ export async function setLegalReview(userId: string, projectId: string, needed: 
 
 /** Commercial work may start: the latest version is accepted and the money arrangements are recorded. */
 export async function activateProject(userId: string, projectId: string): Promise<Result> {
-  const { project, canEdit } = await projectWithAccess(projectId, userId);
+  const { project, canEdit } = await projectWithAccess(projectId, userId, { write: true });
   if (!canEdit) return { ok: false, error: "Only the project coordinator or the group coordinator can do this." };
   if (project.status === "ACTIVE") return { ok: true };
   if (project.status === "COMPLETED" || project.status === "CANCELLED") return { ok: false, error: "This project is closed." };
@@ -375,7 +430,7 @@ export async function activateProject(userId: string, projectId: string): Promis
 }
 
 export async function closeProject(userId: string, projectId: string, to: "COMPLETED" | "CANCELLED", note: string): Promise<Result> {
-  const { project, canEdit } = await projectWithAccess(projectId, userId);
+  const { project, canEdit } = await projectWithAccess(projectId, userId, { write: true });
   if (!canEdit) return { ok: false, error: "Only the project coordinator or the group coordinator can do this." };
   if (project.status === "COMPLETED" || project.status === "CANCELLED") return { ok: false, error: "This project is already closed." };
   if (note.trim().length < 10) return { ok: false, error: "Add a short note for the participants (at least 10 characters)." };
@@ -386,7 +441,9 @@ export async function closeProject(userId: string, projectId: string, to: "COMPL
 
 /** A participant records that they leave the project. Nothing earned is forfeited; the agreement decides. */
 export async function withdrawFromProject(userId: string, projectId: string, note: string): Promise<Result> {
-  const { project } = await projectWithAccess(projectId, userId);
+  // A participant of the agreement in force may record leaving the project even after leaving the group.
+  const project = await db.groupProject.findUnique({ where: { id: projectId } });
+  if (!project) throw new AccessError("Project not found.");
   const inForce = await db.projectAgreementVersion.findFirst({ where: { projectId, status: "ACCEPTED" }, include: { participants: true } });
   const me = inForce?.participants.find((p) => p.userId === userId);
   if (!inForce || !me) return { ok: false, error: "You are not a participant in the agreement in force." };
@@ -410,7 +467,8 @@ export async function agreementForDownload(userId: string, versionId: string, op
   if (!v) return null;
   if (!opts.owner) {
     const a = await groupAccess(v.project.groupId, userId);
-    if (!a?.isMember) return null;
+    // A participant keeps access to the versions that list them, also after leaving the group.
+    if (!a?.isMember && !v.participants.some((p) => p.userId === userId)) return null;
   }
   return v;
 }

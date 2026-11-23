@@ -37,3 +37,15 @@ export function resolveClientAddress(remoteAddress: string | undefined, forwarde
   if (index < 0) return direct;
   return clean(chain[index]) ?? direct;
 }
+
+/**
+ * True when a request did come through a proxy (it has X-Forwarded-For) but the chain is shorter than
+ * TRUSTED_PROXY_HOPS promises. Then every visitor resolves to the same proxy address and shares one
+ * sign-in limit: typically the outer proxy's entry was dropped (for example Caddy without
+ * `trusted_proxies` for Cloudflare's addresses). Used only to warn in the server log.
+ */
+export function forwardedChainTooShort(forwardedFor: string | string[] | undefined, trustedHops: number): boolean {
+  if (!Number.isInteger(trustedHops) || trustedHops <= 1) return false;
+  const entries = (Array.isArray(forwardedFor) ? forwardedFor.join(",") : (forwardedFor ?? "")).split(",").filter((s) => s.trim());
+  return entries.length > 0 && entries.length < trustedHops;
+}

@@ -301,6 +301,8 @@ export async function leaveGroup(userId: string, groupId: string) {
     const m = await tx.groupMembership.findUnique({ where: { groupId_userId: { groupId, userId } } });
     if (!m || m.status !== "ACTIVE") return null;
     await tx.groupMembership.update({ where: { id: m.id }, data: { status: "LEFT", leftAt: new Date(), role: "MEMBER" } });
+    // A person who leaves no longer coordinates the group's projects (rejoining does not restore it).
+    await tx.groupProject.updateMany({ where: { groupId, coordinatorId: userId }, data: { coordinatorId: null } });
     await refreshMemberCount(groupId, tx);
     const line = await writeSystemLine(tx, groupId, `${await nameInChat(tx, userId)} left the group`);
     return { line, outcome: await ensureCoordinator(tx, groupId) };
@@ -354,6 +356,8 @@ export async function removeMember(coordinatorId: string, groupId: string, userI
     const m = await tx.groupMembership.findUnique({ where: { groupId_userId: { groupId, userId } } });
     if (!m || m.status !== "ACTIVE") return null;
     await tx.groupMembership.update({ where: { id: m.id }, data: { status: "REMOVED", leftAt: new Date(), role: "MEMBER" } });
+    // A person who leaves no longer coordinates the group's projects (rejoining does not restore it).
+    await tx.groupProject.updateMany({ where: { groupId, coordinatorId: userId }, data: { coordinatorId: null } });
     await refreshMemberCount(groupId, tx);
     return { line: await writeSystemLine(tx, groupId, `${await nameInChat(tx, userId)} was removed from the group by the coordinator`) };
   });

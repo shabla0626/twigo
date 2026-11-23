@@ -24,12 +24,17 @@ services:
         - envfile
     image: twigo-app
     restart: unless-stopped
+    # A tiny init process forwards stop signals and reaps child processes.
+    init: true
+    stop_grace_period: 30s
     env_file: ${TWIGO_ENV_FILE:-.env.production}
     environment:
       # Fixed here so they cannot drift from the port mapping and the volume below.
       PORT: "1010"
       HOST: "0.0.0.0"
-      DATABASE_URL: "postgresql://twigo:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env.production}@db:5432/twigo?schema=public"
+      # TWIGO_DB_NAME (default twigo) selects another database in the same server, for example a
+      # restored copy during a rollback (docs/DEPLOYMENT.md, section 8).
+      DATABASE_URL: "postgresql://twigo:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env.production}@db:5432/${TWIGO_DB_NAME:-twigo}?schema=public"
       STORAGE_DIR: /data/storage
       BACKUP_DIR: /data/backups
     ports:

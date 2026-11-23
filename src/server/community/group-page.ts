@@ -3,7 +3,7 @@ import { cache } from "react";
 import { notFound } from "next/navigation";
 import { db } from "@/lib/db";
 import { requireMember } from "@/lib/auth/guard";
-import { groupAccess } from "./access";
+import { groupAccessBySlug } from "./access";
 import { getGroupOverview, unreadSince } from "./groups";
 import { activeMeeting } from "./meetings";
 
@@ -14,7 +14,7 @@ import { activeMeeting } from "./meetings";
  */
 export const loadGroupPage = cache(async (slug: string) => {
   const user = await requireMember();
-  const access = await groupAccess(slug, user.id);
+  const access = await groupAccessBySlug(slug, user.id);
   if (!access || access.group.slug !== slug) notFound();
   if (access.group.suspendedAt && access.membership?.status !== "ACTIVE") notFound();
   return { user, ...access };
