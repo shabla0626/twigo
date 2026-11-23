@@ -149,7 +149,7 @@ export function GroupCard({
         </span>
         <span className="flex items-center gap-2">
           {unread ? (
-            <Link href={`${href}/chat`} className="rounded-full bg-rose-500 px-2.5 py-1 text-xs font-semibold text-white">
+            <Link href={`${href}/chat`} className="rounded-full bg-rose-700 px-2.5 py-1 text-xs font-semibold text-white">
               {unread} new message{unread === 1 ? "" : "s"}
             </Link>
           ) : null}

@@ -93,6 +93,11 @@ async function newSession(browser: Browser) {
 }
 
 async function a11y(page: Page, label: string) {
+  // After a form that leads to another page, the framework sets the new page title one frame
+  // after the content (measured: about 8 ms, scripts/audit/title-timing.ts). A check that runs in
+  // exactly that frame sees no title; this was the cause of the occasional failures of tests B
+  // and 16–18 (P3-22). Wait until the title is there, as it is for every visitor a moment later.
+  await page.waitForFunction(() => document.title.trim().length > 0, undefined, { timeout: 10_000 });
   const res = await new AxeBuilder({ page }).withTags(["wcag2a", "wcag2aa"]).analyze();
   const serious = res.violations.filter((v) => v.impact === "serious" || v.impact === "critical");
   expect(serious.map((v) => `${label}: ${v.id} (${v.nodes.length})`)).toEqual([]);

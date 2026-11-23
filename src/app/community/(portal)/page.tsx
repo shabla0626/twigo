@@ -102,7 +102,7 @@ export default async function BusinessIdeasPage({ searchParams }: Props) {
                 <li key={m.group.slug} className="shrink-0">
                   <Link href={`/community/groups/${m.group.slug}`} className="inline-flex items-center gap-2 rounded-full bg-white px-3 py-1.5 text-sm text-ink-800 ring-1 ring-ink-200">
                     <span className="max-w-48 truncate">{m.group.name}</span>
-                    {m.unread > 0 && <span className="rounded-full bg-rose-500 px-1.5 text-xs font-semibold text-white">{m.unread}</span>}
+                    {m.unread > 0 && <span className="rounded-full bg-rose-700 px-1.5 text-xs font-semibold text-white">{m.unread}</span>}
                   </Link>
                 </li>
               ))}
@@ -190,7 +190,7 @@ export default async function BusinessIdeasPage({ searchParams }: Props) {
                 <li key={m.group.slug}>
                   <Link href={`/community/groups/${m.group.slug}`} className="flex items-center justify-between gap-2 rounded-lg px-2 py-1.5 hover:bg-ink-50">
                     <span className="truncate text-ink-800">{m.group.name}</span>
-                    {m.unread > 0 && <span className="shrink-0 rounded-full bg-rose-500 px-2 text-xs font-semibold text-white">{m.unread} new</span>}
+                    {m.unread > 0 && <span className="shrink-0 rounded-full bg-rose-700 px-2 text-xs font-semibold text-white">{m.unread} new</span>}
                   </Link>
                 </li>
               ))}

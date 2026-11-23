@@ -22,7 +22,7 @@ export function NotificationBadge({ initial }: { initial: number }) {
   }, []);
   if (!count) return null;
   return (
-    <span className="ml-auto inline-flex min-w-5 items-center justify-center rounded-full bg-rose-500 px-1.5 text-xs font-semibold text-white" aria-label={`${count} unread`}>
+    <span className="ml-auto inline-flex min-w-5 items-center justify-center rounded-full bg-rose-700 px-1.5 text-xs font-semibold text-white" aria-label={`${count} unread`}>
       {count > 99 ? "99+" : count}
     </span>
   );

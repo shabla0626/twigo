@@ -90,7 +90,7 @@ address; on a real site the start is refused if it is set.
 | Variable | Notes |
 | --- | --- |
 | `DATABASE_URL` | As above |
-| `SITE_URL` | Public HTTPS URL. Also used for the WebSocket origin check and CSP. Needed at build time too |
+| `SITE_URL` | Public HTTPS URL, written exactly as people reach the site (scheme, host and, if not the default, port; no path). It is used for the origin checks of the live chat **and of file uploads**: a different spelling (for example `www.` missing, or `http://`) makes chat and uploads refuse every request. Also used for the CSP. Needed at build time too |
 | `TRUSTED_PROXY_HOPS` | `1` behind one reverse proxy (Caddy, nginx), `0` when reached directly. See section 5 |
 | `PORT`, `HOST` | Default 3000 / 0.0.0.0 |
 | `AUTH_SECRET` | ≥ 32 random chars (form tokens, IP hashing) |

@@ -37,7 +37,7 @@ export function GroupTabs({ slug, isMember, unread = 0, live = false }: { slug: 
                 {t.label}
                 {t.private && !isMember && <span className="sr-only"> (members only)</span>}
                 {t.seg === "chat" && unread > 0 && (
-                  <span className="absolute right-1 top-1 h-2 w-2 rounded-full bg-rose-500 sm:static sm:h-auto sm:w-auto sm:px-1.5 sm:text-xs sm:font-semibold sm:text-white" aria-label={`${unread} unread`}>
+                  <span className="absolute right-1 top-1 h-2 w-2 rounded-full bg-rose-700 sm:static sm:h-auto sm:w-auto sm:px-1.5 sm:text-xs sm:font-semibold sm:text-white" aria-label={`${unread} unread`}>
                     <span className="hidden sm:inline">{unread}</span>
                   </span>
                 )}
