@@ -129,6 +129,11 @@ address; on a real site the start is refused if it is set.
 
 ## 5. Build, migrate, start (Docker, port 1010)
 
+> **Use the one-command deployment:** `bash ~/Server/deploy-twigo.sh` performs every step of sections
+> 5 and 6 (checks, backups, build, database, migrations, owner, legal publication, start, verification)
+> safely and in order. See [ONE-COMMAND-DEPLOYMENT.md](ONE-COMMAND-DEPLOYMENT.md). The individual commands
+> below remain for reference and troubleshooting.
+
 On the VPS, in the project folder, with `.env.production` filled in from `.env.production.example`
 (Docker Engine with the Compose plugin is needed). Every command passes `--env-file .env.production`
 so Compose can fill in `POSTGRES_PASSWORD`:

@@ -81,6 +81,7 @@ defaults in [TWIGO-OPEN-DECISIONS.md](TWIGO-OPEN-DECISIONS.md)):
 | When (2026-11-23) | Update |
 | --- | --- |
 | after Stage 11 | File created at the founder's request; all checkpoints recorded from the git history and test logs |
+| one-command deployment | `bash ~/Server/deploy-twigo.sh` (checks, backups, staged swap, build, PostgreSQL, migrations, owner, legal publication on confirmation, start, verification, rollback). Isolated test suite 13/13. Package `twigo-rc3-2026-11-23` + `release/deploy-twigo.sh`. |
 | founder answers | Operator **Twigo**, contact **contact@twigo.space** (template, local `.env`, Legal Notices from settings). Legal review confirmed by the founder: one-time publication command `npm run legal:publish-reviewed` (exact reviewed texts only; tested). Jurisdiction still open. |
 | release review | Independent review found 20 defects (3 high); all fixed with 17 new tests. 426/426 automated, 23/23 browser, Docker build: 61/61 walkthrough, restore verified, graceful stop. Status: **PRODUCTION RELEASE CANDIDATE — PENDING VERIFICATION**, tag `twigo-rc-2026-11-23`; see docs/TWIGO-RELEASE-REPORT.md. |
 | follow-up 3 | Docker trial in WSL: image built (npm retries and cache added), 10 migrations applied in the container, Next.js listening on 0.0.0.0:1010 in the container and published on 127.0.0.1:1010; health, pages, chat WebSocket (101) verified; no secrets in the image. Trial containers left running. VPS and central Caddy still pending (no SSH access). |
