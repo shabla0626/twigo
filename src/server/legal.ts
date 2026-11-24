@@ -2,7 +2,7 @@ import "server-only";
 import { cache } from "react";
 import type { AcceptanceKind, LegalDocumentStatus, Prisma } from "@prisma/client";
 import { brand } from "@/config/brand";
-import { LEGAL_DOCUMENTS, REGISTRATION_ACCEPT, REGISTRATION_ACK, isLegalKey, legalDefinition, type LegalKey } from "@/content/legal";
+import { LEGAL_DOCUMENTS, REGISTRATION_ACCEPT, REGISTRATION_ACK, isLegalKey, legalDefinition, publicationProblem, withoutReviewDisclaimer, type LegalKey } from "@/content/legal";
 import { audit } from "@/lib/audit";
 import { sha256 } from "@/lib/crypto";
 import { db } from "@/lib/db";
@@ -55,7 +55,8 @@ export const ensureLegalDocuments = cache(async () => {
               status: "PENDING_LEGAL_REVIEW",
               content,
               contentHash: fingerprint(content),
-              changeSummary: "First version, prepared for the Twigo community. Not reviewed by a lawyer.",
+              // The review state is the status (PENDING_LEGAL_REVIEW); the summary only describes the change.
+              changeSummary: "First version, prepared for the Twigo community.",
               submittedAt: new Date(),
             },
           },
@@ -132,7 +133,7 @@ export async function registrationDocuments() {
   const pick = (keys: readonly LegalKey[]) =>
     keys.flatMap((k) => {
       const x = shown.get(k);
-      return x ? [{ key: k, title: x.doc.title, version: x.version.version, versionId: x.version.id }] : [];
+      return x ? [{ key: k, title: x.doc.title, version: x.version.version, versionId: x.version.id, status: x.version.status }] : [];
     });
   return { accept: pick(REGISTRATION_ACCEPT), ack: pick(REGISTRATION_ACK) };
 }
@@ -274,9 +275,16 @@ export async function changeStatus(
       if (v.status !== "PENDING_LEGAL_REVIEW") return { ok: false as const, error: "Only a version awaiting legal review can be approved." };
       const note = (input.approvalNote ?? "").trim();
       if (note.length < 10) return { ok: false as const, error: "Say who reviewed this exact version and when (at least 10 characters)." };
-      await tx.legalDocumentVersion.update({ where: { id: v.id }, data: { status: "APPROVED", approvedAt: now, approvedById: ownerId, approvalNote: note.slice(0, 1000) } });
+      const unfinished = publicationProblem(v.content);
+      if (unfinished) return { ok: false as const, error: unfinished };
+      await tx.legalDocumentVersion.update({
+        where: { id: v.id },
+        data: { status: "APPROVED", approvedAt: now, approvedById: ownerId, approvalNote: note.slice(0, 1000), changeSummary: withoutReviewDisclaimer(v.changeSummary) },
+      });
     } else if (to === "PUBLISHED") {
       if (v.status !== "APPROVED") return { ok: false as const, error: "Only an approved version can be published." };
+      const unfinished = publicationProblem(v.content);
+      if (unfinished) return { ok: false as const, error: unfinished };
       const newer = await tx.legalDocumentVersion.count({ where: { documentId: v.documentId, status: "PUBLISHED", version: { gt: v.version } } });
       if (newer) return { ok: false as const, error: "A newer version is already published. Start a new version from it instead." };
       // Every earlier version that was shown or published is replaced by this one (an older text that was

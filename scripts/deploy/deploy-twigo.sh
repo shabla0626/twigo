@@ -475,9 +475,10 @@ else
     [[ -n "$BY" && "$ON_DATE" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}$ && "$EFF" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}$ ]] || die "Publishing needs the reviewer's name and dates as YYYY-MM-DD." "Nothing was published. Run again and answer the questions."
     PUB_OUT="$(dc run --rm --no-deps -T app npm run -s legal:publish-reviewed -- --owner "$OWNER_EMAIL" --reviewed-by "$BY" --reviewed-on "$ON_DATE" --effective "$EFF" 2>&1)" || { echo "$PUB_OUT" >> "$LOG"; die "Publishing the legal documents failed." "See the log: $LOG"; }
     echo "$PUB_OUT" >> "$LOG"
-    grep -E '^(published|already-published|text-differs)' <<< "$PUB_OUT" | sed 's/^/      /'
+    grep -E '^(published|already-published|text-differs|incomplete)' <<< "$PUB_OUT" | sed 's/^/      /'
     if grep -q '^text-differs' <<< "$PUB_OUT"; then manual "some legal documents were not published because their text differs from the reviewed one: Admin -> Legal"; fi
-    ok "legal documents published (reviewed by $BY on $ON_DATE, effective $EFF)"
+    if grep -q '^incomplete' <<< "$PUB_OUT"; then manual "some legal documents were not published because their text still says facts will be added before publication (it stays \"Draft awaiting legal review\"): see docs/TWIGO-LEGAL-DOCUMENTS-RESOLUTION-REPORT.md"; fi
+    ok "legal publication step finished (reviewed by $BY on $ON_DATE, effective $EFF); see the lines above for each document"
   else
     skip "legal publication (documents stay \"Draft awaiting legal review\"; run the script again to publish)"
     manual "publish the reviewed legal documents: run this script again and type PUBLISH"

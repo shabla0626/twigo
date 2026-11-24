@@ -34,6 +34,27 @@ export const LEGAL_DOCUMENTS: LegalDefinition[] = [
   { key: "community-support", title: "Community Support Policy", summary: "Voluntary financial support for the community: optional, separate from project earnings, no privileges.", acceptance: "none", text: communitySupport },
 ];
 
+/**
+ * Why a text cannot be approved or published yet (null when nothing stands in the way).
+ *
+ * A text that promises to add something "before publication" (for example the Privacy Policy, version 1:
+ * "the hosting provider and server location ... will be named here before this policy is published") is
+ * not finished: publishing it would make that sentence false. Such a text stays awaiting review until a
+ * new version supplies the missing facts. Bracketed placeholders (a company name in square brackets, for example) are already
+ * refused when a draft is edited (src/server/legal.ts).
+ */
+export function publicationProblem(content: string): string | null {
+  const m = /[^.\n]*\bbefore (?:this (?:policy|document|text) is published|publication)\b[^.\n]*\./i.exec(content);
+  return m ? `The text says something will be added before publication: “${m[0].trim()}” Supply those facts in a new version first.` : null;
+}
+
+/**
+ * Version 1 was first stored with the summary "... Not reviewed by a lawyer." The review state is the
+ * version's status, so that sentence is dropped from the summary when the version is approved (a published
+ * version must not be listed next to a statement that it was never reviewed).
+ */
+export const withoutReviewDisclaimer = (summary: string | null) => (summary ? summary.replace(/\s*Not reviewed by a lawyer\.\s*$/i, "").trim() || null : summary);
+
 export const REGISTRATION_ACCEPT: LegalKey[] = LEGAL_DOCUMENTS.filter((d) => d.acceptance === "registration-accept").map((d) => d.key);
 export const REGISTRATION_ACK: LegalKey[] = LEGAL_DOCUMENTS.filter((d) => d.acceptance === "registration-ack").map((d) => d.key);
 export const isLegalKey = (k: string): k is LegalKey => LEGAL_DOCUMENTS.some((d) => d.key === k);

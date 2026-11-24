@@ -9,7 +9,7 @@ type Props = { params: Promise<{ key: string; version: string }> };
 export const dynamic = "force-dynamic";
 export const metadata = { robots: { index: false } };
 
-/** A specific version of a document: the exact text someone accepted. */
+/** A specific version of a document: the exact text someone accepted, with its status today. */
 export default async function LegalVersionPage({ params }: Props) {
   const { key, version } = await params;
   const found = await publicVersion(key, Number(version));

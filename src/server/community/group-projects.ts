@@ -288,6 +288,16 @@ export async function openForAcceptance(userId: string, versionId: string): Prom
       if (!cur || cur.status !== "DRAFT") throw new Refusal("Only a draft can be opened for acceptance.");
       const problem = openProblem(cur, eligible);
       if (problem) throw new Refusal(problem);
+      // The agreement in force stays in force until its participants accept a new version. Leaving one
+      // of them out would replace their terms without their acceptance, so that is refused while the
+      // person is still an active member of the group and has not recorded leaving the project.
+      const inForce = await tx.projectAgreementVersion.findFirst({ where: { projectId: cur.projectId, status: "ACCEPTED" }, include: { participants: true } });
+      const listed = new Set(cur.participants.map((p) => p.userId));
+      const omitted = (inForce?.participants ?? []).filter((p) => p.userId && !p.withdrewAt && eligible.has(p.userId) && !listed.has(p.userId));
+      if (omitted.length)
+        throw new Refusal(
+          `${omitted.map((p) => p.displayName).join(", ")} ${omitted.length === 1 ? "is a participant" : "are participants"} of the agreement in force and ${omitted.length === 1 ? "has" : "have"} not recorded leaving the project. Keep them in the new version, or ask them to record that they are leaving first.`,
+        );
       await tx.projectAgreementVersion.updateMany({ where: { projectId: cur.projectId, status: "OPEN" }, data: { status: "WITHDRAWN", closedAt: new Date() } });
       await tx.projectAgreementVersion.update({ where: { id: cur.id, status: "DRAFT" }, data: { status: "OPEN", openedAt: new Date() } });
       const p = await tx.groupProject.findUniqueOrThrow({ where: { id: project.id } });

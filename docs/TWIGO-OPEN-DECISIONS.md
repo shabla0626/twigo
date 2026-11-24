@@ -31,3 +31,13 @@ public launch.
 - **Item 14:** the Legal Notices page now takes the operator, jurisdiction and contact from `ORG_LEGAL_NAME`,
   `ORG_JURISDICTION` and `ORG_CONTACT_EMAIL` unless the owner confirms other values in Admin → Legal → Legal notices.
 - **Still open: item 2 (jurisdiction and governing law).** Required to start the site.
+
+## Update of 24 November 2026 (legal documents resolution)
+
+See [TWIGO-LEGAL-DOCUMENTS-RESOLUTION-REPORT.md](TWIGO-LEGAL-DOCUMENTS-RESOLUTION-REPORT.md).
+
+- **Item 14 changed:** the Legal Notices page no longer fills "Legal operator name" from `ORG_LEGAL_NAME` (Twigo is the community's name, not a confirmed legal operator; Terms section 1) and no longer fills "Governing law" from `ORG_JURISDICTION` (Terms section 21: not yet determined). `ORG_JURISDICTION` ("Sacramento, California" in the production template, the founder's decision) is shown only as "Jurisdiction". Contacts still come from `ORG_CONTACT_EMAIL`.
+- **Item 3:** the founder's statement is mapped to version 1 of each document by fingerprint; the reviewer's name and the review date were not provided and must be given at publication. Seven documents can be published; the **Privacy Policy version 1 cannot** (it says the hosting provider "will be named here before this policy is published"; it also omits Cloudflare and backups and overstates deletion and administrator access). It needs a version 2 with those facts, reviewed by counsel.
+- **Item 5 still open:** hosting provider name and server location.
+- **Item 2 still open as governing law:** a Terms version stating the governing law, reviewed by counsel, is needed before Legal Notices can show it.
+

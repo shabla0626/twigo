@@ -9,9 +9,15 @@
  */
 import { createHash } from "node:crypto";
 import type { PrismaClient } from "@prisma/client";
-import { LEGAL_DOCUMENTS } from "../content/legal";
+import { LEGAL_DOCUMENTS, publicationProblem, withoutReviewDisclaimer } from "../content/legal";
 
-export type PublishOutcome = { key: string; title: string; result: "published" | "already-published" | "text-differs"; version?: number; fingerprint: string };
+/**
+ * published          approved and published now
+ * already-published  nothing to do
+ * text-differs       the stored text is not the text of this release, so it is not the reviewed text
+ * incomplete         the text itself says facts are still to be added before publication; left awaiting review
+ */
+export type PublishOutcome = { key: string; title: string; result: "published" | "already-published" | "text-differs" | "incomplete"; version?: number; fingerprint: string; reason?: string };
 
 export async function publishReviewedDocuments(
   db: PrismaClient,
@@ -24,6 +30,8 @@ export async function publishReviewedDocuments(
   for (const [i, def] of LEGAL_DOCUMENTS.entries()) {
     const content = def.text(opts.orgName);
     const fingerprint = createHash("sha256").update(content).digest("hex");
+    // A reviewed text that still promises facts "before publication" is not published (nor marked approved).
+    const unfinished = publicationProblem(content);
     // Same seeding as the web app (src/server/legal.ts): version 1, pending legal review.
     let doc = await db.legalDocument.findUnique({ where: { key: def.key } });
     if (!doc && !opts.dryRun) {
@@ -39,6 +47,10 @@ export async function publishReviewedDocuments(
       out.push({ key: def.key, title: def.title, result: doc ? "text-differs" : "published", fingerprint, version: doc ? undefined : 1 });
       continue;
     }
+    if (unfinished && version.status !== "PUBLISHED") {
+      out.push({ key: def.key, title: def.title, result: "incomplete", version: version.version, fingerprint, reason: unfinished });
+      continue;
+    }
     if (version.status === "PUBLISHED") {
       out.push({ key: def.key, title: def.title, result: "already-published", version: version.version, fingerprint });
       continue;
@@ -51,7 +63,7 @@ export async function publishReviewedDocuments(
       await db.$transaction(async (tx) => {
         const now = new Date();
         if (version.status === "PENDING_LEGAL_REVIEW") {
-          await tx.legalDocumentVersion.update({ where: { id: version.id }, data: { status: "APPROVED", approvedAt: now, approvedById: opts.ownerId, approvalNote: opts.approvalNote.trim().slice(0, 1000) } });
+          await tx.legalDocumentVersion.update({ where: { id: version.id }, data: { status: "APPROVED", approvedAt: now, approvedById: opts.ownerId, approvalNote: opts.approvalNote.trim().slice(0, 1000), changeSummary: withoutReviewDisclaimer(version.changeSummary) } });
           await tx.auditLog.create({ data: { actorId: opts.ownerId, action: "legal.status_approved", entityType: "LegalDocumentVersion", entityId: version.id, metadata: { from: "PENDING_LEGAL_REVIEW", version: version.version, via: "legal-publish-reviewed", contentHash: fingerprint } } });
         }
         await tx.legalDocumentVersion.updateMany({

@@ -94,8 +94,8 @@ export default async function AboutPage() {
             <SectionHeading id="today-heading" eyebrow="Honestly, today" title="An initiative in its founding stage" />
             <p className="mt-5 text-lg leading-8 text-ink-700">
               {c.company.name} was conceived by one founder, who is responsible for establishing and managing it during this
-              initial period. It is currently a brand and an online community; its legal operator and jurisdiction have not yet
-              been formally confirmed. There is not yet an established membership, and there are no completed projects to point to.
+              initial period. It is currently a brand and an online community; its legal operator and the governing law have not
+              yet been formally confirmed (the confirmed facts are on the Legal Notices page). There is not yet an established membership, and there are no completed projects to point to.
             </p>
           </div>
           <div>

@@ -9,6 +9,8 @@ import { getSession } from "@/lib/auth/guard";
 import { registrationDocuments } from "@/server/legal";
 import { registerAction } from "../actions";
 
+const listOf = (items: string[]) => (items.length < 2 ? items.join("") : `The ${items.slice(0, -1).join(", the ")} and the ${items[items.length - 1]}`);
+
 export function generateMetadata(): Metadata {
   return { title: `Join ${brand().name}` };
 }
@@ -21,6 +23,8 @@ export default async function JoinPage() {
   const terms = v("terms");
   const guidelines = v("community-guidelines");
   const privacy = v("privacy");
+  // Any of the three texts that is not published is still a draft awaiting legal review: say so, by name.
+  const drafts = [terms, guidelines, privacy].filter((d): d is NonNullable<typeof d> => !!d && d.status !== "PUBLISHED").map((d) => d.title);
   return (
     <>
       <h1 className="text-2xl font-semibold text-ink-950">Join {name}</h1>
@@ -84,7 +88,12 @@ export default async function JoinPage() {
               {privacy ? ` (version ${privacy.version})` : ""}. This confirms you received it; it is not a consent.
             </span>
           </label>
-          <p className="text-xs leading-5 text-ink-500">These documents are drafts awaiting legal review. If a reviewed version changes them materially, you will be asked to accept it.</p>
+          {drafts.length > 0 && (
+            <p className="text-xs leading-5 text-ink-500">
+              {drafts.length === 1 ? `The ${drafts[0]} is a draft` : `${listOf(drafts)} are drafts`} awaiting legal review. If a reviewed version changes {drafts.length === 1 ? "it" : "them"}{" "}
+              materially, you will be asked to accept it again.
+            </p>
+          )}
         </fieldset>
       </ActionForm>
       <p className="mt-3 text-center text-xs text-ink-500">Free. No fees, payments or bank details, ever.</p>

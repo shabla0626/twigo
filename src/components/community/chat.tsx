@@ -5,6 +5,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { ChatMessageDTO } from "@/realtime/chat-service";
 import { Button, cn } from "../ui/primitives";
 import { IconPaperclip } from "./icons";
+import { ReportButton } from "./report-button";
 import { getSocket } from "./socket";
 import { MemberAvatar, timeAgo } from "./ui";
 
@@ -348,12 +349,16 @@ export function GroupChat({ channelId, groupId, me, members }: { channelId: stri
                       ))}
                     </ul>
                   )}
-                  {!m.deleted && canPost && (
-                    <div className="mt-0.5 flex gap-2 text-xs text-ink-500 opacity-100 sm:opacity-0 sm:group-focus-within:opacity-100 sm:group-hover:opacity-100">
-                      <button type="button" className="hover:text-accent-800" onClick={() => setReplyTo(m)}>
-                        Reply
-                      </button>
-                      {mine && (
+                  {!m.deleted && (canPost || !mine) && (
+                    <div className="mt-0.5 flex items-center gap-2 text-xs text-ink-500 opacity-100 sm:opacity-0 sm:group-focus-within:opacity-100 sm:group-hover:opacity-100 sm:has-[details[open]]:opacity-100">
+                      {canPost && (
+                        <button type="button" className="hover:text-accent-800" onClick={() => setReplyTo(m)}>
+                          Reply
+                        </button>
+                      )}
+                      {/* Reporting sends a copy of this one message to the moderators (Community Guidelines, section 12). */}
+                      {!mine && <ReportButton targetType="MESSAGE" targetId={m.id} align="left" />}
+                      {mine && canPost && (
                         <>
                           <button
                             type="button"

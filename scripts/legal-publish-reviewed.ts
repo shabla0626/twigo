@@ -38,6 +38,7 @@ async function main() {
     for (const r of res) console.log(`${r.result.padEnd(18)} ${r.title}${r.version ? ` v${r.version}` : ""}  ${r.fingerprint.slice(0, 16)}`);
     const differs = res.filter((r) => r.result === "text-differs");
     if (differs.length) console.log(`\n${differs.length} document(s) not published: their stored text is not the reviewed text. Check them in Admin -> Legal.`);
+    for (const r of res.filter((x) => x.result === "incomplete")) console.log(`\nNot published: ${r.title}. ${r.reason}`);
     console.log(dryRun ? "\nDry run: nothing was changed." : `\nDone. Effective date ${effective.toISOString().slice(0, 10)}. Recorded in the audit log.`);
   } finally {
     await db.$disconnect();

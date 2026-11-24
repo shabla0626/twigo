@@ -43,11 +43,17 @@ export async function readNotices(): Promise<Notices> {
   }
   // The production settings hold facts the founder confirmed (the site refuses to start without them).
   // They fill any field the owner has not confirmed in Admin -> Legal -> Legal notices.
+  //
+  // Two settings are deliberately NOT used here:
+  // - ORG_LEGAL_NAME ("Twigo") is the community's name, not a confirmed legal operator. The Terms of Use
+  //   and the Privacy Policy say the operator has not yet been formally confirmed, so the "Legal operator
+  //   name" stays unconfirmed until the owner enters and confirms it in the admin area.
+  // - ORG_JURISDICTION says where the operator is established. It is not the governing law: the Terms of
+  //   Use (section 21) say the governing law has not yet been determined. Only the owner can confirm a
+  //   governing law, in the admin area, and only together with a Terms version that states it.
   const e = env();
   const fromSettings: Partial<Record<NoticeKey, string>> = {
-    operatorName: e.ORG_LEGAL_NAME,
     jurisdiction: e.ORG_JURISDICTION,
-    governingLaw: e.ORG_JURISDICTION,
     contactEmail: e.ORG_CONTACT_EMAIL,
     privacyContact: e.ORG_CONTACT_EMAIL,
   };

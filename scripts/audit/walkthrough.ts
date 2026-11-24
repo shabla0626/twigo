@@ -201,6 +201,7 @@ async function openApplicationOf(p: Page, name: string) {
     must(!/\d+\s?%/.test(t), "a percentage is published");
   }, { page: vp, shotName: "pay-and-fairness", full: true });
   await step("policies are shown as drafts awaiting legal review, with no placeholders or invented operator details", async () => {
+    // The walkthrough database is new, so nothing is published in it: every policy must say it is a draft.
     for (const p of ["/legal/terms", "/legal/privacy", "/legal/community-guidelines", "/legal/participation-compensation", "/legal/community-support"]) {
       await go(vp, p);
       const t = await visible(vp);

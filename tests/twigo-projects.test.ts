@@ -130,6 +130,19 @@ describe("changes create new versions", () => {
     expect(await db.projectAgreementVersion.count({ where: { projectId: o.projectId } })).toBe(2);
   });
 
+  it("a new version cannot leave out a participant of the agreement in force who has not recorded leaving", async () => {
+    const o = await acceptedProject();
+    const d = await saveAgreementDraft(o.a.id, o.projectId, fullTerms(), [participant(o.a.id, "60% of net"), participant(o.b.id, "40% of net")], "Without the third participant");
+    if (!d.ok) throw new Error(d.error);
+    const res = await openForAcceptance(o.a.id, d.versionId);
+    expect(res.ok).toBe(false);
+    if (!res.ok) expect(res.error).toMatch(/agreement in force/);
+    expect((await db.projectAgreementVersion.findUniqueOrThrow({ where: { id: d.versionId } })).status).toBe("DRAFT");
+    // Once that person records that they are leaving the project, the version without them can be put to the others.
+    expect((await withdrawFromProject(o.c.id, o.projectId, "I am moving on to another group.")).ok).toBe(true);
+    expect(await openForAcceptance(o.a.id, d.versionId)).toEqual({ ok: true });
+  });
+
   it("an opened or accepted version can never be edited in place", async () => {
     const o = await acceptedProject();
     const before = await db.projectAgreementVersion.findUniqueOrThrow({ where: { id: o.v.id } });

@@ -26,9 +26,15 @@ export function StatusNotice({ version, docKey, latestVersion }: { version: Pick
         {latestVersion ? ` (version ${latestVersion})` : ""}.
       </Notice>
     );
+  if (version.status === "APPROVED")
+    return (
+      <Notice tone="warn" title="Approved, not yet published">
+        This version has been approved but is not yet in force. It will apply from the effective date shown here once it is published.
+      </Notice>
+    );
   return (
-    <Notice tone="warn" title={version.status === "APPROVED" ? "Approved, not yet published" : "Draft awaiting legal review"}>
-      This text describes the rules {name} applies today. It has not yet been reviewed by a lawyer, it is not claimed to be legally sufficient or
+    <Notice tone="warn" title="Draft awaiting legal review">
+      This text describes the rules {name} applies today. It has not been approved and published after legal review, it is not claimed to be legally sufficient or
       enforceable in any jurisdiction, and details that are not yet decided (such as the legal operator and the governing law) are stated as
       undecided. A reviewed version will be published here with its effective date.
     </Notice>

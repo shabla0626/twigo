@@ -28,6 +28,7 @@ export default async function LegalDocumentPage({ params }: Props) {
       <PageHeader eyebrow="Legal" title={shown.doc.title} intro={shown.doc.summary} />
       <Section tone="gray">
         <article className="mx-auto max-w-3xl rounded-3xl border border-ink-100 bg-white p-6 shadow-soft sm:p-10">
+          {/* The visible status always matches the stored one: a text awaiting review says so. */}
           <StatusNotice version={shown.version} docKey={key} />
           <DocumentFacts version={shown.version} />
           <DocumentBody content={shown.version.content} />
