@@ -50,10 +50,19 @@ describe("one-click launcher (deploy-twigo.ps1)", () => {
 
   it("runs the existing server script with the exact archive and keeps its exit code", () => {
     expect(launcher).toContain('TWIGO_ARCHIVE="$D/$A" bash "$D/deploy-twigo.sh"');
-    expect(launcher).toContain('if [ "$rc" -ne 0 ]; then exit "$rc"; fi');
+    expect(launcher).toMatch(/if \[ "\$rc" -ne 0 \]; then\n[\s\S]*?TWIGO-HEALTH: [\s\S]*?\n  exit "\$rc"\nfi\n/);
     expect(launcher).toMatch(/Show-Summary \$rc\n\s+Exit-Launcher \$rc\n/);
     expect(launcher).toMatch(/function Exit-Launcher\(\[int\]\$Code\) \{[\s\S]*?\n  exit \$Code\n\}/);
     expect(launcher).toContain("sha256sum -c -");
+  });
+
+  it("opens only the check, upload and deployment connections, and announces each password prompt", () => {
+    // A fourth connection after a failure asked for the password again; when that prompt ended early, the
+    // password was typed after the PS> prompt instead. The server now reports health in the same connection.
+    expect(launcher.match(/Invoke-Tool \$ssh \(\$sshOpts/g)).toHaveLength(2);
+    expect(launcher.match(/Invoke-Tool \$ssh /g)).toHaveLength(3); // the third is the local "ssh -V"
+    expect(launcher.match(/Invoke-Tool \$scp /g)).toHaveLength(1);
+    expect(launcher.match(/nothing is shown while you type/g)!.length).toBeGreaterThanOrEqual(3);
   });
 
   it("knows the server script's ten steps and its exit codes", () => {

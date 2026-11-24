@@ -11,13 +11,13 @@ resumed from the last checkpoint if it is interrupted.
 
 | | |
 | --- | --- |
-| **Status** | **All stages 0–11 complete; deployment tooling complete.** Release candidate `twigo-rc4-2026-11-23` is built in `release/` and not yet deployed. No work in progress. |
+| **Status** | **All stages 0–11 complete; deployment tooling complete.** Release candidate `twigo-rc5-2026-11-23` is built in `release/` and not yet deployed. No work in progress. |
 | Branch | `main` (local commits are not pushed to `origin`) |
-| Last checkpoint | commit `f5ba8eb`, tag `twigo-rc4-2026-11-23` (later commits change documents only) |
+| Last checkpoint | tag `twigo-rc5-2026-11-23` |
 | Code backup | `backups/cowork-code-twigo-2026-11-23.bundle` (verified); the original `backups/cowork-code-pre-twigo.bundle` is untouched |
 | Database | development database `cowork` has migration `20261123120000_twigo_platform`: 10 migrations, 56 tables, 279 rows |
-| Last test results | Application: 426/426 automated, 23/23 browser, 61/61 walkthrough in the Docker production build; `tsc` and ESLint clean (release review). Deployment: launcher 28/28 (23/23 quick run after the last change), server script 16/16 (one scenario re-run on its own), static checks 10/10 |
-| Waiting on the founder | `ORG_JURISDICTION` in the server's `~/Server/twigo/.env.production`, then `.\deploy-twigo.ps1` ([ONE-CLICK-DEPLOYMENT.md](ONE-CLICK-DEPLOYMENT.md)); afterwards central Caddy, Cloudflare, one Resend test email and off-server backup copies. Other open decisions: [TWIGO-OPEN-DECISIONS.md](TWIGO-OPEN-DECISIONS.md) |
+| Last test results | Application: 426/426 automated, 23/23 browser, 61/61 walkthrough in the Docker production build; `tsc` and ESLint clean (release review). Deployment: launcher 28/28 full run, 24/24 quick run after the last change; server script 16/16 (one scenario re-run on its own); static checks 11/11 |
+| Waiting on the founder | `ORG_LEGAL_NAME=Twigo` and `ORG_CONTACT_EMAIL=contact@twigo.space` in the server's `~/Server/twigo/.env.production` (the first run stopped there), a new server password, then `.\deploy-twigo.ps1` ([ONE-CLICK-DEPLOYMENT.md](ONE-CLICK-DEPLOYMENT.md)); afterwards central Caddy, Cloudflare, one Resend test email and off-server backup copies. Other open decisions: [TWIGO-OPEN-DECISIONS.md](TWIGO-OPEN-DECISIONS.md) |
 
 ## Checkpoints
 
@@ -69,7 +69,7 @@ defaults in [TWIGO-OPEN-DECISIONS.md](TWIGO-OPEN-DECISIONS.md)):
 1. `git checkout main` and `git status`. Uncommitted changes are work after the last checkpoint;
    compare them with the "Current state" table above.
 2. If anything looks wrong, the last good state is the tag in "Last checkpoint"
-   (`git diff twigo-rc4-2026-11-23` shows what changed since). Do not reset without the founder's
+   (`git diff twigo-rc5-2026-11-23` shows what changed since). Do not reset without the founder's
    word; never delete the backups in `backups/`.
 3. Database: `npx tsx scripts/audit/table-counts.ts cowork` shows the applied migrations and row counts.
    Before any new migration, take a backup (`npm run db:backup -- --label <reason>`) and rehearse on a
@@ -83,6 +83,7 @@ defaults in [TWIGO-OPEN-DECISIONS.md](TWIGO-OPEN-DECISIONS.md)):
 | When (2026-11-23) | Update |
 | --- | --- |
 | after Stage 11 | File created at the founder's request; all checkpoints recorded from the git history and test logs |
+| first VPS runs | The founder's first runs stopped at step 3 (`ORG_LEGAL_NAME` and `ORG_CONTACT_EMAIL` empty in the server's settings) and once with an SSH timeout. Launcher fixed: three connections only (health is reported by the server in the deployment connection), each password prompt announced, clearer timeout advice, no port claim without a check. Launcher quick suite 24/24, static checks 11/11. Package `twigo-rc5-2026-11-23`. |
 | deploy:vps removed | At the founder's request, another session's uncommitted `npm run deploy:vps` work was removed: 4 new files, its edits to 7 tracked files, and the archive it built in `release/`. It generated and uploaded secrets, against the deployment rules, and its archive left out the admin Backups page. A copy (files and a patch) is in the Recycle Bin, folder `removed-deploy-vps-2026-11-23`. Afterwards `.\deploy-twigo.ps1 -CheckOnly` passed and the static checks passed 10/10. "Current state" brought up to date. |
 | one-click deployment | `.\deploy-twigo.ps1` from Windows deploys exactly the release in `release/release-manifest.json` (built by `scripts/deploy/new-release.ps1`); it reuses `deploy-twigo.sh`, which now returns 10 + step on failure, 30 when another deployment runs, and rolls back on a lost connection. Launcher tests 28/28 (isolated SSH server, real OpenSSH, one real deployment); server-script tests 16/16 (15 in the full run; the lost-connection test was fixed and re-run on its own). Package `twigo-rc4-2026-11-23`. Guide [ONE-CLICK-DEPLOYMENT.md](ONE-CLICK-DEPLOYMENT.md). |
 | one-command deployment | `bash ~/Server/deploy-twigo.sh` (checks, backups, staged swap, build, PostgreSQL, migrations, owner, legal publication on confirmation, start, verification, rollback). Isolated test suite 13/13. Package `twigo-rc3-2026-11-23` + `release/deploy-twigo.sh`. |

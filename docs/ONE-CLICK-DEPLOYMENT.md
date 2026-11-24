@@ -92,8 +92,8 @@ The last block is the summary:
 ==================================================================
 TWIGO DEPLOYMENT: SUCCESS                (or: FAILED at: <stage>)
 ==================================================================
-Release:            twigo-rc4-2026-11-23 (commit ..., built ...)
-Uploaded files:     deploy-twigo.sh, twigo-rc4-2026-11-23.tar.gz, ....sha256 (uploaded and verified on the server)
+Release:            twigo-rc5-2026-11-23 (commit ..., built ...)
+Uploaded files:     deploy-twigo.sh, twigo-rc5-2026-11-23.tar.gz, ....sha256 (uploaded and verified on the server)
 SSH:                connected to shabla@162.35.23.106 (host key verified by OpenSSH)
 Server script:      exit code 0: the deployment succeeded and the health check passed
 Application health: healthy (status ok, database ok ...)
@@ -129,8 +129,14 @@ summary, says what to fix. The launcher ends with the same exit code shown in th
 | 129, 130, 141, 143 | server script interrupted (connection closed, Ctrl+C, output closed, stopped) | previous version put back |
 | 255 | SSH connection lost during the deployment | the server stops and puts the previous version back |
 
-After a failure the launcher also checks whether the site still answers on the server. It reports
-whether the previous version is serving.
+After a failure the server also reports, in the same connection, whether the site still answers there
+(the `TWIGO-HEALTH:` line above the summary), so no further password is asked.
+
+`Timeout, server ... not responding` (exit 255) means the server or the network stopped answering for
+two minutes. Check your internet connection, and on the server `uptime` and `free -h`; then run again.
+If the old run is still going, the launcher says another deployment is running: wait a few minutes.
+
+`close - IO is still pending on closed socket` after the upload is a harmless message of Windows OpenSSH.
 
 Logs on the server:
 
@@ -155,11 +161,15 @@ If that does not work, the launcher cannot work either. Fix it with the advice b
   - Check that its `.pub` line is in `~/.ssh/authorized_keys` on the server.
   - If the key has another name, add a `Host` entry with `IdentityFile` to `C:\Users\<you>\.ssh\config`.
     The launcher uses that file automatically.
-- **Asked for a passphrase or password several times.** The launcher makes three connections (check,
-  upload, deployment), and a fourth after a failure. OpenSSH asks each time. Load the key into
-  `ssh-agent` once: `ssh-add $env:USERPROFILE\.ssh\id_ed25519`. If that fails, the `OpenSSH
-  Authentication Agent` service must be started first (Windows Services, as administrator). Then
-  nothing is asked.
+- **Asked for a password three times.** The launcher makes three connections (check, upload,
+  deployment) and says before each one that OpenSSH may ask. Nothing is shown while you type; press
+  Enter. Never type the password after the `PS>` prompt: PowerShell saves it in its history (if that
+  happened, change the password on the server with `passwd`). To stop the questions, use an SSH key:
+  `ssh-keygen -t ed25519` (Enter at each question), then once
+  `type $env:USERPROFILE\.ssh\id_ed25519.pub | ssh shabla@162.35.23.106 "mkdir -p ~/.ssh && chmod 700 ~/.ssh && cat >> ~/.ssh/authorized_keys && chmod 600 ~/.ssh/authorized_keys"`.
+- **Asked for a key passphrase several times.** Load the key into `ssh-agent` once:
+  `ssh-add $env:USERPROFILE\.ssh\id_ed25519`. If that fails, the `OpenSSH Authentication Agent`
+  service must be started first (Windows Services, as administrator). Then nothing is asked.
 - **`REMOTE HOST IDENTIFICATION HAS CHANGED` / `Host key verification failed`** (exit 6). Do not work
   around this. If the VPS was reinstalled, compare the new key's fingerprint with the one shown in the
   provider's console. Then remove the old entry with `ssh-keygen -R 162.35.23.106` and connect once by

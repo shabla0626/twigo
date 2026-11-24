@@ -195,13 +195,13 @@ When all of these pass and items 1–5 of section 4 are closed, the release can 
 
 ## 7. Release package
 
-- Git tag: `twigo-rc4-2026-11-23` on `main` (local, not pushed). It supersedes `twigo-rc-`,
-  `twigo-rc2-` and `twigo-rc3-2026-11-23`.
-- Built with `scripts/deploy/new-release.ps1 -Tag twigo-rc4-2026-11-23`. It writes four files into
+- Git tag: `twigo-rc5-2026-11-23` on `main` (local, not pushed). It supersedes `twigo-rc-`,
+  `twigo-rc2-`, `twigo-rc3-` and `twigo-rc4-2026-11-23`.
+- Built with `scripts/deploy/new-release.ps1 -Tag twigo-rc5-2026-11-23`. It writes four files into
   `release/`:
-  - `twigo-rc4-2026-11-23.tar.gz`: `git archive` of the tag, so only tracked files. It contains no
+  - `twigo-rc5-2026-11-23.tar.gz`: `git archive` of the tag, so only tracked files. It contains no
     `.env` file, no secrets, no database, no backups and no uploaded files.
-  - `twigo-rc4-2026-11-23.tar.gz.sha256`: the archive's SHA-256.
+  - `twigo-rc5-2026-11-23.tar.gz.sha256`: the archive's SHA-256.
   - `deploy-twigo.sh`: the deployment script of the same tag.
   - `release-manifest.json`: names exactly these three files, each with its SHA-256, plus the commit.
 - Deploy from this computer with one command (guide: [ONE-CLICK-DEPLOYMENT.md](ONE-CLICK-DEPLOYMENT.md)):

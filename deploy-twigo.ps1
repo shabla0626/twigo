@@ -423,9 +423,8 @@ try {
       }
     }
   }
-  $S.Port = "127.0.0.1:$AppPort on the server (verified by the server script after the deployment)"
-
   if ($CheckOnly) {
+    $S.Port = "127.0.0.1:$AppPort on the server (verified by the server script after the deployment)"
     $S.Stage = ""
     $S.Files = "none (check only): $scriptName, $archiveName, $sumName"
     Show-Summary 0
@@ -438,7 +437,8 @@ try {
   if ($SshConfigFile) { $sshOpts += @("-F", $SshConfigFile) }
   $sshOpts += @("-o", "ConnectTimeout=20", "-o", "ServerAliveInterval=15", "-o", "ServerAliveCountMax=8")
   Write-Stage "2/4" "Connecting to $Target and preparing $RemoteDir"
-  Write-Info "(if your SSH key has a passphrase or the server wants a password, OpenSSH asks for it here)"
+  Write-Info "(if your SSH key has a passphrase or the server wants a password, OpenSSH asks for it here;"
+  Write-Info " nothing is shown while you type it: type it and press Enter. Never type it after the PS> prompt)"
   $probeScript = @'
 D='__DIR__'; U="$D/.twigo-upload"
 echo TWIGO_PROBE_BEGIN
@@ -518,6 +518,7 @@ echo TWIGO_PROBE_END
   if ($SshConfigFile) { $scpOpts += @("-F", $SshConfigFile) }
   $scpOpts += @("-o", "ConnectTimeout=20", "-o", "ServerAliveInterval=15", "-o", "ServerAliveCountMax=8")
   Write-Info "$([math]::Round($archiveBytes / 1MB, 1)) MB in total; scp shows its progress below."
+  Write-Info "(new connection: OpenSSH may ask for your password again; nothing is shown while you type)"
   # Relative names from the release folder: exactly these three files, nothing else. Live, so scp's own
   # progress and any error message appear directly.
   $up = Invoke-Tool $scp ($scpOpts + @($scriptName, $archiveName, $sumName, "${Target}:$RemoteDir/.twigo-upload/")) -WorkDir $ReleaseDir -Live
@@ -532,6 +533,7 @@ echo TWIGO_PROBE_END
   # ============================================================ 4. verify on the server and deploy
   $stage = "server deployment"
   Write-Stage "4/4" "Verifying the upload and running the deployment on the server (live output)"
+  Write-Info "(last connection: OpenSSH may ask for your password once more; nothing is shown while you type)"
   $deployScript = @'
 trap ':' INT HUP TERM
 D='__DIR__'; U="$D/.twigo-upload"; A='__ARCHIVE__'
@@ -544,7 +546,17 @@ cd "$D" || exit 3
 echo 'Upload verified and in place. Starting the deployment script:'
 TWIGO_ARCHIVE="$D/$A" bash "$D/deploy-twigo.sh"
 rc=$?
-if [ "$rc" -ne 0 ]; then exit "$rc"; fi
+if [ "$rc" -ne 0 ]; then
+  if command -v curl >/dev/null 2>&1; then
+    h=$(curl -s -o /dev/null -w '%{http_code}' --max-time 10 http://127.0.0.1:1010/api/health 2>/dev/null)
+    case "$h" in
+      200) echo 'TWIGO-HEALTH: the site still answers on the server (HTTP 200): the previous version is serving' ;;
+      ''|000) echo 'TWIGO-HEALTH: nothing answers on 127.0.0.1:1010 on the server' ;;
+      *) echo "TWIGO-HEALTH: NOT healthy (HTTP $h from /api/health on the server)" ;;
+    esac
+  fi
+  exit "$rc"
+fi
 if curl -fsS --max-time 15 http://127.0.0.1:1010/api/health 2>/dev/null | grep -Eq 'status.{3}ok.{3}db.{3}ok'; then echo 'TWIGO-HEALTH: ok (http://127.0.0.1:1010/api/health)'; exit 0; fi
 echo 'TWIGO-HEALTH: FAILED (http://127.0.0.1:1010/api/health does not report status ok and db ok)'
 exit 9
@@ -574,23 +586,31 @@ exit 9
     Exit-Launcher 0
   }
 
-  # Failed: say where, and whether the site still answers on the server.
+  # Failed: say where. The server itself reported whether the site still answers (TWIGO-HEALTH line),
+  # in the same connection: no further connection, so no further password prompt.
   $S.Stage = Get-StageOfRemote $rc
   if ($rc -eq 3) { $S.Files = "$scriptName, $archiveName, $sumName uploaded, but they did NOT verify on the server; nothing was deployed" }
   elseif ($rc -ne 255) { $S.Files = "$scriptName, $archiveName, $sumName (uploaded and verified on the server)" }
-  Write-Host ""
-  Write-Info "Checking whether the site still answers on the server (OpenSSH may ask for your password again)..."
-  $h = Invoke-Tool $ssh ($sshOpts + @("-T", $Target, "curl -s -o /dev/null -w 'HTTP=%{http_code}' --max-time 10 http://127.0.0.1:1010/api/health; echo"))
-  if ($h.Out -match 'HTTP=200') { $S.Health = "the site answers on the server (HTTP 200): the previous version is serving" }
-  elseif ($h.Code -eq 255) { $S.Health = "unknown (no SSH connection for the check)" }
-  elseif ($h.Out -match 'HTTP=(\d{3})' -and $Matches[1] -ne "000") { $S.Health = "NOT healthy (HTTP $($Matches[1]) from /api/health on the server)" }
-  else { $S.Health = "NOT answering on 127.0.0.1:$AppPort on the server" }
-  $S.Port = if ($h.Out -match 'HTTP=200') { "127.0.0.1:$AppPort answers on the server" } else { "127.0.0.1:$AppPort does not answer on the server" }
+  if ($rc -eq 255) {
+    $S.Health = "unknown (the connection was lost)"
+    $S.Port = "not checked (the connection was lost)"
+  } elseif ($rc -eq 3) {
+    $S.Health = "not checked (the server script did not start)"
+    $S.Port = "not checked"
+  } else {
+    $S.Health = "see the TWIGO-HEALTH line above (checked by the server right after the failure)"
+    $S.Port = "127.0.0.1:$AppPort - see the TWIGO-HEALTH line above"
+  }
   $S.Public = "not checked (the deployment failed)"
   Write-Host ""
   Write-Host "      FAILED: $($S.Remote)" -ForegroundColor Red
   if ($rc -ge 10 -and $rc -le 20) { Write-Info "The server script's own report and log path are shown above; fix the problem it names, then run .\deploy-twigo.ps1 again." }
-  if ($rc -eq 255) { Write-Info "If the connection dropped, the server script stops and puts the previous version back; its log is in $RemoteDir/logs/." }
+  if ($rc -eq 255) {
+    Write-Info "If the connection dropped, the server script stops and puts the previous version back; its log is in $RemoteDir/logs/."
+    Write-Info "'Timeout, server not responding' means the server or the network stopped answering. Check your internet"
+    Write-Info "connection; on the server, uptime and free -h show whether it is overloaded. Then run .\deploy-twigo.ps1 again"
+    Write-Info "(if the old run is still going, the launcher says so: wait a few minutes)."
+  }
   Show-Summary $rc
   Exit-Launcher $rc
 } catch {

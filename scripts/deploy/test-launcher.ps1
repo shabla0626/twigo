@@ -278,7 +278,10 @@ $r = Invoke-Launcher "crlf-script" ($Down + @("-ReleaseDir", $d))
 Add-Result ($r.Code -eq 2 -and $r.Text -match 'Windows line endings') "deploy script with Windows line endings: refused (exit 2)" $r
 
 $d = Join-Path $Work "rel-old"; Copy-Release $FakeRel $d
-$older = (Invoke-Tool "git.exe" @("-C", $Repo, "rev-parse", "HEAD~1")).Out.Trim()
+# The parent of the newest commit that changed code (not only docs or tests), so the release is older
+# than this folder's code whatever the latest commit is.
+$lastCode = (Invoke-Tool "git.exe" @("-C", $Repo, "log", "-1", "--format=%H", "--", ".", ":(exclude)docs", ":(exclude)tests", ":(exclude)*.md")).Out.Trim()
+$older = (Invoke-Tool "git.exe" @("-C", $Repo, "rev-parse", "$lastCode~1")).Out.Trim()
 Set-ManifestField $d "" "gitCommit" $older
 $r = Invoke-Launcher "older-than-folder" ($Down + @("-ReleaseDir", $d))
 $r2 = Invoke-Launcher "older-allowed-checkonly" ($Base + @("-ReleaseDir", $d, "-CheckOnly", "-AllowOlderRelease"))
@@ -289,7 +292,7 @@ Add-Result ($r.Code -eq 0 -and $r.Text -match 'RELEASE CHECK: PASSED' -and $r.Te
 
 # ================================================================================ 2. SSH failures
 $r = Invoke-Launcher "unreachable" ($Base + @("-Target", "twigotest-down", "-ReleaseDir", $FakeRel))
-Add-Result ($r.Code -eq 4 -and $r.Text -match 'could not be reached' -and $r.Text -match 'FAILED at: SSH connection') "missing SSH connection: exit 4, stage shown" $r
+Add-Result ($r.Code -eq 4 -and $r.Text -match 'could not be reached' -and $r.Text -match 'FAILED at: SSH connection' -and $r.Text -match 'Port:\s+not checked') "missing SSH connection: exit 4, stage shown, port not claimed" $r
 
 $r = Invoke-Launcher "auth-failure" ($Base + @("-Target", "twigotest-badkey", "-ReleaseDir", $FakeRel))
 Add-Result ($r.Code -eq 5 -and $r.Text -match 'refused the SSH sign-in' -and $r.Text -match 'Permission denied') "authentication failure: exit 5, OpenSSH's reason shown" $r
@@ -317,6 +320,7 @@ $uploadedOk = ($st["SHA deploy-twigo.sh"] -eq $m.deployScript.sha256) -and ($st[
 Add-Result ($uploadedOk -and $r.Text -match 'deploy-twigo\.sh: OK' -and $r.Text -match 'twigo-launchtest-fake\.tar\.gz: OK' -and $r.Text -match 'twigo-launchtest-fake\.tar\.gz\.sha256: OK') "successful upload: the three files arrive, verify on the server (sha256sum -c) and are moved into place" $r
 Add-Result ($r.Code -eq 14 -and $r.Text -match 'STAND-IN ARCHIVE=/tmp/twigo-launchtest/home/Server/twigo-launchtest-fake\.tar\.gz' -and $r.Text -match 'FAILED at: server step 4/10: Creating backups' -and $r.Text -match 'exit code 14: failed at step 4 of 10') "remote failure: exit code 14 passed through, failed stage named, exact archive passed to the server script" $r
 Add-Result ($r.Text -notmatch 'TWIGO DEPLOYMENT: SUCCESS') "no success reported after a failure" $r
+Add-Result ($r.Text -match 'TWIGO-HEALTH: (nothing answers|the site still answers|NOT healthy)' -and $r.Text -notmatch 'Checking whether the site still answers') "after a failure the server reports the site's health in the same connection (no extra password prompt)" $r
 
 [void](Invoke-Server @("fake-code", "0"))
 $r = Invoke-Launcher "health-fails-after-success" ($Base + @("-Target", "twigotest", "-ReleaseDir", $FakeRel))

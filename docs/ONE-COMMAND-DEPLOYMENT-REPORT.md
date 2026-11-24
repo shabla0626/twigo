@@ -172,6 +172,23 @@ After the last launcher change (scp shows its own progress; the window waits for
 from File Explorer), the quick suite ran again: **23 of 23 passed** (every scenario above except the two
 real deployments).
 
+### After the founder's first runs on the VPS
+
+The founder signs in with a password, so OpenSSH asked for it at every connection. Two problems showed:
+
+- After a failure the launcher opened a fourth connection to check the site's health. Its password
+  prompt ended before the password was typed, and the password was then typed after the `PS>` prompt
+  (PowerShell keeps it in its history). Now the server reports the health in the deployment connection
+  itself (`TWIGO-HEALTH:` line); the launcher opens only three connections and says before each one that
+  OpenSSH may ask for the password and that nothing is shown while typing.
+- A run ended with `Timeout, server ... not responding` (exit 255): the server stopped answering
+  OpenSSH's keep-alive checks for two minutes after sign-in. The launcher now explains this and what to
+  check. The summary no longer claims a port result when no check was made.
+
+Quick suite after these changes, with one new scenario (no extra connection after a failure):
+**24 of 24 passed**. The "older than this folder" scenario now uses the newest commit that changed code,
+so a later documentation-only commit no longer breaks it. Release `twigo-rc5-2026-11-23`.
+
 ### Server script tests
 
 `bash scripts/deploy/test-deploy.sh <archive of commit ac97069>` (isolated project `twigodeploytest`).
