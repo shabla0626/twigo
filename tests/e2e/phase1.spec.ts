@@ -630,7 +630,7 @@ test("28. existing application and project features still work", async () => {
   await expect(admin.getByRole("heading", { name: "Earlier project records" })).toBeVisible();
   await admin.goto("/admin/groups");
   await admin.getByRole("link", { name: IDEA }).click();
-  await expect(admin.getByText(/Private chat messages and files are not shown/)).toBeVisible();
+  await expect(admin.getByText(/private information \(chat, research, files, tasks, decisions, projects\) is not shown to administrators/)).toBeVisible();
 });
 
 test("29. Twigo: the group plans a project, every participant accepts its agreement, and work starts", async () => {
@@ -699,7 +699,7 @@ test("29. Twigo: the group plans a project, every participant accepts its agreem
 
 test("30. Twigo: new owner and member pages open and pass the accessibility check", async () => {
   const owner = sessions.admin!.page;
-  for (const p of ["/admin/legal", "/admin/legal/terms", "/admin/legal/notices", "/admin/legal/acceptances", "/admin/agreements", "/admin/support", "/admin/privacy-requests", "/admin/email"]) {
+  for (const p of ["/admin/legal", "/admin/legal/terms", "/admin/legal/notices", "/admin/legal/acceptances", "/admin/agreements", "/admin/support", "/admin/privacy-requests", "/admin/email", "/admin/group-access"]) {
     await owner.goto(p);
     await expect(owner, p).toHaveURL(new RegExp(`${p}$`));
     await a11y(owner, p);
@@ -708,12 +708,12 @@ test("30. Twigo: new owner and member pages open and pass the accessibility chec
   await owner.goto("/admin/legal/acceptances");
   await expect(owner.getByText("registration").first()).toBeVisible();
   await expect(owner.getByText("idea-support").first()).toBeVisible();
-  // The owner sees the group project and its acceptance count.
+  // Group projects are private to their group: the owner sees only counts by state, never names or terms.
   await owner.goto("/admin/agreements");
-  await expect(owner.getByText("Bookkeeping pilot")).toBeVisible();
-  await expect(owner.getByText("3 of 3")).toBeVisible();
+  await expect(owner.getByText("Bookkeeping pilot")).toHaveCount(0);
+  await expect(owner.getByText(/names, participants and terms are not shown to administrators/)).toBeVisible();
   const member = sessions.B!.page;
-  for (const p of ["/account/agreements", "/account/data", "/legal", "/support"]) {
+  for (const p of ["/account/agreements", "/account/data", "/account/data/delete", "/legal", "/support"]) {
     await member.goto(p);
     await a11y(member, p);
   }

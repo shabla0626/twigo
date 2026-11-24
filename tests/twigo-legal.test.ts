@@ -63,13 +63,17 @@ async function publishNewTerms(ownerId: string, opts: { reaccept: boolean }) {
 }
 
 describe("document versions and fingerprints", () => {
-  it("every document starts as version 1, awaiting legal review, never approved automatically", async () => {
+  it("every document starts as version 1, awaiting legal review, never approved automatically; release versions are added as pending too", async () => {
     await ensureLegalDocuments();
     const versions = await db.legalDocumentVersion.findMany({ include: { document: true } });
-    expect(versions).toHaveLength(LEGAL_DOCUMENTS.length);
+    // Version 1 of each document, plus the Privacy Policy version 2 prepared in this release.
+    expect(versions).toHaveLength(LEGAL_DOCUMENTS.length + LEGAL_DOCUMENTS.reduce((n, d) => n + (d.later?.length ?? 0), 0));
     for (const v of versions) {
-      expect(v.version).toBe(1);
-      expect(v.status).toBe("PENDING_LEGAL_REVIEW");
+      if (v.document.key === "privacy") expect(v.status).toBe(v.version === 1 ? "SUPERSEDED" : "PENDING_LEGAL_REVIEW");
+      else {
+        expect(v.version).toBe(1);
+        expect(v.status).toBe("PENDING_LEGAL_REVIEW");
+      }
       expect(v.approvedAt).toBeNull();
       expect(v.contentHash).toBe(sha(v.content));
       // No unfinished bracketed placeholder such as "[Company Name]" in any text.

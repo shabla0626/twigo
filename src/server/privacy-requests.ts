@@ -16,8 +16,10 @@ export const MAX_OPEN_REQUESTS = 3;
 export async function submitPrivacyRequest(userId: string, raw: unknown) {
   const p = schema.safeParse(raw);
   if (!p.success) return { ok: false as const, error: p.error.issues[0]?.message ?? "Some values are not valid." };
+  // Account and personal-data deletion has its own verified path (Request deletion); it is not a free-text request.
+  if (p.data.kind === "DELETION") return { ok: false as const, error: "To delete your account and personal data, use “Request deletion” on this page." };
   const user = await db.user.findUniqueOrThrow({ where: { id: userId }, select: { email: true } });
-  const open = await db.privacyRequest.count({ where: { userId, status: { in: ["OPEN", "IN_PROGRESS"] } } });
+  const open = await db.privacyRequest.count({ where: { userId, status: { in: ["OPEN", "IN_PROGRESS", "VERIFICATION_REQUIRED", "INFO_REQUIRED"] } } });
   if (open >= MAX_OPEN_REQUESTS) return { ok: false as const, error: "You already have several open requests. Please wait for an answer." };
   const r = await db.privacyRequest.create({ data: { userId, email: user.email, kind: p.data.kind as PrivacyRequestKind, details: p.data.details } });
   await audit(userId, "privacy.request_submitted", "PrivacyRequest", r.id, { kind: r.kind });
@@ -25,5 +27,5 @@ export async function submitPrivacyRequest(userId: string, raw: unknown) {
 }
 
 export function myPrivacyRequests(userId: string) {
-  return db.privacyRequest.findMany({ where: { userId }, orderBy: { createdAt: "desc" }, select: { id: true, kind: true, status: true, details: true, response: true, createdAt: true, handledAt: true } });
+  return db.privacyRequest.findMany({ where: { userId }, orderBy: { createdAt: "desc" }, select: { id: true, kind: true, status: true, details: true, response: true, createdAt: true, handledAt: true, completedAt: true } });
 }

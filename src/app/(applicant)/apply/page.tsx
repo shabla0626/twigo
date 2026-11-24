@@ -7,6 +7,7 @@ import { CheckboxRow, Field, FormAlert, Input, Select, Textarea } from "@/compon
 import { buttonClass } from "@/components/ui/primitives";
 import { getSession } from "@/lib/auth/guard";
 import { EXPERIENCE_LEVELS, HOURS_OPTIONS, WORK_CATEGORIES } from "@/lib/labels";
+import { displayedVersion } from "@/server/legal";
 import { getMyApplication, missingAnswers } from "@/server/membership-application";
 import { saveStepAction, submitApplicationAction } from "../actions";
 
@@ -35,6 +36,7 @@ export default async function ApplyPage({ searchParams }: Props) {
   const maxStep = draft ? (complete ? 4 : draft.draftStep) : 1;
   const requested = Number(sp.step) || maxStep;
   const step = Math.min(Math.max(1, requested), maxStep);
+  const privacy = step === 4 ? await displayedVersion("privacy") : null;
 
   const a = prior?.applicant;
   const primary = a?.skills.filter((x) => x.kind === "PRIMARY").map((x) => x.skill.label).join(", ") ?? "";
@@ -227,6 +229,16 @@ export default async function ApplyPage({ searchParams }: Props) {
                   will never be asked to pay.
                 </span>
               </label>
+              {privacy && (
+                <p className="text-xs leading-5 text-ink-500">
+                  Your application is handled as described in the{" "}
+                  <Link href="/legal/privacy" target="_blank" className="font-medium text-accent-700 underline">
+                    Privacy Policy
+                  </Link>{" "}
+                  (version {privacy.version.version}
+                  {privacy.version.status === "PUBLISHED" ? "" : ", a draft awaiting legal review"}). The version is recorded with your application.
+                </p>
+              )}
             </ActionForm>
           </div>
         )}

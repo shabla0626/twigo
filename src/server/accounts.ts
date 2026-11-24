@@ -404,6 +404,7 @@ export async function reactivateUser(actorId: string, userId: string): Promise<R
   if (!target) return { ok: false, error: "Account not found." };
   const refused = await staffRuleError(actorId, target, "reactivate");
   if (refused) return { ok: false, error: refused };
+  if (target.erasedAt) return { ok: false, error: "This account was erased at the person's request and cannot be reactivated." };
   if (target.status !== "SUSPENDED" && target.status !== "DEACTIVATED") return { ok: false, error: "The account is not suspended or deactivated." };
   // A deactivated account without a password must go through a new invitation.
   const status = target.passwordHash ? "ACTIVE" : "INVITED";
@@ -454,6 +455,8 @@ export async function setUserRole(ownerId: string, userId: string, role: UserRol
   await db.user.update({ where: { id: userId }, data: { role } });
   // New role: new sessions (admin sessions have a shorter lifetime and need 2FA).
   await endAccess(userId);
+  // Staff accounts never hold group memberships (src/lib/auth/member-where.ts, GROUP_PARTICIPANT).
+  if (role === "OWNER" || role === "ADMIN") await (await import("./community/groups")).leaveAllGroups(userId);
   await audit(ownerId, "admin.role_changed", "User", userId, { from: target.role, to: role });
   return { ok: true };
 }

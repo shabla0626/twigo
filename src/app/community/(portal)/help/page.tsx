@@ -23,8 +23,8 @@ const QUESTIONS: [string, string][] = [
   ],
   ["Who can see what I post?", "Ideas, comments and group discussions are visible to all approved members. Group chat, meetings and shared research are visible only to that group’s current members. Whenever someone joins or leaves a group, a line in its chat says so."],
   [
-    "Can administrators read our group chat?",
-    "Not behind your back. Administrators have no special access to group chats. They see a chat message only when a member reports it. An administrator may join a group like any member; then the chat shows that they joined, they are labelled “Administrator”, and they can read only what is written from that moment on.",
+    "Can administrators read our group chat or files?",
+    "No. A group’s chat, research, files, tasks, decisions and projects are private to its members, and administrator accounts cannot join groups. If you report a message or the group, the moderators see the copy attached to your report. Anything more is possible only after a member of this group reported something, an administrator asked for access, and the owner approved it for a limited time and for specific information only. Access ends automatically and every view is recorded.",
   ],
   ["Do I ever have to pay?", "No. Nobody may ask members for fees or investments. Paid work only starts after a written agreement with clear terms. Please report anyone who asks you for money."],
 ];

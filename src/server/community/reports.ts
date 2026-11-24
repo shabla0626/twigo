@@ -17,11 +17,17 @@ export async function fileReport(reporterId: string, input: { targetType: Report
   if (!rateLimit(`report:${reporterId}`, 20, 24 * 3600_000).ok) return { ok: false as const, error: "Too many reports today. Please contact the administrators directly." };
   const snap = await snapshot(reporterId, input.targetType, input.targetId);
   if (!snap) return { ok: false as const, error: "That content is not available to you." };
+  // Worked out here from the database, never taken from the form: whether the reporter is an active
+  // member of the group the content belongs to. Only such a report can lead to an investigation of
+  // that group's private information (src/server/admin/group-access.ts).
+  const reporterGroupMember = snap.groupId ? Boolean((await groupAccess(snap.groupId, reporterId))?.isMember) : false;
   try {
-    await db.contentReport.create({
-      data: { reporterId, targetType: input.targetType, targetId: input.targetId, groupId: snap.groupId, reason: input.reason, details: input.details, snapshot: snap.text.slice(0, 10_000) },
+    const r = await db.contentReport.create({
+      data: { reporterId, targetType: input.targetType, targetId: input.targetId, groupId: snap.groupId, reporterGroupMember, reason: input.reason, details: input.details, snapshot: snap.text.slice(0, 10_000) },
     });
-  } catch {
+    await audit(reporterId, "report.filed", "ContentReport", r.id, { targetType: input.targetType, groupId: snap.groupId, reporterGroupMember });
+  } catch (err) {
+    if ((err as { code?: string }).code !== "P2002") throw err;
     return { ok: true as const, message: "You already reported this. The moderators will review it." };
   }
   return { ok: true as const, message: "Thank you. The report was sent to the moderators." };

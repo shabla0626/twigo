@@ -14,7 +14,7 @@ export default async function DataPage() {
   const requests = await myPrivacyRequests(user.id);
   return (
     <>
-      <h1 className="text-2xl font-semibold text-ink-950">Your data</h1>
+      <h1 className="text-2xl font-semibold text-ink-950">Privacy & data</h1>
       <SettingsCard
         title="Download your data"
         description="A JSON file with your account, profile, application, ideas, comments, group memberships, chat messages you wrote, notifications, file list, the policies you accepted, your project agreements and your privacy requests. Other members’ private information is not included."
@@ -33,7 +33,7 @@ export default async function DataPage() {
         title="Make a privacy request"
         description={
           <>
-            Ask to see, correct or delete your information, withdraw a consent, or object to a use of it. The{" "}
+            Ask to see or correct your information, withdraw a consent, or object to a use of it. (To delete your account and personal data, use “Request deletion” below.) The{" "}
             <Link href="/legal/privacy" className="font-medium text-accent-700 underline underline-offset-2">
               Privacy Policy
             </Link>{" "}
@@ -44,11 +44,13 @@ export default async function DataPage() {
         <ActionForm action={privacyRequestAction} submitLabel="Send request" resetOnSuccess>
           <Field id="kind" label="What would you like?">
             <select id="kind" name="kind" className="block w-full max-w-md rounded-md border border-ink-300 bg-white px-3 py-2 text-sm">
-              {Object.entries(PRIVACY_REQUEST_KINDS).map(([k, l]) => (
-                <option key={k} value={k}>
-                  {l}
-                </option>
-              ))}
+              {Object.entries(PRIVACY_REQUEST_KINDS)
+                .filter(([k]) => k !== "DELETION")
+                .map(([k, l]) => (
+                  <option key={k} value={k}>
+                    {l}
+                  </option>
+                ))}
             </select>
           </Field>
           <Field id="details" label="Details">
@@ -62,7 +64,10 @@ export default async function DataPage() {
                 <p className="font-medium text-ink-900">
                   {PRIVACY_REQUEST_KINDS[r.kind]} · {PRIVACY_REQUEST_STATUSES[r.status]}
                 </p>
-                <p className="text-xs text-ink-500">Sent {r.createdAt.toISOString().slice(0, 10)}</p>
+                <p className="text-xs text-ink-500">
+                  Sent {r.createdAt.toISOString().slice(0, 10)}
+                  {r.completedAt ? ` · completed ${r.completedAt.toISOString().slice(0, 16).replace("T", " ")} (UTC)` : ""}
+                </p>
                 {r.response && <p className="mt-1 text-ink-700">Answer: {r.response}</p>}
               </li>
             ))}
@@ -70,11 +75,19 @@ export default async function DataPage() {
         )}
       </SettingsCard>
       <SettingsCard
+        title="Request deletion of your account and personal data"
+        description="Your request is checked by the owner before anything is deleted. You will see exactly what is deleted and what has to be kept before you confirm."
+      >
+        <Link href="/account/data/delete" className={buttonClass("secondary")}>
+          Request deletion
+        </Link>
+      </SettingsCard>
+      <SettingsCard
         title="Deactivate your account"
         description={
           <>
-            You leave all groups and can no longer sign in. Your ideas and comments stay visible under your display name unless you ask for deletion. To have
-            your personal data deleted, make a privacy request above before deactivating; some records (for example accepted agreements) may need to be kept.
+            Deactivating is not deletion: you leave all groups and can no longer sign in, but your information stays (your ideas and comments remain under
+            your display name). To have your personal data deleted, use “Request deletion” above instead.
           </>
         }
       >

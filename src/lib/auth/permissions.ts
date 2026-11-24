@@ -37,7 +37,10 @@ export const PERMISSIONS = [
   "legal.manage", // legal documents: versions, approval, publication; legal notices (owner only)
   "support.manage", // voluntary community support records and reports (owner only)
   "privacy.requests", // members' privacy requests (owner only)
-  "agreements.view", // see that group project agreements exist and their state (not their financial terms)
+  "agreements.view", // see how many group project agreements exist and their state (no names, no terms)
+  "group_access.request", // ask the owner for temporary access to one group's private information, after a member's report
+  "group_access.approve", // approve, reject or end such access (owner only)
+  "privacy.erase", // carry out an approved account and personal-data deletion (owner only)
 ] as const;
 
 export type Permission = (typeof PERMISSIONS)[number];
@@ -59,6 +62,7 @@ const ADMIN: Permission[] = [
   "audit.view",
   "retention.preview",
   "agreements.view",
+  "group_access.request",
 ];
 
 export const ROLE_PERMISSIONS: Record<UserRole, readonly Permission[]> = {

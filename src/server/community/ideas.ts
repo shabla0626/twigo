@@ -1,7 +1,7 @@
 import "server-only";
 import type { IdeaCategory, Prisma } from "@prisma/client";
 import { db } from "@/lib/db";
-import { ACTIVE_MEMBER } from "@/lib/auth/member-where";
+import { GROUP_PARTICIPANT } from "@/lib/auth/member-where";
 import { audit } from "@/lib/audit";
 import { logger } from "@/lib/logger";
 import { rateLimit } from "@/lib/rate-limit";
@@ -232,7 +232,7 @@ async function afterSaved(label: string, step: () => Promise<unknown>) {
  */
 async function evaluateIdea(tx: Prisma.TransactionClient, idea: { id: string; authorId: string | null; status: string }, threshold: number): Promise<{ count: number; group: CreatedGroup | null }> {
   const eligible = await tx.ideaEndorsement.findMany({
-    where: { ideaId: idea.id, user: ACTIVE_MEMBER, ...(idea.authorId ? { userId: { not: idea.authorId } } : {}) },
+    where: { ideaId: idea.id, user: GROUP_PARTICIPANT, ...(idea.authorId ? { userId: { not: idea.authorId } } : {}) },
     orderBy: { createdAt: "asc" },
     select: { userId: true },
   });
@@ -280,8 +280,11 @@ async function announceGroupCreated(g: CreatedGroup, ideaId: string, title: stri
  */
 export async function endorseIdea(userId: string, ideaId: string): Promise<EndorseResult> {
   const threshold = await getSetting("community.endorsementThreshold");
-  const endorser = await db.user.findFirst({ where: { id: userId, ...ACTIVE_MEMBER }, select: { id: true } });
-  if (!endorser) return { ok: false, error: "Only active members can support ideas." };
+  const endorser = await db.user.findFirst({ where: { id: userId, ...GROUP_PARTICIPANT }, select: { id: true } });
+  if (!endorser) {
+    const staff = await db.user.findFirst({ where: { id: userId, role: { in: ["OWNER", "ADMIN"] } }, select: { id: true } });
+    return { ok: false, error: staff ? "Administrator accounts cannot support ideas: supporters become members of the group that forms." : "Only active members can support ideas." };
+  }
 
   let authorId: string | null = null;
   let title = "";

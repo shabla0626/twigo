@@ -189,7 +189,7 @@ export default async function ApplicationDetail({ params, searchParams }: Props)
             <Dl
               items={[
                 ["Confirmed at", fmtDate(app.acknowledgedAt, true)],
-                ["Privacy notice version", app.privacyNoticeVersion],
+                ["Privacy Policy version shown at submission", app.privacyNoticeVersion],
               ]}
             />
           </Panel>

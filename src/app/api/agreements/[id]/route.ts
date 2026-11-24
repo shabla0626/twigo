@@ -1,7 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
-import { audit } from "@/lib/audit";
 import { getCurrentUser } from "@/lib/auth/guard";
-import { can } from "@/lib/auth/permissions";
+import { db } from "@/lib/db";
+import { authorizeGroupRead } from "@/server/admin/group-access";
 import { env } from "@/lib/env";
 import { AGREEMENT_STATUS_LABELS, agreementForDownload } from "@/server/community/group-projects";
 
@@ -9,19 +9,24 @@ export const dynamic = "force-dynamic";
 
 /**
  * A copy of one agreement version: the exact text, its SHA-256 fingerprint and who accepted it when.
- * Group members only (and the owner, who may see financial records). Drafts are not downloadable.
+ * Group members only (staff only during an owner-approved investigation). Drafts are not downloadable.
  */
 export async function GET(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const user = await getCurrentUser();
   if (!user || !user.communityAccess) return new NextResponse("Not found", { status: 404 });
   const { id } = await params;
-  // The owner may open any group's financial terms, but only with the same safeguards as the admin area
-  // (two-step verification) and with an audit entry; members use their own group or participant access.
-  const ownerAccess = can(user.role, "compensation.view") && (!env().ADMIN_REQUIRE_2FA || user.totpEnabled);
-  const asMember = await agreementForDownload(user.id, id);
-  const v = asMember ?? (ownerAccess ? await agreementForDownload(user.id, id, { owner: true }) : null);
+  // Members use their own group or participant access. Owner and administrator accounts have NO standing
+  // access to a group's agreements: only during an owner-approved investigation covering the group's
+  // projects (two-step verification required; the download is recorded before anything is sent).
+  const staff = user.role === "OWNER" || user.role === "ADMIN";
+  const asMember = staff ? null : await agreementForDownload(user.id, id);
+  let v = asMember;
+  if (staff && (!env().ADMIN_REQUIRE_2FA || user.totpEnabled)) {
+    const target = await agreementForDownload(user.id, id, { owner: true });
+    const groupId = target ? (await db.groupProject.findUnique({ where: { id: target.projectId }, select: { groupId: true } }))?.groupId : null;
+    if (target && groupId && target.status !== "DRAFT" && (await authorizeGroupRead(user.id, { groupId, scope: "PROJECTS", what: `agreement ${target.id} download` }))) v = target;
+  }
   if (!v || v.status === "DRAFT") return new NextResponse("Not found", { status: 404 });
-  if (!asMember) await audit(user.id, "agreement.downloaded_by_owner", "ProjectAgreementVersion", v.id, { projectId: v.projectId, version: v.version });
   const lines = [
     `Project: ${v.project.name}`,
     `Group: ${v.project.group.name}`,

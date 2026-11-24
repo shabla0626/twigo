@@ -6,7 +6,6 @@ import { Badge, buttonClass } from "@/components/ui/primitives";
 import { db } from "@/lib/db";
 import { requireAdmin } from "@/lib/auth/guard";
 import { can } from "@/lib/auth/permissions";
-import { RESEARCH_SECTIONS } from "@/lib/validation/community";
 import { GROUP_STATUS_LABELS } from "@/server/community/group-labels";
 import { approveGroupAction, assignCoordinatorAction, groupStateAction, liftRemovalAction } from "../../../actions/community";
 
@@ -22,17 +21,13 @@ export default async function GroupAdminDetail({ params, searchParams }: Props) 
       idea: { select: { id: true, title: true } },
       memberships: { orderBy: [{ status: "asc" }, { joinedAt: "asc" }], include: { user: { select: { id: true, email: true, status: true, profile: { select: { displayName: true } } } } } },
       project: { select: { id: true, title: true } },
-      _count: { select: { notes: true, tasks: true, decisions: true, meetings: true, discussions: true } },
     },
   });
   if (!g) notFound();
-  // Business-proposal review: ONLY the PLAN / CONCEPT / REVENUE / RISKS notes, and
-  // only once the group asked for review (READY_FOR_REVIEW or later). The group's
-  // other notes, its chat, meetings and files are never shown here.
-  const reviewing = g.status === "READY_FOR_REVIEW" || g.status === "APPROVED_FOR_PROJECT";
-  const proposal = reviewing
-    ? await db.researchNote.findMany({ where: { groupId: g.id, section: { in: ["PLAN", "CONCEPT", "REVENUE", "RISKS"] } }, orderBy: [{ section: "asc" }, { updatedAt: "desc" }], select: { id: true, section: true, title: true, body: true, updatedAt: true } })
-    : [];
+  // No private group information is shown here: not research notes (whatever the group's stage), chat,
+  // files, tasks, decisions or projects. An administrator sees such information only through an
+  // owner-approved, time-limited investigation after a member of the group reported something
+  // (Admin, Group access; src/server/admin/group-access.ts).
   const active = g.memberships.filter((m) => m.status === "ACTIVE");
   return (
     <>
@@ -64,11 +59,14 @@ export default async function GroupAdminDetail({ params, searchParams }: Props) 
                 ["Origin idea", g.idea ? <Link key="i" href={`/community/ideas/${g.idea.id}`} className="text-accent-700 hover:underline">{g.idea.title}</Link> : null],
                 ["Created", fmtDate(g.createdAt, true)],
                 ["Last activity", fmtDate(g.lastActivityAt, true)],
-                ["Workspace", `${g._count.notes} notes · ${g._count.tasks} tasks · ${g._count.decisions} decisions · ${g._count.meetings} meetings · ${g._count.discussions} discussions`],
                 ["Linked project", g.project ? <Link key="p" href={`/admin/projects/${g.project.id}`} className="text-accent-700 hover:underline">{g.project.title}</Link> : null],
               ]}
             />
-            <p className="mt-4 text-xs text-ink-500">Private chat messages and files are not shown to administrators. Moderators see chat content only when a member reports it.</p>
+            <p className="mt-4 text-xs text-ink-500">
+              The group’s private information (chat, research, files, tasks, decisions, projects) is not shown to administrators. Moderators see only the
+              copy a member attaches to a report; anything more needs a member’s report, an access request and the owner’s approval for a limited time
+              (Admin, Group access).
+            </p>
           </Panel>
           <Panel title={`Members (${active.length} active)`}>
             <ul className="divide-y divide-ink-100 text-sm">
@@ -94,23 +92,6 @@ export default async function GroupAdminDetail({ params, searchParams }: Props) 
               ))}
             </ul>
           </Panel>
-          {reviewing && (
-            <Panel title="Business proposal (submitted for review)">
-              {proposal.length ? (
-                <div className="space-y-4">
-                  {proposal.map((n) => (
-                    <div key={n.id}>
-                      <p className="text-xs font-semibold uppercase tracking-wide text-ink-500">{RESEARCH_SECTIONS[n.section].label}</p>
-                      <p className="font-medium text-ink-950">{n.title}</p>
-                      <p className="mt-1 whitespace-pre-wrap text-sm text-ink-800">{n.body}</p>
-                    </div>
-                  ))}
-                </div>
-              ) : (
-                <p className="text-sm text-ink-600">The group has not written any research notes yet.</p>
-              )}
-            </Panel>
-          )}
         </div>
         <div className="space-y-6">
           <Panel title="Coordinator">
@@ -139,8 +120,9 @@ export default async function GroupAdminDetail({ params, searchParams }: Props) 
                 <label className="flex items-start gap-2 text-ink-800">
                   <input type="checkbox" name="confirm" className="mt-1" />
                   <span>
-                    I reviewed the proposal and understand that business registration, participant classification, written agreements, compensation terms and tax
-                    questions must be settled before any paid work starts.
+                    I discussed the proposal with the group (its private notes are not visible to administrators; the coordinator can share what the group
+                    chooses) and understand that business registration, participant classification, written agreements, compensation terms and tax questions
+                    must be settled before any paid work starts.
                   </span>
                 </label>
                 <button className={buttonClass("primary", "sm")}>Approve and create project</button>

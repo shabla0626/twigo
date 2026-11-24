@@ -19,7 +19,7 @@ export const GROUP_STATUS_HELP: Record<GroupStatus, string> = {
   RESEARCHING: "Gathering facts about the market, customers and costs.",
   VALIDATING: "Testing whether real customers would pay.",
   PLANNING: "Writing a preliminary business plan.",
-  READY_FOR_REVIEW: "The group asked for feedback; administrators can now read the research notes (not the chat). Optional: groups do not need approval to start a project.",
+  READY_FOR_REVIEW: "The group marked its research as ready for review. Its private information stays private; share what you want feedback on in a discussion. Optional: groups do not need approval to start a project.",
   APPROVED_FOR_PROJECT: "Linked to an earlier administrator-run project record. Agreements come before any paid work.",
   ARCHIVED: "Read-only. No new activity.",
 };

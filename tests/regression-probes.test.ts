@@ -194,19 +194,15 @@ describe("audit scenarios, now with the corrected behaviour asserted", () => {
     expect(after.coordinators.map((x) => x.name)).toEqual(["Dora"]);
   });
 
-  it("9. staff take part as ordinary members (decision 1): an owner's support counts like any member's", async () => {
+  it("9. staff do not take part in groups (decision of 24 November 2026, replacing decision 1): an owner's support is refused", async () => {
     const owner = await createUser({ totp: true, profile: true, name: "Olivia Owner" });
     const a = await createMember("Alice");
     const b = await createMember("Bob");
     const res = await createIdea(a.id, idea());
     if (!res.ok) throw new Error(res.error);
     await endorseIdea(b.id, res.id);
-    expect((await endorseIdea(owner.id, res.id)).ok).toBe(true);
-    const g = await db.researchGroup.findUniqueOrThrow({ where: { ideaId: res.id } });
-    // The owner is a founding member like the others, and the member list marks staff for everyone.
-    const overview = await getGroupOverview(g.slug);
-    expect(overview!.memberships.find((m) => m.user.id === owner.id)).toMatchObject({ founding: true, user: { role: "OWNER" } });
-    expect(readFileSync("src/app/community/(portal)/groups/[slug]/members/page.tsx", "utf8")).toContain('{m.user.role !== "MEMBER" && <Badge>Administrator</Badge>}');
+    expect((await endorseIdea(owner.id, res.id)).ok).toBe(false);
+    expect(await db.researchGroup.count({ where: { ideaId: res.id } })).toBe(0);
   });
 
   it("10. the owner presses Back up now: the success message matches the file written and the job history (P1-7)", async () => {
@@ -231,22 +227,15 @@ describe("audit scenarios, now with the corrected behaviour asserted", () => {
     }
   }, 60_000);
 
-  it("11. an owner joins a group: earlier messages stay hidden, the group sees it, and it is recorded (P1-1)", async () => {
+  it("11. an owner cannot join a group or open its chat; nothing is written to the group (decision of 24 November 2026)", async () => {
     const owner = await createUser({ totp: true, profile: true, name: "Olivia Owner" });
     const { a, g, channelId } = await group();
     const accA = (await channelAccess(db, a.id, channelId))!;
     await sendMessage(db, a.id, accA, { channelId, body: "private plan", clientId: "regression-probe-client-1", attachmentIds: [] });
-    const auditBefore = await db.auditLog.count();
-    expect((await joinGroup(owner.id, g.id)).ok).toBe(true);
-    const accOwner = await channelAccess(db, owner.id, channelId);
-    expect(accOwner).not.toBeNull();
-    const visible = await history(db, channelId, undefined, 50, accOwner!.historyFrom);
-    expect(JSON.stringify(visible)).not.toContain("private plan");
-    await leaveGroup(owner.id, g.id);
-    const lines = (await db.chatMessage.findMany({ where: { channelId, kind: "SYSTEM" }, orderBy: { createdAt: "asc" } })).map((m) => m.body);
-    expect(lines.some((l) => /Olivia Owner.*joined/.test(l))).toBe(true);
-    expect(lines.some((l) => /Olivia Owner.*left/.test(l))).toBe(true);
-    expect((await db.auditLog.count()) - auditBefore).toBeGreaterThanOrEqual(2);
+    expect((await joinGroup(owner.id, g.id)).ok).toBe(false);
+    expect(await channelAccess(db, owner.id, channelId)).toBeNull();
+    const lines = (await db.chatMessage.findMany({ where: { channelId, kind: "SYSTEM" } })).map((m) => m.body);
+    expect(lines.some((l) => /Olivia Owner/.test(l))).toBe(false);
     expect((await state(g.id)).activeEligible).not.toContain("Olivia Owner");
   });
 

@@ -38,6 +38,30 @@ export async function expireMeetings(db: PrismaClient, now = Date.now()): Promis
   return db.$executeRaw`UPDATE "GroupMeeting" SET "endedAt" = "startedAt" + make_interval(hours => ${MEETING_MAX_HOURS}::int) WHERE "endedAt" IS NULL AND "startedAt" < ${cutoff}`;
 }
 
-export async function runHousekeeping(db: PrismaClient, opts: { storageDir: string; now?: number }): Promise<{ unsentAttachments: number; meetingsEnded: number }> {
-  return { unsentAttachments: await purgeUnsentAttachments(db, opts.storageDir, opts.now), meetingsEnded: await expireMeetings(db) };
+/**
+ * Records the end of approved group-access investigations whose period is over (status EXPIRED, with
+ * an audit entry). Access checks never depend on this: they compare the period with the clock on every
+ * request (src/server/admin/group-access.ts), so access ends at the set time even if this has not run.
+ */
+export async function expireGroupAccess(db: PrismaClient, now = Date.now()): Promise<number> {
+  const at = new Date(now);
+  const due = await db.groupAccessRequest.findMany({ where: { status: "APPROVED", expiresAt: { lte: at } }, select: { id: true, requestedById: true, groupId: true, expiresAt: true } });
+  for (const r of due) {
+    await db.$transaction(async (tx) => {
+      const n = await tx.groupAccessRequest.updateMany({ where: { id: r.id, status: "APPROVED" }, data: { status: "EXPIRED", endedAt: at } });
+      if (n.count)
+        await tx.auditLog.create({
+          data: { actorId: null, action: "group_access.expired", entityType: "GroupAccessRequest", entityId: r.id, metadata: { adminId: r.requestedById, groupId: r.groupId, expiresAt: r.expiresAt?.toISOString() ?? null } },
+        });
+    });
+  }
+  return due.length;
+}
+
+export async function runHousekeeping(db: PrismaClient, opts: { storageDir: string; now?: number }): Promise<{ unsentAttachments: number; meetingsEnded: number; groupAccessExpired: number }> {
+  return {
+    unsentAttachments: await purgeUnsentAttachments(db, opts.storageDir, opts.now),
+    meetingsEnded: await expireMeetings(db),
+    groupAccessExpired: await expireGroupAccess(db, opts.now),
+  };
 }

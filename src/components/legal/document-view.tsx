@@ -8,7 +8,7 @@ import { LegalText } from "./legal-text";
 const fmt = (d: Date | null | undefined) => (d ? d.toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric", timeZone: "UTC" }) : null);
 
 /** Says plainly what state a version is in. A draft is never presented as reviewed or in force. */
-export function StatusNotice({ version, docKey, latestVersion }: { version: Pick<LegalDocumentVersion, "status" | "version" | "effectiveDate">; docKey: string; latestVersion?: number }) {
+export function StatusNotice({ version, docKey, latestVersion }: { version: Pick<LegalDocumentVersion, "status" | "version" | "effectiveDate"> & { publishedAt?: Date | null }; docKey: string; latestVersion?: number }) {
   const name = brand().name;
   if (version.status === "PUBLISHED")
     return (
@@ -18,8 +18,8 @@ export function StatusNotice({ version, docKey, latestVersion }: { version: Pick
     );
   if (version.status === "SUPERSEDED")
     return (
-      <Notice tone="warn" title={`Version ${version.version} is no longer in force`}>
-        It was replaced by a newer version.{" "}
+      <Notice tone="warn" title={version.publishedAt ? `Version ${version.version} is no longer in force` : `Version ${version.version} was replaced`}>
+        {version.publishedAt ? "It was replaced by a newer version." : "This version was never published. A newer version replaced it."}{" "}
         <Link href={`/legal/${docKey}`} className="font-medium underline underline-offset-2">
           Read the current version
         </Link>

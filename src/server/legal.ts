@@ -32,12 +32,11 @@ export const fingerprint = (content: string) => sha256(content);
 /** A short form for display: the full fingerprint is always available too. */
 export const shortFingerprint = (hash: string) => `${hash.slice(0, 8)} ${hash.slice(8, 16)}`;
 
-/** Creates any document (and its version 1) that does not exist yet. Safe to call at any time. */
+/** Creates any document (and its version 1) that does not exist yet, then adds versions prepared in this release. Safe to call at any time. */
 export const ensureLegalDocuments = cache(async () => {
   const existing = await db.legalDocument.findMany({ select: { key: true } });
   const have = new Set(existing.map((d) => d.key));
   const missing = LEGAL_DOCUMENTS.filter((d) => !have.has(d.key));
-  if (!missing.length) return;
   const name = brand().name;
   for (const [i, def] of LEGAL_DOCUMENTS.entries()) {
     if (have.has(def.key)) continue;
@@ -67,7 +66,61 @@ export const ensureLegalDocuments = cache(async () => {
       if ((err as { code?: string }).code !== "P2002") throw err;
     }
   }
+  if (missing.length || !releaseVersionsChecked) await addReleaseVersions(name);
 });
+
+/** Once every release-prepared version is present (or the owner's own versions took over), nothing more to check in this process. */
+let releaseVersionsChecked = false;
+
+/**
+ * Adds the later versions prepared in this release (LegalDefinition.later) as "Pending legal review".
+ * Version N+1 is added only when the document's latest version is version N with exactly the previous
+ * text of the release; otherwise the owner has written their own version and nothing is added. An older
+ * version that was only shown (never published) is marked superseded by the new one, as publication
+ * would do; a PUBLISHED version stays in force until the new one is published. Nothing is deleted.
+ */
+async function addReleaseVersions(name: string) {
+  let pending = false;
+  for (const def of LEGAL_DOCUMENTS) {
+    if (!def.later?.length) continue;
+    const doc = await db.legalDocument.findUnique({ where: { key: def.key }, select: { id: true } });
+    if (!doc) {
+      pending = true;
+      continue;
+    }
+    const texts = [def.text, ...def.later.map((l) => l.text)];
+    for (let n = 1; n < texts.length; n++) {
+      const latest = await db.legalDocumentVersion.findFirst({ where: { documentId: doc.id }, orderBy: { version: "desc" } });
+      if (!latest || latest.version !== n) break; // already added (or the owner's own numbering): stop
+      if (latest.contentHash !== fingerprint(texts[n - 1]!(name))) break; // the owner's own text: never numbered over
+      const later = def.later[n - 1]!;
+      const content = later.text(name);
+      try {
+        await db.$transaction(async (tx) => {
+          const now = new Date();
+          const v = await tx.legalDocumentVersion.create({
+            data: {
+              documentId: doc.id,
+              version: n + 1,
+              status: "PENDING_LEGAL_REVIEW",
+              content,
+              contentHash: fingerprint(content),
+              changeSummary: later.changeSummary,
+              materialChange: later.materialChange,
+              requiresReacceptance: later.materialChange && later.requiresReacceptance,
+              submittedAt: now,
+            },
+          });
+          await tx.legalDocumentVersion.updateMany({ where: { documentId: doc.id, version: { lt: n + 1 }, status: { in: ["PENDING_LEGAL_REVIEW", "APPROVED"] } }, data: { status: "SUPERSEDED", supersededAt: now } });
+          await tx.auditLog.create({ data: { actorId: null, action: "legal.release_version_added", entityType: "LegalDocumentVersion", entityId: v.id, metadata: { key: def.key, version: n + 1, contentHash: v.contentHash } } });
+        });
+      } catch (err) {
+        if ((err as { code?: string }).code !== "P2002") throw err; // added at the same moment by another request
+      }
+    }
+  }
+  if (!pending) releaseVersionsChecked = true;
+}
 
 const SHOWN: LegalDocumentStatus[] = ["PUBLISHED", "APPROVED", "PENDING_LEGAL_REVIEW"];
 

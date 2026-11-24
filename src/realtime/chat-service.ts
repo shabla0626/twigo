@@ -50,6 +50,9 @@ export async function channelAccess(db: PrismaClient, userId: string, channelId:
     db.user.findUnique({ where: { id: userId }, select: { status: true, role: true, emailVerifiedAt: true, membershipStatus: true } }),
   ]);
   if (m?.status !== "ACTIVE" || !user || !hasCommunityAccess({ status: user.status, role: user.role, emailVerified: Boolean(user.emailVerifiedAt), membership: user.membershipStatus })) return null;
+  // Owner and administrator accounts never use a group's live chat, not even with an investigation
+  // grant (that grant gives a read-only view in the admin area, re-checked on every request).
+  if (user.role === "OWNER" || user.role === "ADMIN") return null;
   return { channelId: ch.id, groupId: ch.group.id, groupSlug: ch.group.slug, canPost: ch.group.status !== "ARCHIVED", historyFrom: chatBoundary(user.role, m.joinedAt) };
 }
 

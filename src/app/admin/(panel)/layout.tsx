@@ -15,6 +15,7 @@ const NAV: (NavItem & { perm: Permission })[] = [
   { href: "/admin/members", label: "Members", perm: "members.view", section: "People", also: ["/admin/admins"] },
   { href: "/admin/reports", label: "Moderation", perm: "moderation.act", section: "Community", also: ["/admin/ideas"] },
   { href: "/admin/groups", label: "Project groups", perm: "groups.manage", section: "Community" },
+  { href: "/admin/group-access", label: "Group access", perm: "group_access.request", section: "Community" },
   { href: "/admin/agreements", label: "Project agreements", perm: "agreements.view", section: "Business" },
   { href: "/admin/projects", label: "Earlier project records", perm: "projects.manage", section: "Business", also: ["/admin/participants"] },
   { href: "/admin/support", label: "Community support", perm: "support.manage", section: "Business" },

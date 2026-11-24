@@ -1,7 +1,7 @@
 import "server-only";
 import type { GroupMembership, ResearchGroup } from "@prisma/client";
 import { db } from "@/lib/db";
-import { ACTIVE_MEMBER } from "@/lib/auth/member-where";
+import { GROUP_PARTICIPANT, isStaffRole } from "@/lib/auth/member-where";
 
 export class AccessError extends Error {
   constructor(message = "You do not have access to this.") {
@@ -39,8 +39,14 @@ export async function groupAccessBySlug(slug: string, userId: string): Promise<G
 }
 
 async function accessFor(group: ResearchGroup, userId: string): Promise<GroupAccess> {
-  const membership = await db.groupMembership.findUnique({ where: { groupId_userId: { groupId: group.id, userId } } });
-  const isMember = membership?.status === "ACTIVE" && !group.suspendedAt;
+  const [membership, user] = await Promise.all([
+    db.groupMembership.findUnique({ where: { groupId_userId: { groupId: group.id, userId } } }),
+    db.user.findUnique({ where: { id: userId }, select: { role: true } }),
+  ]);
+  // Owner and administrator accounts never count as group members, even if an old membership row
+  // exists: staff see a group's private areas only through an owner-approved investigation grant,
+  // which is checked separately (src/server/admin/group-access.ts), never through these pages.
+  const isMember = membership?.status === "ACTIVE" && !group.suspendedAt && !!user && !isStaffRole(user.role);
   return {
     group,
     membership,
@@ -71,6 +77,6 @@ export async function requireCoordinator(groupId: string, userId: string): Promi
 
 /** Ids of the group's members who can take part right now (for notifications). */
 export async function activeMemberIds(groupId: string): Promise<string[]> {
-  const rows = await db.groupMembership.findMany({ where: { groupId, status: "ACTIVE", user: ACTIVE_MEMBER }, select: { userId: true } });
+  const rows = await db.groupMembership.findMany({ where: { groupId, status: "ACTIVE", user: GROUP_PARTICIPANT }, select: { userId: true } });
   return rows.map((r) => r.userId);
 }

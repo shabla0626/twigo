@@ -216,6 +216,12 @@ model User {
   agreementParticipation ProjectAgreementParticipant[]
   privacyRequests        PrivacyRequest[]              @relation("PrivacyRequester")
   privacyRequestsHandled PrivacyRequest[]              @relation("PrivacyHandler")
+  groupAccessRequested   GroupAccessRequest[]          @relation("GroupAccessRequester")
+  groupAccessDecided     GroupAccessRequest[]          @relation("GroupAccessDecider")
+  groupAccessRevoked     GroupAccessRequest[]          @relation("GroupAccessRevoker")
+  /// Set when the account was erased after an approved deletion request: the row stays as an
+  /// anonymous placeholder so shared records keep valid links. Deactivation does NOT set it.
+  erasedAt               DateTime?
 
   @@index([role, status])
   @@index([membershipStatus])
@@ -865,19 +871,20 @@ model ResearchGroup {
   createdAt       DateTime      @default(now())
   updatedAt       DateTime      @updatedAt
 
-  idea          BusinessIdea?       @relation(fields: [ideaId], references: [id], onDelete: SetNull)
-  memberships   GroupMembership[]
-  announcements GroupAnnouncement[]
-  discussions   GroupDiscussion[]
-  channels      GroupChannel[]
-  meetings      GroupMeeting[]
-  notes         ResearchNote[]
-  tasks         ResearchTask[]
-  decisions     GroupDecision[]
-  links         GroupLink[]
-  files         StoredFile[]
-  project       Project?
-  groupProjects GroupProject[]
+  idea           BusinessIdea?        @relation(fields: [ideaId], references: [id], onDelete: SetNull)
+  memberships    GroupMembership[]
+  announcements  GroupAnnouncement[]
+  discussions    GroupDiscussion[]
+  channels       GroupChannel[]
+  meetings       GroupMeeting[]
+  notes          ResearchNote[]
+  tasks          ResearchTask[]
+  decisions      GroupDecision[]
+  links          GroupLink[]
+  files          StoredFile[]
+  project        Project?
+  groupProjects  GroupProject[]
+  accessRequests GroupAccessRequest[]
 
   @@index([status, lastActivityAt])
   @@index([category])
@@ -1156,24 +1163,28 @@ model NotificationPreference {
 }
 
 model ContentReport {
-  id           String       @id @default(cuid())
-  reporterId   String?
-  targetType   ReportTarget
-  targetId     String
-  groupId      String?
-  reason       ReportReason
-  details      String?
+  id                  String       @id @default(cuid())
+  reporterId          String?
+  targetType          ReportTarget
+  targetId            String
+  groupId             String?
+  reason              ReportReason
+  details             String?
   // Copy of the reported content at report time. This is the only way
   // administrators see private group messages.
-  snapshot     String?
-  status       ReportStatus @default(OPEN)
-  resolvedById String?
-  resolution   String?
-  resolvedAt   DateTime?
-  createdAt    DateTime     @default(now())
+  snapshot            String?
+  status              ReportStatus @default(OPEN)
+  /// True when the reporter was an active member of `groupId` when filing (checked on the server).
+  /// Only such a report can start an investigation of that group's private information.
+  reporterGroupMember Boolean      @default(false)
+  resolvedById        String?
+  resolution          String?
+  resolvedAt          DateTime?
+  createdAt           DateTime     @default(now())
 
-  reporter   User? @relation("Reporter", fields: [reporterId], references: [id], onDelete: SetNull)
-  resolvedBy User? @relation("Resolver", fields: [resolvedById], references: [id], onDelete: SetNull)
+  reporter       User?                @relation("Reporter", fields: [reporterId], references: [id], onDelete: SetNull)
+  resolvedBy     User?                @relation("Resolver", fields: [resolvedById], references: [id], onDelete: SetNull)
+  accessRequests GroupAccessRequest[]
 
   @@unique([reporterId, targetType, targetId])
   @@index([status, createdAt])
@@ -1456,27 +1467,104 @@ enum PrivacyRequestKind {
 }
 
 enum PrivacyRequestStatus {
-  OPEN
-  IN_PROGRESS
+  OPEN // shown as "Submitted"
+  IN_PROGRESS // shown as "Under review"
   COMPLETED
   REJECTED
+  VERIFICATION_REQUIRED
+  INFO_REQUIRED
+  APPROVED_FOR_DELETION
+  PROCESSING
 }
 
 model PrivacyRequest {
-  id          String               @id @default(cuid())
-  userId      String?
-  email       String
-  kind        PrivacyRequestKind
-  details     String
-  status      PrivacyRequestStatus @default(OPEN)
-  response    String?
-  createdAt   DateTime             @default(now())
-  updatedAt   DateTime             @updatedAt
-  handledById String?
-  handledAt   DateTime?
+  id                 String               @id @default(cuid())
+  userId             String?
+  email              String
+  kind               PrivacyRequestKind
+  details            String
+  status             PrivacyRequestStatus @default(OPEN)
+  response           String?
+  createdAt          DateTime             @default(now())
+  updatedAt          DateTime             @updatedAt
+  handledById        String?
+  handledAt          DateTime?
+  /// Deletion requests: what was asked for (ACCOUNT_AND_PERSONAL_DATA).
+  scope              String?
+  /// How the person proved it was them when submitting (re-entered password, plus two-step code if enabled).
+  verifiedAt         DateTime?
+  verificationMethod String?
+  /// Private notes of the owner handling the request (never shown to the member).
+  adminNotes         String?
+  completedAt        DateTime?
+  /// What the erasure did, by category (counts only, no personal data).
+  outcome            Json?
+  /// The completion notice: its EmailDelivery row (status shows whether it was accepted or failed).
+  completionEmailId  String?
 
   user      User? @relation("PrivacyRequester", fields: [userId], references: [id], onDelete: SetNull)
   handledBy User? @relation("PrivacyHandler", fields: [handledById], references: [id], onDelete: SetNull)
 
   @@index([status, createdAt])
+}
+
+// ------------------------------------------------------------------ investigation access to a group
+
+/**
+ * Which private information of a group an approved investigation may read.
+ */
+enum GroupAccessScope {
+  CHAT
+  RESEARCH
+  FILES
+  TASKS_DECISIONS
+  PROJECTS
+}
+
+enum GroupAccessStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  REVOKED
+  EXPIRED
+  CANCELLED
+}
+
+/**
+ * An administrator's request to look into one group's private information because of one report
+ * filed by a member of that group, and the owner's decision. Access exists only while the request is
+ * APPROVED, the current time is between startsAt and expiresAt and it was not revoked; every check
+ * re-reads this row. Nothing here is ever deleted (the history is the audit trail).
+ */
+model GroupAccessRequest {
+  id             String             @id @default(cuid())
+  reportId       String
+  groupId        String
+  requestedById  String?
+  reason         String
+  requestedScope GroupAccessScope[]
+  requestedHours Int
+  status         GroupAccessStatus  @default(PENDING)
+  grantedScope   GroupAccessScope[]
+  startsAt       DateTime?
+  expiresAt      DateTime?
+  decidedById    String?
+  decidedAt      DateTime?
+  decisionNote   String?
+  revokedById    String?
+  revokedAt      DateTime?
+  /// When the end of access (expiry or revocation) was recorded.
+  endedAt        DateTime?
+  createdAt      DateTime           @default(now())
+  updatedAt      DateTime           @updatedAt
+
+  report      ContentReport @relation(fields: [reportId], references: [id], onDelete: Restrict)
+  group       ResearchGroup @relation(fields: [groupId], references: [id], onDelete: Restrict)
+  requestedBy User?         @relation("GroupAccessRequester", fields: [requestedById], references: [id], onDelete: SetNull)
+  decidedBy   User?         @relation("GroupAccessDecider", fields: [decidedById], references: [id], onDelete: SetNull)
+  revokedBy   User?         @relation("GroupAccessRevoker", fields: [revokedById], references: [id], onDelete: SetNull)
+
+  @@index([status, expiresAt])
+  @@index([requestedById, status])
+  @@index([groupId])
 }

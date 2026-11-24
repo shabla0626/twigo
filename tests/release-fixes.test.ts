@@ -87,15 +87,13 @@ describe("authorization", () => {
     expect((await listGroupFiles(g.id, a.id)).map((f) => f.originalName)).not.toContain("old.png");
   });
 
-  it("the owner can download a group's agreement only with two-step verification, and it is audited", async () => {
+  it("the owner has no standing access to a group's agreement (decision of 24 November 2026): only an approved investigation, with two-step verification", async () => {
     const o = await openProject();
     const owner = await createUser({ email: "owner@example.test", totp: true });
     const get = () => downloadRoute(new NextRequest(`http://localhost/api/agreements/${o.v.id}`), { params: Promise.resolve({ id: o.v.id }) });
     await signIn(owner.id, "OWNER");
-    expect((await get()).status).toBe(200);
-    expect(await db.auditLog.count({ where: { action: "agreement.downloaded_by_owner", entityId: o.v.id } })).toBe(1);
-    await db.user.update({ where: { id: owner.id }, data: { totpEnabledAt: null, totpSecretEnc: null } });
     expect((await get()).status).toBe(404);
+    expect(await db.auditLog.count({ where: { action: "group_access.denied" } })).toBe(1);
   });
 });
 

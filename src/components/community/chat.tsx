@@ -505,7 +505,7 @@ export function GroupChat({ channelId, groupId, me, members }: { channelId: stri
             );
           })}
         </ul>
-        <p className="mt-4 text-xs leading-5 text-ink-500">Chat is visible only to current group members and is saved so you can read it later. Everyone who joins or leaves is shown in the chat. Administrators have no special view: they see a message only if someone reports it, and an administrator who joins as a member sees the chat only from that moment and is labelled “Administrator”.</p>
+        <p className="mt-4 text-xs leading-5 text-ink-500">Chat is visible only to current group members and is saved so you can read it later. Everyone who joins or leaves is shown in the chat. Administrators cannot join groups or read this chat. If you report a message, its text is sent to the moderators. An administrator can see more only after a member of this group reported something, and only with the owner’s approval, for a limited time; every such access is recorded.</p>
       </aside>
     </div>
   );

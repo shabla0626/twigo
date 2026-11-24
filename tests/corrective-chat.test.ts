@@ -106,12 +106,12 @@ describe("P1-1: membership changes are visible to the group and recorded", () =>
     expect((await systemLines(channelId)).filter((l) => l === "Dora joined the group")).toHaveLength(2);
   });
 
-  it("an owner or administrator is named as such when they join or leave", async () => {
+  it("an owner or administrator cannot join a group, so no join line is written for them (decision of 24 November 2026)", async () => {
     const { owner, g, channelId } = await setup();
-    await joinGroup(owner.id, g.id);
-    await leaveGroup(owner.id, g.id);
-    expect(await systemLines(channelId)).toEqual(["Olivia Owner (administrator) joined the group", "Olivia Owner (administrator) left the group"]);
-    expect(await db.auditLog.count({ where: { action: { in: ["group.member_joined", "group.member_left"] }, actorId: owner.id } })).toBe(2);
+    const before = await systemLines(channelId);
+    expect(await joinGroup(owner.id, g.id)).toMatchObject({ ok: false });
+    expect(await systemLines(channelId)).toEqual(before);
+    expect(await db.auditLog.count({ where: { action: "group.member_joined", actorId: owner.id } })).toBe(0);
   });
 
   it("removal, hand-over, assignment and succession are written into the chat too", async () => {
@@ -156,110 +156,29 @@ describe("P1-1: membership changes are visible to the group and recorded", () =>
   });
 });
 
-describe("P1-1: no view into conversations from before an administrator joined", () => {
-  it("an owner who joins sees the chat only from that moment; an ordinary member still sees the history", async () => {
+describe("administrators never see a group's chat (replaces the earlier join-with-history-boundary rule)", () => {
+  it("an owner's socket is refused by the chat, and a member still sees the history", async () => {
     const { a, owner, g, channelId } = await setup();
     await say(a.id, channelId, "private plan from before");
-    await pause(30);
     await joinGroup(owner.id, g.id);
+    const co = await connectAs(owner.id, "OWNER");
+    expect((await emit<JoinAnswer>(co, "channel:join", { channelId })).ok).toBe(false);
+    expect(await channelAccess(db, owner.id, channelId)).toBeNull();
     const dora = await createMember("Dora");
     await joinGroup(dora.id, g.id);
-    await say(a.id, channelId, "hello everyone");
-
-    const co = await connectAs(owner.id, "OWNER");
-    const ownerView = await emit<JoinAnswer>(co, "channel:join", { channelId });
-    expect(ownerView.ok).toBe(true);
-    expect(bodies(ownerView.messages)).toEqual(["Olivia Owner (administrator) joined the group", "Dora joined the group", "hello everyone"]);
-    expect(ownerView.hasMore).toBe(false);
-    // Asking for older pages returns nothing from before the join either.
-    const first = ownerView.messages![0]!;
-    const older = await emit<JoinAnswer>(co, "history:more", { channelId, before: first.id });
-    expect(bodies(older.messages)).toEqual([]);
-
     const cd = await connectAs(dora.id);
-    const memberView = await emit<JoinAnswer>(cd, "channel:join", { channelId });
-    expect(bodies(memberView.messages)).toContain("private plan from before");
+    expect(bodies((await emit<JoinAnswer>(cd, "channel:join", { channelId })).messages)).toContain("private plan from before");
   });
 
-  it("leaving and joining again does not open the gap in between", async () => {
+  it("chat attachments cannot be listed or downloaded by an administrator", async () => {
     const { a, owner, g, channelId } = await setup();
-    await joinGroup(owner.id, g.id);
-    await say(a.id, channelId, "while the owner was a member");
-    await leaveGroup(owner.id, g.id);
-    await say(a.id, channelId, "said while the owner was away");
-    await pause(30);
-    await joinGroup(owner.id, g.id);
-    const access = (await channelAccess(db, owner.id, channelId))!;
-    const page = await history(db, channelId, null, 50, access.historyFrom);
-    expect(bodies(page.messages)).toEqual(["Olivia Owner (administrator) joined the group"]);
+    const m = await say(a.id, channelId, "see attached");
+    const f = await db.storedFile.create({ data: { ownerId: a.id, scope: "CHAT_ATTACHMENT", groupId: g.id, messageId: m.id, originalName: "a.pdf", mimeType: "application/pdf", size: 3, sha256: "0".repeat(64), storageKey: "chat/2026-11/a" } });
+    expect(await authorizeDownload(owner.id, f.id)).toBeNull();
+    expect(await authorizeDownload(a.id, f.id)).not.toBeNull();
   });
 
-  it("editing or deleting an earlier message is not sent to the administrator, and a quote of it is withheld", async () => {
-    const { a, b, owner, g, channelId } = await setup();
-    const old = await say(a.id, channelId, "the earlier secret");
-    await pause(30);
-    await joinGroup(owner.id, g.id);
-
-    const [ca, cb, co] = [await connectAs(a.id), await connectAs(b.id), await connectAs(owner.id, "OWNER")];
-    for (const c of [ca, cb, co]) await emit(c, "channel:join", { channelId });
-    const ownerNew = collect(co, "message:new");
-    const ownerUpdated = collect(co, "message:updated");
-    const bobUpdated = collect(cb, "message:updated");
-    const bobNew = collect(cb, "message:new");
-
-    expect((await emit<{ ok: boolean }>(ca, "message:edit", { channelId, messageId: old.id, body: "the earlier secret, edited" })).ok).toBe(true);
-    expect((await emit<{ ok: boolean }>(ca, "message:send", { channelId, body: "as I said", clientId: "corrective-chat-reply-1", replyToId: old.id, attachmentIds: [] })).ok).toBe(true);
-    await pause();
-
-    expect(bobUpdated.map((m) => m.body)).toEqual(["the earlier secret, edited"]);
-    expect(ownerUpdated).toEqual([]); // never sent
-    expect(bobNew[0]!.replyTo).toMatchObject({ authorName: "Alice", excerpt: "the earlier secret, edited" });
-    expect(ownerNew).toHaveLength(1);
-    expect(ownerNew[0]!.body).toBe("as I said");
-    expect(ownerNew[0]!.replyTo).toMatchObject({ authorName: "", excerpt: "(a message from before you joined)" });
-    expect(JSON.stringify([ownerNew, ownerUpdated])).not.toContain("secret");
-
-    // The administrator cannot answer or report an earlier message by guessing its id.
-    const viaReply = await emit<{ ok: boolean; message: ChatMessageDTO }>(co, "message:send", { channelId, body: "what was that?", clientId: "corrective-chat-reply-2", replyToId: old.id, attachmentIds: [] });
-    expect(viaReply.message.replyTo).toBeNull();
-    expect((await fileReport(owner.id, { targetType: "MESSAGE", targetId: old.id, reason: "OTHER", details: null })).ok).toBe(false);
-    expect(await db.contentReport.count()).toBe(0);
-  });
-
-  it("chat attachments from before the join cannot be listed or downloaded by the administrator", async () => {
-    const { a, owner, g, channelId } = await setup();
-    const msg = await say(a.id, channelId, "see attached");
-    const file = (scope: "CHAT_ATTACHMENT" | "GROUP_FILE", key: string, messageId?: string) =>
-      db.storedFile.create({ data: { ownerId: a.id, scope, groupId: g.id, messageId, originalName: `${key}.pdf`, mimeType: "application/pdf", size: 10, sha256: key, storageKey: key } });
-    const earlierAttachment = await file("CHAT_ATTACHMENT", "earlier-attachment", msg.id);
-    const researchFile = await file("GROUP_FILE", "research-file");
-    await pause(30);
-    await joinGroup(owner.id, g.id);
-    const later = await say(a.id, channelId, "a later message with a file");
-    const laterAttachment = await file("CHAT_ATTACHMENT", "later-attachment", later.id);
-
-    expect(await authorizeDownload(owner.id, earlierAttachment.id)).toBeNull();
-    expect((await authorizeDownload(owner.id, laterAttachment.id))?.id).toBe(laterAttachment.id);
-    expect((await authorizeDownload(owner.id, researchFile.id))?.id).toBe(researchFile.id); // shared research material, not conversation
-    expect((await listGroupFiles(g.id, owner.id)).map((f) => f.originalName).sort()).toEqual(["later-attachment.pdf", "research-file.pdf"]);
-    // Ordinary members are unaffected.
-    expect((await authorizeDownload(a.id, earlierAttachment.id))?.id).toBe(earlierAttachment.id);
-    expect(await listGroupFiles(g.id, a.id)).toHaveLength(3);
-  });
-
-  it("the unread badge never counts messages from before the administrator joined", async () => {
-    const { a, owner, g, channelId } = await setup();
-    await say(a.id, channelId, "earlier one");
-    await say(a.id, channelId, "earlier two");
-    await pause(30);
-    await joinGroup(owner.id, g.id);
-    expect(await groupUnread(g.id, owner.id)).toBe(0);
-    expect((await myGroups(owner.id))[0]!.unread).toBe(0);
-    await say(a.id, channelId, "after the join");
-    expect((await myGroups(owner.id))[0]!.unread).toBe(1);
-  });
-
-  it("an administrator who helped found the group sees it from its creation", async () => {
+  it("an administrator's support does not count and does not make them a founding member", async () => {
     const [a, b] = [await createMember("Alice"), await createMember("Bob")];
     const admin = await createUser({ email: "adam@example.test", name: "Adam Admin", role: "ADMIN", totp: true, profile: true });
     const res = await createIdea(a.id, {
@@ -268,15 +187,8 @@ describe("P1-1: no view into conversations from before an administrator joined",
     });
     if (!res.ok) throw new Error(res.error);
     await endorseIdea(b.id, res.id);
-    await endorseIdea(admin.id, res.id); // counts like any member; the group forms with the administrator in it
-    const g = await db.researchGroup.findUniqueOrThrow({ where: { ideaId: res.id }, include: { channels: true } });
-    const channelId = g.channels[0]!.id;
-    const first = await say(a.id, channelId, "first message of the group");
-    const access = (await channelAccess(db, admin.id, channelId))!;
-    expect(bodies((await history(db, channelId, null, 50, access.historyFrom)).messages)).toEqual(["first message of the group"]);
-    // Their messages carry the administrator label for everyone.
-    expect((await say(admin.id, channelId, "hello")).author).toMatchObject({ name: "Adam Admin", staff: true });
-    expect(first.author).toMatchObject({ staff: false });
+    expect(await endorseIdea(admin.id, res.id)).toMatchObject({ ok: false });
+    expect(await db.researchGroup.count({ where: { ideaId: res.id } })).toBe(0);
   });
 
   it("looking at reported chat messages is itself recorded", async () => {

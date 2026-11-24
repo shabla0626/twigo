@@ -36,7 +36,8 @@ describe("publishing the reviewed legal documents", () => {
     for (const def of LEGAL_DOCUMENTS) {
       const v = (await displayedVersion(def.key))!.version;
       if (def.key === "privacy") {
-        expect(v).toMatchObject({ status: "PENDING_LEGAL_REVIEW", version: 1, approvalNote: null, effectiveDate: null });
+        // Version 2, prepared in the release, is shown awaiting review; the script never publishes it.
+        expect(v).toMatchObject({ status: "PENDING_LEGAL_REVIEW", version: 2, approvalNote: null, effectiveDate: null });
         continue;
       }
       expect(v).toMatchObject({ status: "PUBLISHED", version: 1, approvalNote: NOTE, approvedById: owner.id });
@@ -72,7 +73,9 @@ describe("publishing the reviewed legal documents", () => {
   it("an unfinished text cannot be approved or published through the admin area either", async () => {
     const owner = await createUser({ email: "owner@example.test", totp: true });
     await ensureLegalDocuments();
-    const privacy = await db.legalDocumentVersion.findFirstOrThrow({ where: { document: { key: "privacy" } } });
+    // Version 1 of the Privacy Policy, as it is in a database where version 2 was not added yet.
+    const privacy = await db.legalDocumentVersion.findFirstOrThrow({ where: { document: { key: "privacy" }, version: 1 } });
+    await db.legalDocumentVersion.update({ where: { id: privacy.id }, data: { status: "PENDING_LEGAL_REVIEW", supersededAt: null } });
     const res = await changeStatus(owner.id, privacy.id, "APPROVED", { approvalNote: NOTE });
     expect(res).toMatchObject({ ok: false });
     if (!res.ok) expect(res.error).toMatch(/before publication/);

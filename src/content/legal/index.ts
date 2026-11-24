@@ -1,5 +1,6 @@
 import { communityGuidelines, communitySupport, cookiePolicy, groupParticipation, intellectualProperty, participationCompensation } from "./policies";
 import { privacy } from "./privacy";
+import { privacyV2 } from "./privacy-v2";
 import { terms } from "./terms";
 
 /**
@@ -20,12 +21,35 @@ export type LegalDefinition = {
   title: string;
   summary: string;
   acceptance: "registration-accept" | "registration-ack" | "group" | "none";
+  /** Version 1: the text every database starts with (the reviewed text; its fingerprint is locked by a test). */
   text: (name: string) => string;
+  /**
+   * Later versions prepared in a release (version 2, 3, ...). Each is added to a database as "Pending
+   * legal review" once that database's latest version is exactly the previous text of this list, so a
+   * version the owner wrote in the admin area is never overwritten or numbered over. Publishing it still
+   * needs the owner's approval in Admin, Legal, after a legal review.
+   */
+  later?: { text: (name: string) => string; changeSummary: string; materialChange: boolean; requiresReacceptance: boolean }[];
 };
 
 export const LEGAL_DOCUMENTS: LegalDefinition[] = [
   { key: "terms", title: "Terms of Use", summary: "The rules for using the community: voluntary participation, no fees, no commission, ideas, groups and projects.", acceptance: "registration-accept", text: terms },
-  { key: "privacy", title: "Privacy Policy", summary: "What information is collected, why, who can see it, how long it is kept, and your rights.", acceptance: "registration-ack", text: privacy },
+  {
+    key: "privacy",
+    title: "Privacy Policy",
+    summary: "What information is collected, why, who can see it, how long it is kept, and your rights.",
+    acceptance: "registration-ack",
+    text: privacy,
+    later: [
+      {
+        text: privacyV2,
+        changeSummary:
+          "Version 2: administrators can see a group's information only after a member's report and the owner's approval, for a limited time; how to ask for deletion of your account and personal data; backups; hosting and service providers described in general terms.",
+        materialChange: true,
+        requiresReacceptance: true,
+      },
+    ],
+  },
   { key: "community-guidelines", title: "Community Guidelines", summary: "How members treat each other, what is not allowed, reporting, moderation and appeals.", acceptance: "registration-accept", text: communityGuidelines },
   { key: "intellectual-property", title: "Intellectual Property Policy", summary: "You keep what you bring and create; ideas are not transferred; projects agree ownership in writing.", acceptance: "none", text: intellectualProperty },
   { key: "participation-compensation", title: "Participation and Compensation Policy", summary: "Voluntary participation, no guaranteed income, and how participants decide project compensation.", acceptance: "none", text: participationCompensation },

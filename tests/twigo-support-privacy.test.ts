@@ -72,23 +72,27 @@ describe("privacy requests", () => {
     const owner = await createUser({ email: "owner@example.test", totp: true });
     const m = await createMember("Mia");
     await signIn(m.id);
-    expect(await privacyRequestAction(undefined, form({ kind: "DELETION", details: "short" }))).toMatchObject({ error: expect.any(String) });
-    expect(await privacyRequestAction(undefined, form({ kind: "DELETION", details: "Please delete my profile and my comments." }))).toMatchObject({ ok: expect.any(String) });
+    expect(await privacyRequestAction(undefined, form({ kind: "CORRECTION", details: "short" }))).toMatchObject({ error: expect.any(String) });
+    // Deletion has its own verified path since 24 November 2026 (tests/privacy-access-control.test.ts).
+    expect(await privacyRequestAction(undefined, form({ kind: "DELETION", details: "Please delete my profile and my comments." }))).toMatchObject({ error: expect.any(String) });
+    expect(await privacyRequestAction(undefined, form({ kind: "CORRECTION", details: "Please correct my country to Canada." }))).toMatchObject({ ok: expect.any(String) });
     const r = await db.privacyRequest.findFirstOrThrow();
-    expect(r).toMatchObject({ userId: m.id, email: m.email, kind: "DELETION", status: "OPEN" });
+    expect(r).toMatchObject({ userId: m.id, email: m.email, kind: "CORRECTION", status: "OPEN" });
 
     cookieJar.clear();
     await signIn(owner.id, "OWNER");
     // Closing without saying what was done is refused.
     await redirectOf(privacyRequestStatusAction(form({ id: r.id, status: "COMPLETED", response: "" })));
     expect((await db.privacyRequest.findUniqueOrThrow({ where: { id: r.id } })).status).toBe("OPEN");
-    await redirectOf(privacyRequestStatusAction(form({ id: r.id, status: "COMPLETED", response: "Profile and comments deleted." })));
-    expect(await db.privacyRequest.findUniqueOrThrow({ where: { id: r.id } })).toMatchObject({ status: "COMPLETED", response: "Profile and comments deleted.", handledById: owner.id });
+    await redirectOf(privacyRequestStatusAction(form({ id: r.id, status: "COMPLETED", response: "Country corrected." })));
+    expect(await db.privacyRequest.findUniqueOrThrow({ where: { id: r.id } })).toMatchObject({ status: "COMPLETED", response: "Country corrected.", handledById: owner.id });
     const actions = (await db.auditLog.findMany()).map((a) => a.action);
     expect(actions).toEqual(expect.arrayContaining(["privacy.request_submitted", "privacy.request_updated"]));
     // The member's data export contains the request and its answer.
     const exp = await exportUserData(m.id);
-    expect(exp.privacyRequests).toEqual([expect.objectContaining({ kind: "DELETION", status: "COMPLETED", response: "Profile and comments deleted." })]);
+    expect(exp.privacyRequests).toEqual([expect.objectContaining({ kind: "CORRECTION", status: "COMPLETED", response: "Country corrected." })]);
+    // The member is told in the app.
+    expect(await db.notification.count({ where: { userId: m.id, title: "Your privacy request was updated" } })).toBe(1);
   });
 
   it("limits open requests per person", async () => {

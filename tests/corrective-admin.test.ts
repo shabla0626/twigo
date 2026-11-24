@@ -81,9 +81,9 @@ describe("P2-17: a shorter menu without losing a page", () => {
 
   // Twigo added three sections (project agreements, community support, legal); the twelve earlier
   // entries are all still there, with the groups and old projects entries relabelled.
-  it("has the twelve earlier entries plus the three Twigo sections", () => {
-    expect(entries).toHaveLength(15);
-    expect(entries.map((e) => e.label)).toEqual(["Overview", "Applications", "Members", "Moderation", "Project groups", "Project agreements", "Earlier project records", "Community support", "Customer inquiries", "Email", "Website content", "Settings", "Legal", "Privacy & data", "Audit log"]);
+  it("has the twelve earlier entries plus the three Twigo sections and Group access", () => {
+    expect(entries).toHaveLength(16);
+    expect(entries.map((e) => e.label)).toEqual(["Overview", "Applications", "Members", "Moderation", "Project groups", "Group access", "Project agreements", "Earlier project records", "Community support", "Customer inquiries", "Email", "Website content", "Settings", "Legal", "Privacy & data", "Audit log"]);
   });
 
   it("the four pages that left the menu are tabs of a related page, and still exist at their old address", () => {

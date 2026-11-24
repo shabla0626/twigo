@@ -47,3 +47,29 @@ export function checkFormToken(token: string | undefined | null, now = Date.now(
   if (age > MAX_AGE_MS) return "expired";
   return "ok";
 }
+
+// ---- Step token (multi-step confirmations) --------------------------------
+// A signed "this person reached this step at this time" token, bound to a purpose and a subject (for
+// example "deletion-request" and the user id). Used to make a sequence of pages a server-side rule:
+// a later step accepts only a token issued by the earlier step, for the same person, recently.
+function signStep(purpose: string, subject: string, ts: string) {
+  return createHmac("sha256", env().AUTH_SECRET).update(`step:${purpose}:${subject}:${ts}`).digest("base64url");
+}
+
+export function issueStepToken(purpose: string, subject: string, now = Date.now()): string {
+  const ts = String(now);
+  return `${ts}.${signStep(purpose, subject, ts)}`;
+}
+
+/** The time the token was issued, or null when it is not valid for this purpose and subject or older than maxAgeMs. */
+export function checkStepToken(token: string | undefined | null, purpose: string, subject: string, maxAgeMs: number, now = Date.now()): Date | null {
+  if (!token) return null;
+  const [ts, sig] = token.split(".");
+  if (!ts || !sig || !/^\d+$/.test(ts)) return null;
+  const expected = Buffer.from(signStep(purpose, subject, ts));
+  const given = Buffer.from(sig);
+  if (expected.length !== given.length || !timingSafeEqual(expected, given)) return null;
+  const age = now - Number(ts);
+  if (age < 0 || age > maxAgeMs) return null;
+  return new Date(Number(ts));
+}

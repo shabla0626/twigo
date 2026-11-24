@@ -147,6 +147,12 @@ export type SubmitResult = { ok: true; alreadySubmitted: boolean; applicationId:
 export async function submitMyApplication(userId: string, raw: Record<string, unknown>): Promise<SubmitResult> {
   const confirm = submitConfirmSchema.safeParse(raw);
   if (!confirm.success) return { ok: false, error: "Please confirm the statement to submit.", fieldErrors: confirm.error.flatten().fieldErrors };
+  // The Privacy Policy version shown to applicants right now (recorded with the acknowledgment below).
+  const { displayedVersion } = await import("./legal");
+  const shownPrivacy = await displayedVersion("privacy");
+  const privacyRecord = shownPrivacy
+    ? `privacy v${shownPrivacy.version.version} (${shownPrivacy.version.status.toLowerCase().replace(/_/g, " ")}) ${shownPrivacy.version.contentHash.slice(0, 16)}`
+    : PRIVACY_NOTICE_VERSION;
   const outcome = await db.$transaction(async (tx) => {
     const app = await tx.application.findFirst({ where: { applicant: { userId } }, orderBy: { createdAt: "desc" }, select: { id: true } });
     if (!app) return { ok: false as const, error: "Please fill in the application first." };
@@ -158,7 +164,7 @@ export async function submitMyApplication(userId: string, raw: Record<string, un
     const now = new Date();
     await tx.application.update({
       where: { id: full.id },
-      data: { status: "SUBMITTED", submittedAt: now, statusChangedAt: now, privacyNoticeVersion: PRIVACY_NOTICE_VERSION, acknowledgedAt: now },
+      data: { status: "SUBMITTED", submittedAt: now, statusChangedAt: now, privacyNoticeVersion: privacyRecord, acknowledgedAt: now },
     });
     return { ok: true as const, alreadySubmitted: false, applicationId: full.id };
   });

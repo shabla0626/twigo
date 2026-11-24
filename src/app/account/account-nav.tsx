@@ -8,7 +8,7 @@ const ITEMS = [
   { href: "/account/security", label: "Password & sign-in" },
   { href: "/account/notifications", label: "Notifications" },
   { href: "/account/agreements", label: "Agreements" },
-  { href: "/account/data", label: "Your data" },
+  { href: "/account/data", label: "Privacy & data" },
 ];
 
 export function AccountNav() {

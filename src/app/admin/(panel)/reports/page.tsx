@@ -22,7 +22,7 @@ export default async function ReportsPage({ searchParams }: Props) {
     <>
       <AdminHeader
         title="Reports & moderation"
-        description="Reports from members. You see a copy of the reported content captured when it was reported. Private group chat is only visible here, through reports; there is no other admin access to it."
+        description="Reports from members. You see a copy of the reported content captured when it was reported. Nothing else of a group’s private information is visible to administrators; looking further needs a report by a member of that group and the owner’s approval for a limited time (Group access)."
       />
       <Flash {...readFlash(sp)} />
       <div className="mt-6 flex gap-2">
@@ -61,6 +61,16 @@ export default async function ReportsPage({ searchParams }: Props) {
                 </>
               )}
             </p>
+            {r.groupId && (
+              <p className="mt-2 flex flex-wrap items-center gap-2 text-xs text-ink-600">
+                {r.reporterGroupMember ? <Badge tone="warn">Reported by a member of this group</Badge> : <Badge>Reported by someone outside this group</Badge>}
+                {r.reporterGroupMember && r.status !== "DISMISSED" && can(admin.role, "group_access.request") && (
+                  <Link href={`/admin/group-access/new?report=${r.id}`} className="font-medium text-accent-700 underline underline-offset-2">
+                    Request access to investigate (needs the owner’s approval)
+                  </Link>
+                )}
+              </p>
+            )}
             {r.details && <p className="mt-2 text-sm text-ink-800">“{r.details}”</p>}
             <pre className="mt-3 max-h-60 overflow-auto whitespace-pre-wrap rounded-md bg-ink-50 p-3 font-sans text-sm text-ink-900">{r.snapshot}</pre>
             {r.status === "OPEN" ? (

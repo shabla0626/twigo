@@ -108,7 +108,16 @@ export const PRIVACY_REQUEST_KINDS = {
   OTHER: "Something else",
 } as const;
 
-export const PRIVACY_REQUEST_STATUSES = { OPEN: "Received", IN_PROGRESS: "In progress", COMPLETED: "Completed", REJECTED: "Refused (with reason)" } as const;
+export const PRIVACY_REQUEST_STATUSES = {
+  OPEN: "Submitted",
+  VERIFICATION_REQUIRED: "Verification required",
+  IN_PROGRESS: "Under review",
+  INFO_REQUIRED: "Additional information required",
+  APPROVED_FOR_DELETION: "Approved for deletion",
+  PROCESSING: "Processing",
+  COMPLETED: "Completed",
+  REJECTED: "Rejected (with reason)",
+} as const;
 
 export const HOURS_OPTIONS = [2, 5, 10, 15, 20, 30, 40] as const;
 

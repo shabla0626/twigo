@@ -41,3 +41,11 @@ See [TWIGO-LEGAL-DOCUMENTS-RESOLUTION-REPORT.md](TWIGO-LEGAL-DOCUMENTS-RESOLUTIO
 - **Item 5 still open:** hosting provider name and server location.
 - **Item 2 still open as governing law:** a Terms version stating the governing law, reviewed by counsel, is needed before Legal Notices can show it.
 
+## Update of 24 November 2026 (privacy and access control)
+
+See [TWIGO-PRIVACY-AND-ACCESS-CONTROL-IMPLEMENTATION-REPORT.md](TWIGO-PRIVACY-AND-ACCESS-CONTROL-IMPLEMENTATION-REPORT.md).
+
+- **Item 5 (hosting provider and location):** resolved by decision as a general disclosure in Privacy Policy version 2; the provider and location are deliberately not named. Version 2 is pending legal review.
+- **New: retention of pre-deployment backups** (`~/Server/backups/twigo/`): no automatic expiry; the founder decides how long to keep them and deletes older ones by hand.
+- **New: shared content after an account erasure** (ideas, comments, discussions, chat): the owner decides per request; research notes, tasks, decisions and files are always kept without the name.
+

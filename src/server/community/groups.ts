@@ -1,7 +1,7 @@
 import "server-only";
 import type { GroupStatus, IdeaCategory, Prisma } from "@prisma/client";
 import { db } from "@/lib/db";
-import { ACTIVE_MEMBER } from "@/lib/auth/member-where";
+import { GROUP_PARTICIPANT, isStaffRole } from "@/lib/auth/member-where";
 import { audit } from "@/lib/audit";
 import { publishRealtime } from "@/lib/realtime-events";
 import { writeSystemLine } from "@/realtime/chat-service";
@@ -44,7 +44,7 @@ export async function createGroupFromIdea(tx: Prisma.TransactionClient, ideaId: 
     select: { id: true, title: true, summary: true, description: true, category: true, authorId: true },
   });
   // The author coordinates only if they can take part right now (same rule as everywhere else).
-  const authorActive = Boolean(idea.authorId && (await tx.user.findFirst({ where: { id: idea.authorId, ...ACTIVE_MEMBER }, select: { id: true } })));
+  const authorActive = Boolean(idea.authorId && (await tx.user.findFirst({ where: { id: idea.authorId, ...GROUP_PARTICIPANT }, select: { id: true } })));
   const coordinatorId = authorActive ? idea.authorId! : endorserIds[0]!;
   const memberIds = [...new Set([...(authorActive ? [idea.authorId!] : []), ...endorserIds])];
 
@@ -64,12 +64,13 @@ export async function createGroupFromIdea(tx: Prisma.TransactionClient, ideaId: 
     },
   });
   await tx.businessIdea.update({ where: { id: idea.id }, data: { status: "GROUP_FORMED" } });
-  return { id: group.id, slug: group.slug, name: group.name, memberIds, authorId: authorActive ? idea.authorId : coordinatorId };
+  // authorId: who receives the "your idea formed a group" message. Only the author, and only when they take part.
+  return { id: group.id, slug: group.slug, name: group.name, memberIds, authorId: authorActive ? idea.authorId : null };
 }
 
 /** The number shown as "members": people in the group who can take part right now. */
 async function refreshMemberCount(groupId: string, tx: Prisma.TransactionClient = db) {
-  const count = await tx.groupMembership.count({ where: { groupId, status: "ACTIVE", user: ACTIVE_MEMBER } });
+  const count = await tx.groupMembership.count({ where: { groupId, status: "ACTIVE", user: GROUP_PARTICIPANT } });
   await tx.researchGroup.update({ where: { id: groupId }, data: { memberCount: count } });
   return count;
 }
@@ -142,7 +143,7 @@ export async function getGroupOverview(slug: string) {
     include: {
       idea: { select: { id: true, title: true, summary: true, status: true, author: { select: { id: true, profile: { select: { displayName: true } } } } } },
       memberships: {
-        where: { status: "ACTIVE", user: ACTIVE_MEMBER },
+        where: { status: "ACTIVE", user: GROUP_PARTICIPANT },
         orderBy: [{ role: "asc" }, { joinedAt: "asc" }],
         select: { role: true, joinedAt: true, founding: true, user: { select: { id: true, role: true, profile: { select: { displayName: true, headline: true } } } } },
       },
@@ -192,6 +193,9 @@ export async function withGroupLock<T>(groupId: string, fn: (tx: Prisma.Transact
 }
 
 export async function joinGroup(userId: string, groupId: string) {
+  const who = await db.user.findUnique({ where: { id: userId }, select: { role: true } });
+  if (!who || isStaffRole(who.role))
+    return { ok: false as const, error: "Administrator accounts cannot join project groups. Group information is private to its members; an administrator can see it only for an investigation the owner approved after a member's report." };
   const a = await groupAccess(groupId, userId);
   if (!a || a.group.suspendedAt) return { ok: false as const, error: "This group is not available." };
   if (a.group.status === "ARCHIVED") return { ok: false as const, error: "Archived groups cannot be joined." };
@@ -241,7 +245,7 @@ type Succession = { promoted: string | null; archived: boolean; flagged: boolean
  *    the group is only flagged.
  */
 async function ensureCoordinator(tx: Prisma.TransactionClient, groupId: string): Promise<Succession> {
-  const eligible = { groupId, status: "ACTIVE", user: ACTIVE_MEMBER } satisfies Prisma.GroupMembershipWhereInput;
+  const eligible = { groupId, status: "ACTIVE", user: GROUP_PARTICIPANT } satisfies Prisma.GroupMembershipWhereInput;
   // Founding members share one joining time; the id (which grows with creation order) breaks the tie.
   const oldestFirst = [{ joinedAt: "asc" }, { id: "asc" }] satisfies Prisma.GroupMembershipOrderByWithRelationInput[];
   const keep = await tx.groupMembership.findFirst({ where: { ...eligible, role: "COORDINATOR" }, orderBy: oldestFirst, select: { id: true } });
@@ -405,7 +409,7 @@ export async function adminLiftRemoval(adminId: string, groupId: string, userId:
 export async function transferCoordinator(coordinatorId: string, groupId: string, toUserId: string) {
   await requireCoordinator(groupId, coordinatorId);
   const done = await withGroupLock(groupId, async (tx) => {
-    const target = await tx.groupMembership.findFirst({ where: { groupId, userId: toUserId, status: "ACTIVE", user: ACTIVE_MEMBER } });
+    const target = await tx.groupMembership.findFirst({ where: { groupId, userId: toUserId, status: "ACTIVE", user: GROUP_PARTICIPANT } });
     const mine = await tx.groupMembership.findFirst({ where: { groupId, userId: coordinatorId, status: "ACTIVE", role: "COORDINATOR" } });
     if (!target || !mine) return null;
     await tx.groupMembership.updateMany({ where: { groupId, role: "COORDINATOR" }, data: { role: "MEMBER" } });
@@ -430,7 +434,7 @@ export async function setGroupStatusByCoordinator(coordinatorId: string, groupId
   await notify(await activeMemberIds(groupId), {
     type: "GROUP_STATUS",
     title: `“${a.group.name}” is now: ${GROUP_STATUS_LABELS[status]}`,
-    body: status === "READY_FOR_REVIEW" ? "The group asked for feedback on its research. Administrators can now read the research notes (not the chat)." : undefined,
+    body: status === "READY_FOR_REVIEW" ? "The group marked its research as ready for review. Its private information stays private to the group: administrators do not read it. Share what you want feedback on, for example in a group discussion." : undefined,
     link: `/community/groups/${a.group.slug}`,
   }, { exclude: coordinatorId });
   await publishRealtime(db, { t: "group.updated", groupId, what: "status" });
@@ -531,7 +535,7 @@ export async function adminSetGroupState(adminId: string, groupId: string, actio
 
 export async function adminAssignCoordinator(adminId: string, groupId: string, userId: string) {
   const done = await withGroupLock(groupId, async (tx) => {
-    const m = await tx.groupMembership.findFirst({ where: { groupId, userId, status: "ACTIVE", user: ACTIVE_MEMBER } });
+    const m = await tx.groupMembership.findFirst({ where: { groupId, userId, status: "ACTIVE", user: GROUP_PARTICIPANT } });
     if (!m) return null;
     await tx.groupMembership.updateMany({ where: { groupId, role: "COORDINATOR" }, data: { role: "MEMBER" } });
     await tx.groupMembership.update({ where: { id: m.id }, data: { role: "COORDINATOR" } });

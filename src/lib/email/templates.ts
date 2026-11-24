@@ -22,7 +22,8 @@ export type TemplateKey =
   | "password_reset"
   | "community_notification"
   | "admin_new_application"
-  | "admin_new_inquiry";
+  | "admin_new_inquiry"
+  | "account_deletion_completed";
 
 export type TemplateDef = {
   label: string;
@@ -40,6 +41,29 @@ const FEES =
   "As a reminder: we never ask for membership fees, joining fees, deposits or investments. If you receive any such request claiming to be from us, please do not pay and let us know.";
 
 export const TEMPLATES: Record<TemplateKey, TemplateDef> = {
+  account_deletion_completed: {
+    label: "Account and personal data deletion completed",
+    description: "Sent automatically to the person's confirmed email address when the owner has carried out their approved deletion request.",
+    audience: "member",
+    automatic: true,
+    variables: ["name", "orgName", "completedAt", "removedContent", "retainedNote", "backupNote", "contactEmail"],
+    subject: "{{orgName}}: your deletion request was completed",
+    body: [
+      "Hello {{name}},",
+      "",
+      "Your request to delete your {{orgName}} account and personal data was completed on {{completedAt}} (UTC).",
+      "",
+      "Deleted from the active system: your profile and profile photo, your application, your notifications and preferences, and your sign-in records. Your account was closed and anonymized: it can no longer be used, and your name and email address were removed from it. {{removedContent}}",
+      "",
+      "Kept: {{retainedNote}}",
+      "",
+      "Backups: {{backupNote}}",
+      "",
+      "If you have questions, write to {{contactEmail}}.",
+      "",
+      "— {{orgName}}",
+    ].join("\n"),
+  },
   account_verification: {
     label: "Welcome: confirm your email",
     description: "Sent automatically when someone creates an account (and when they ask for it again). Contains a single-use link.",

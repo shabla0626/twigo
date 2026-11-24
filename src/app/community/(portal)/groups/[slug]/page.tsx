@@ -162,7 +162,7 @@ export default async function GroupOverviewPage({ params, searchParams }: Props)
                     </Select>
                   </Field>
                   <p className="text-sm leading-6 text-ink-600">
-                    Choosing “Ready for review” lets administrators read the group’s research notes (not the chat) to give feedback. It is optional: a group needs nobody’s approval to create a project in the Projects tab.
+                    Choosing “Ready for review” tells the community the research is ready for feedback. Administrators still cannot read the group’s private information; share what you want feedback on in a discussion. It is optional: a group needs nobody’s approval to create a project in the Projects tab.
                   </p>
                   <Button type="submit" variant="secondary">
                     Update stage

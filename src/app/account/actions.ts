@@ -133,3 +133,24 @@ export async function privacyRequestAction(_prev: FormState, fd: FormData): Prom
   revalidatePath("/account/data");
   return { ok: "Your request was received. You will see the answer here." };
 }
+
+/**
+ * Final step of a deletion request (Account, Privacy & data, Request deletion). Every condition is checked
+ * on the server: the step token from the consequences page, an identity check made after it, the tick and
+ * the typed phrase. Nothing is deleted here; the request enters the owner's review queue.
+ */
+export async function requestDeletionAction(_prev: FormState, fd: FormData): Promise<FormState> {
+  const user = await requireUser("/account/data/delete");
+  const s = await getSession();
+  const { submitDeletionRequest } = await import("@/server/privacy-deletion");
+  const res = await submitDeletionRequest(user.id, { reauthAt: s?.reauthAt ?? null }, {
+    token: String(fd.get("token") ?? ""),
+    scope: String(fd.get("scope") ?? ""),
+    confirm: fd.get("confirm") === "on",
+    phrase: String(fd.get("phrase") ?? ""),
+    details: String(fd.get("details") ?? ""),
+  });
+  if (!res.ok) return { error: res.error };
+  redirect(withFlash("/account/data", { ok: "Your deletion request was received. Nothing has been deleted yet: the owner reviews it first, and you will be told the outcome." }));
+}
+

@@ -2,12 +2,9 @@
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
-import type { PrivacyRequestStatus } from "@prisma/client";
 import type { FormState } from "@/components/forms/action-form";
 import { isLegalKey } from "@/content/legal";
-import { audit } from "@/lib/audit";
 import { requireAdmin } from "@/lib/auth/guard";
-import { db } from "@/lib/db";
 import { withFlash } from "@/lib/flash";
 import { addEntry, createReport, publishReport } from "@/server/community-support";
 import { changeStatus, createDraftVersion, editDraft } from "@/server/legal";
@@ -98,13 +95,30 @@ export async function publishSupportReportAction(fd: FormData) {
 export async function privacyRequestStatusAction(fd: FormData) {
   const owner = await requireAdmin("privacy.requests");
   const id = str(fd, "id");
-  const status = str(fd, "status") as PrivacyRequestStatus;
-  if (!["OPEN", "IN_PROGRESS", "COMPLETED", "REJECTED"].includes(status)) redirect("/admin/privacy-requests");
-  const response = str(fd, "response").trim().slice(0, 2000);
-  if ((status === "COMPLETED" || status === "REJECTED") && response.length < 5) {
-    redirect(withFlash("/admin/privacy-requests", { error: "Write what was done (or why the request is refused) before closing it." }));
-  }
-  await db.privacyRequest.update({ where: { id }, data: { status, ...(response ? { response } : {}), handledById: owner.id, handledAt: new Date() } });
-  await audit(owner.id, "privacy.request_updated", "PrivacyRequest", id, { status });
-  redirect(withFlash("/admin/privacy-requests", { ok: "Request updated." }));
+  const back = str(fd, "back") === "detail" ? `/admin/privacy-requests/${id}` : "/admin/privacy-requests";
+  const { updatePrivacyRequest } = await import("@/server/privacy-deletion");
+  const res = await updatePrivacyRequest(owner.id, {
+    id,
+    status: str(fd, "status"),
+    response: str(fd, "response"),
+    ...(fd.has("adminNotes") ? { adminNotes: str(fd, "adminNotes") } : {}),
+  });
+  redirect(withFlash(back, res.ok ? { ok: "Request updated. The member sees the new status on their Privacy & data page (and in the app, if they have community access)." } : { error: res.error }));
+}
+
+/** Carries out an approved deletion request (owner only; final confirmation required). */
+export async function executeDeletionAction(fd: FormData) {
+  const owner = await requireAdmin("privacy.erase");
+  const id = str(fd, "id");
+  const { executeDeletion } = await import("@/server/privacy-deletion");
+  const res = await executeDeletion(owner.id, {
+    id,
+    phrase: str(fd, "phrase"),
+    removeIdeas: fd.get("removeIdeas") === "on",
+    removeComments: fd.get("removeComments") === "on",
+    removeChat: fd.get("removeChat") === "on",
+  });
+  if (!res.ok) redirect(withFlash(`/admin/privacy-requests/${id}`, { error: res.error }));
+  const notice = !res.email ? "No completion email was sent (the address was never confirmed)." : res.email.status === "sent" ? "The completion notice was handed to the email system (see its delivery status below)." : `The completion notice was NOT sent (${res.email.status}); see the delivery status below and retry it from Admin, Email.`;
+  redirect(withFlash(`/admin/privacy-requests/${id}`, { ok: `Deletion carried out. ${notice}` }));
 }

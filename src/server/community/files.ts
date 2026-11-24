@@ -10,6 +10,8 @@ import { rateLimit } from "@/lib/rate-limit";
 import { ALLOWED_DESCRIPTION, safeFileName, sniff } from "@/lib/files/sniff";
 import { chatBoundary } from "@/realtime/chat-service";
 import { groupAccess, requireOpenGroupMember } from "./access";
+import { isStaffRole } from "@/lib/auth/member-where";
+import { authorizeGroupRead } from "@/server/admin/group-access";
 
 // Private storage outside /public. Swap this small driver for an
 // S3-compatible bucket in production if the server disk is not durable.
@@ -107,6 +109,17 @@ export async function authorizeDownload(userId: string, fileId: string): Promise
   if (!f || f.deletedAt) return null;
   if (f.scope === "PROFILE_PHOTO") return f;
   if (!f.groupId) return null;
+  // Owner and administrator accounts are never group members. They may open a group's file only during
+  // an owner-approved investigation that covers it (checked and recorded on every download).
+  const viewer = await db.user.findUnique({ where: { id: userId }, select: { role: true, totpEnabledAt: true } });
+  if (!viewer) return null;
+  if (isStaffRole(viewer.role)) {
+    if (f.scope !== "GROUP_FILE" && f.scope !== "CHAT_ATTACHMENT") return null;
+    if (f.scope === "CHAT_ATTACHMENT" && !f.messageId) return null;
+    if (env().ADMIN_REQUIRE_2FA && !viewer.totpEnabledAt) return null;
+    const grant = await authorizeGroupRead(userId, { groupId: f.groupId, scope: f.scope === "CHAT_ATTACHMENT" ? "CHAT" : "FILES", what: `file ${f.id}` });
+    return grant ? f : null;
+  }
   const a = await groupAccess(f.groupId, userId);
   if (!a?.isMember) return null;
   // Chat attachments belong to the conversation: owners and administrators see
