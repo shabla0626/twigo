@@ -49,3 +49,12 @@ See [TWIGO-PRIVACY-AND-ACCESS-CONTROL-IMPLEMENTATION-REPORT.md](TWIGO-PRIVACY-AN
 - **New: retention of pre-deployment backups** (`~/Server/backups/twigo/`): no automatic expiry; the founder decides how long to keep them and deletes older ones by hand.
 - **New: shared content after an account erasure** (ideas, comments, discussions, chat): the owner decides per request; research notes, tasks, decisions and files are always kept without the name.
 
+## Update of 24 November 2026 (final completion)
+
+See [TWIGO-FINAL-COMPLETION-REPORT.md](TWIGO-FINAL-COMPLETION-REPORT.md).
+
+- **Item 3 (legal review):** Privacy Policy version 2 is approved by the founder's confirmation (24 November 2026) that counsel reviewed exactly that text; it is published automatically by the release, with that statement recorded and no reviewer name invented. The seven version-1 documents are still published at deployment with the reviewer's name and date.
+- **Retention of pre-deployment backups:** decided. Folders older than 30 days are deleted after a successful deployment; the 3 most recent successful ones are always kept; every deletion is logged. Daily database backups stay at 14.
+- **Shared content after an account erasure:** decided. The member chooses when requesting deletion (ideas without a group, comments and discussions, chat messages); the person carrying it out has no choice to make. Research notes, tasks, decisions, links, files and ideas that formed a group always stay, shown as by a former member.
+- **Who carries out deletions:** administrators (the management team) for ordinary requests; the owner for exceptions (staff account, legal hold, compensation records, open dispute).
+- **Still open:** governing law (item 2), minimum age (item 8), audit-log retention period (item 12), Community Support recipient (item 7), the earlier project module (item 9).

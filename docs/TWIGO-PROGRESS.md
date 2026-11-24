@@ -11,13 +11,13 @@ resumed from the last checkpoint if it is interrupted.
 
 | | |
 | --- | --- |
-| **Status** | **All stages 0–11 complete; deployment tooling complete.** Release candidate `twigo-rc5-2026-11-23` is built in `release/` and not yet deployed. No work in progress. |
+| **Status** | **Final release built: `twigo-final-2026-11-24`** (Privacy Policy v2 published by release approval, administrator deletions, erasure ledger, encrypted deployment backups). In `release/`, verified, not yet deployed. No work in progress. Report: [TWIGO-FINAL-COMPLETION-REPORT.md](TWIGO-FINAL-COMPLETION-REPORT.md) |
 | Branch | `main` (local commits are not pushed to `origin`) |
-| Last checkpoint | tag `twigo-rc5-2026-11-23` |
+| Last checkpoint | tag `twigo-final-2026-11-24` (commit `c1bce12`); earlier `twigo-rc5-2026-11-23` |
 | Code backup | `backups/cowork-code-twigo-2026-11-23.bundle` (verified); the original `backups/cowork-code-pre-twigo.bundle` is untouched |
-| Database | development database `cowork` has migration `20261123120000_twigo_platform`: 10 migrations, 56 tables, 279 rows |
-| Last test results | Application: 426/426 automated, 23/23 browser, 61/61 walkthrough in the Docker production build; `tsc` and ESLint clean (release review). Deployment: launcher 28/28 full run, 24/24 quick run after the last change; server script 16/16 (one scenario re-run on its own); static checks 11/11 |
-| Waiting on the founder | `ORG_LEGAL_NAME=Twigo` and `ORG_CONTACT_EMAIL=contact@twigo.space` in the server's `~/Server/twigo/.env.production` (the first run stopped there), a new server password, then `.\deploy-twigo.ps1` ([ONE-CLICK-DEPLOYMENT.md](ONE-CLICK-DEPLOYMENT.md)); afterwards central Caddy, Cloudflare, one Resend test email and off-server backup copies. Other open decisions: [TWIGO-OPEN-DECISIONS.md](TWIGO-OPEN-DECISIONS.md) |
+| Database | development databases `cowork` and `cowork_demo` have migration `20261124182522_deletion_choices_and_hold` (12 migrations); backed up before it (`backups/*-before-final-completion.cwbak.gz`) |
+| Last test results | Application: 469/469 automated, 26/26 browser (Edge, production build); `tsc` clean, ESLint 0 errors. Docker upgrade from rc5 on a populated database 19/19 (port, WebSocket, ledger replay after restore, clean shutdown). Deployment: server script 17/17, launcher 29/29 |
+| Waiting on the founder | Deploy `twigo-final-2026-11-24` with `.\deploy-twigo.ps1` (publish the seven version-1 documents at the PUBLISH prompt with reviewer and date; Privacy Policy v2 needs nothing); afterwards central Caddy, Cloudflare, one Resend test email, off-server copies of backups and of the erasure ledger. Other open decisions: [TWIGO-OPEN-DECISIONS.md](TWIGO-OPEN-DECISIONS.md) |
 
 ## Checkpoints
 
@@ -82,6 +82,7 @@ defaults in [TWIGO-OPEN-DECISIONS.md](TWIGO-OPEN-DECISIONS.md)):
 
 | When (2026-11-23) | Update |
 | --- | --- |
+| 24 Nov: final completion | Privacy Policy v2 published automatically from the founder's recorded confirmation (fingerprint-bound), renewed acknowledgment enforced also on APIs and live chat; administrators carry out ordinary deletions, exceptions go to the owner; erasure ledger replayed on restore; encrypted pre-update backups with 30-day retention; investigation chat paged; independent security review (10 findings fixed). Tests: 469/469, 26/26 browser, Docker upgrade 19/19, deployment 17/17, launcher 29/29. Release `twigo-final-2026-11-24` built and verified (commit `c1bce12`) |
 | 24 Nov: privacy and access control | Administrators no longer join groups or see group content; temporary owner-approved investigation access after a member report (expires, logged); deletion requests with a verified first stage, owner review and transactional erasure; Privacy Policy version 2 (pending legal review) with a general hosting disclosure. Additive migration `20261124165713_privacy_access_control`. Development databases only; new release needed. See [TWIGO-PRIVACY-AND-ACCESS-CONTROL-IMPLEMENTATION-REPORT.md](TWIGO-PRIVACY-AND-ACCESS-CONTROL-IMPLEMENTATION-REPORT.md). |
 | 24 Nov: legal documents | Legal-document state resolved in code and in the **development** databases only: 7 of 8 published there, Privacy Policy kept as a draft (unfinished text); status display restored; Legal Notices no longer show Twigo as legal operator or the jurisdiction as governing law; chat-message reports; agreement versions cannot leave out a current participant. New release needed before deployment. See [TWIGO-LEGAL-DOCUMENTS-RESOLUTION-REPORT.md](TWIGO-LEGAL-DOCUMENTS-RESOLUTION-REPORT.md). |
 | after Stage 11 | File created at the founder's request; all checkpoints recorded from the git history and test logs |
