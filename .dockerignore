@@ -29,3 +29,4 @@ docs/ux-review
 *.dump
 *.pgdump
 .verify-*
+ledger

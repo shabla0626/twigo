@@ -101,16 +101,21 @@ describe("privacy requests", () => {
     expect((await submitPrivacyRequest(m.id, { kind: "ACCESS", details: "One request too many here." })).ok).toBe(false);
   });
 
-  it("administrators who are not the owner cannot handle privacy requests", async () => {
-    expect(can("ADMIN", "privacy.requests")).toBe(false);
+  it("administrators (the management team) handle privacy requests; members cannot (decision of 24 November 2026)", async () => {
+    expect(can("ADMIN", "privacy.requests")).toBe(true);
+    expect(can("MEMBER", "privacy.requests")).toBe(false);
     await createUser({ email: "owner@example.test", totp: true });
     const m = await createMember("Mia");
     await submitPrivacyRequest(m.id, { kind: "ACCESS", details: "Please send me my information." });
     const r = await db.privacyRequest.findFirstOrThrow();
+    const other = await createMember("Nia");
+    await signIn(other.id);
+    expect(await redirectOf(privacyRequestStatusAction(form({ id: r.id, status: "REJECTED", response: "No reason at all" })))).not.toBe("");
+    expect((await db.privacyRequest.findUniqueOrThrow({ where: { id: r.id } })).status).toBe("OPEN");
     const admin = await createUser({ email: "admin@example.test", role: "ADMIN", totp: true });
     await signIn(admin.id, "ADMIN");
-    expect(await redirectOf(privacyRequestStatusAction(form({ id: r.id, status: "REJECTED", response: "No reason at all" })))).toBe("/admin/no-access");
-    expect((await db.privacyRequest.findUniqueOrThrow({ where: { id: r.id } })).status).toBe("OPEN");
+    await redirectOf(privacyRequestStatusAction(form({ id: r.id, status: "IN_PROGRESS", response: "" })));
+    expect((await db.privacyRequest.findUniqueOrThrow({ where: { id: r.id } })).status).toBe("IN_PROGRESS");
   });
 });
 

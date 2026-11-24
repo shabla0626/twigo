@@ -85,6 +85,13 @@ async function main() {
     const { launchProblems } = await import("./src/ops/launch-checks");
     const found = await launchProblems(db);
     if (found.length) refuseToStart("the database is not ready for production", found);
+    // The legal documents as the release defines them (release versions and release approvals, such as the
+    // counsel-approved Privacy Policy version 2): applied before the site serves anything. Idempotent.
+    const { ensureLegalState } = await import("./src/ops/legal-release");
+    for (const r of await ensureLegalState(db, settings.ORG_NAME)) log("legal.release_state", r);
+    // The erasure ledger exists from the first start (empty), so a missing ledger at a restore is detected.
+    const { ensureLedger } = await import("./src/ops/erasure-ledger");
+    ensureLedger(path.resolve(process.env.LEDGER_DIR || "ledger"));
     // Legal documents that are not yet reviewed and published are shown as clearly marked drafts.
     const unpublished = await db.legalDocument.count({ where: { versions: { none: { status: "PUBLISHED" } } } });
     if (unpublished) {

@@ -307,6 +307,19 @@ export async function attachRealtime(httpServer: HttpServer, db: PrismaClient, o
       case "group.updated":
         io.to(`group:${ev.groupId}`).emit("group:updated", { groupId: ev.groupId, what: ev.what });
         break;
+      case "legal.reacceptance_required": {
+        // Open chats are checked again: members who have not accepted the new version yet leave them
+        // until they do (the same check every chat operation makes).
+        for (const socket of io.sockets.sockets.values()) {
+          const d = socket.data as Data;
+          for (const [channelId, joined] of [...d.channels]) {
+            if (await channelAccess(db, d.user.id, channelId).catch(() => null)) continue;
+            leaveChannel(socket, channelId);
+            socket.emit("access:revoked", { groupId: joined.groupId });
+          }
+        }
+        break;
+      }
     }
   };
 

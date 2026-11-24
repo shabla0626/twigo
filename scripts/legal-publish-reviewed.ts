@@ -9,7 +9,7 @@
  * every change is written to the audit log with the reviewer statement.
  */
 import { createPrismaClient } from "../src/lib/db-core";
-import { publishReviewedDocuments } from "../src/ops/legal-publish";
+import { applyReleaseApprovals, publishReviewedDocuments } from "../src/ops/legal-publish";
 import { loadDotEnv } from "./load-env";
 
 function arg(name: string) {
@@ -39,6 +39,9 @@ async function main() {
     const differs = res.filter((r) => r.result === "text-differs");
     if (differs.length) console.log(`\n${differs.length} document(s) not published: their stored text is not the reviewed text. Check them in Admin -> Legal.`);
     for (const r of res.filter((x) => x.result === "incomplete")) console.log(`\nNot published: ${r.title}. ${r.reason}`);
+    // Versions approved in the release itself (for example the Privacy Policy version 2) are applied here
+    // too, so the documents are complete after this command even before the site has started.
+    for (const r of await applyReleaseApprovals(db, process.env.ORG_NAME || "Twigo", { dryRun })) console.log(`release-approval   ${r.key} v${r.version}: ${r.result}`);
     console.log(dryRun ? "\nDry run: nothing was changed." : `\nDone. Effective date ${effective.toISOString().slice(0, 10)}. Recorded in the audit log.`);
   } finally {
     await db.$disconnect();

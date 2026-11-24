@@ -39,7 +39,7 @@ RUN --mount=type=secret,id=envfile,target=/app/.env.production,required=true \
     DATABASE_URL="postgresql://build:build@127.0.0.1:1/build" npm run build
 
 # Uploaded files and backups live in a volume (/data); the app runs as the unprivileged "node" user.
-RUN mkdir -p /data/storage /data/backups && chown -R node:node /data /app/.next
+RUN mkdir -p /data/storage /data/backups /data/ledger && chmod 700 /data/ledger && chown -R node:node /data /app/.next
 USER node
 
 EXPOSE 1010

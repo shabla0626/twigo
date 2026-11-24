@@ -8,6 +8,8 @@ import { createPrismaClient } from "../../src/lib/db-core";
 import { encryptSecret } from "../../src/lib/crypto";
 import { hashPassword } from "../../src/lib/auth/password";
 import { deploy } from "../../scripts/migrate";
+import { ensureFirstVersions } from "../../src/ops/legal-release";
+import { REGISTRATION_ACCEPT, REGISTRATION_ACK } from "../../src/content/legal";
 
 async function main() {
   const url = new URL(process.env.DATABASE_URL!);
@@ -34,6 +36,41 @@ async function main() {
       totpEnabledAt: now,
     },
   });
+  // An administrator (management team), with two-step sign-in like every staff account.
+  await db.user.create({
+    data: {
+      email: "ada.admin@e2e.test",
+      name: "Ada Admin",
+      role: "ADMIN",
+      status: "ACTIVE",
+      passwordHash: await hashPassword(process.env.E2E_PASSWORD!),
+      emailVerifiedAt: now,
+      totpSecretEnc: encryptSecret(process.env.E2E_TOTP_SECRET!),
+      totpEnabledAt: now,
+    },
+  });
+  // A member from before the Privacy Policy version 2: only version 1 of the documents exists here and the member
+  // accepted or acknowledged it at registration. Version 2 is published by the server when it starts
+  // (release approval), so this member has to acknowledge it once.
+  await ensureFirstVersions(db, process.env.ORG_NAME ?? "Twigo", now);
+  const rita = await db.user.create({
+    data: {
+      email: "rita@e2e.test",
+      name: "Rita Returning",
+      role: "MEMBER",
+      status: "ACTIVE",
+      membershipStatus: "ACTIVE",
+      passwordHash: await hashPassword(process.env.E2E_PASSWORD!),
+      emailVerifiedAt: now,
+      profile: { create: { displayName: "Rita Returning" } },
+    },
+  });
+  for (const v of await db.legalDocumentVersion.findMany({ where: { version: 1 }, include: { document: true } })) {
+    const key = v.document.key as (typeof REGISTRATION_ACCEPT)[number];
+    const kind = REGISTRATION_ACK.includes(key) ? "ACKNOWLEDGED" : REGISTRATION_ACCEPT.includes(key) ? "ACCEPTED" : null;
+    if (!kind) continue;
+    await db.legalAcceptance.create({ data: { userId: rita.id, versionId: v.id, documentKey: key, version: 1, contentHash: v.contentHash, kind, method: "registration" } });
+  }
   // One application from before accounts existed (no account linked to it).
   await db.applicant.create({
     data: {

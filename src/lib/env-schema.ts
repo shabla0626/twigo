@@ -22,6 +22,8 @@ export const envSchema = z.object({
   MAX_UPLOAD_MB: z.coerce.number().int().min(1).max(100).default(10),
   JOBS_ENABLED: bool("true"),
   BACKUP_DIR: z.string().default("backups"),
+  /** Erasure ledger (append-only, encrypted; outside the database and its backups). */
+  LEDGER_DIR: z.string().default("ledger"),
   BACKUP_KEEP: z.coerce.number().int().min(1).max(365).default(14),
   BACKUP_ENCRYPTION_KEY: z.string().default(""),
   ORG_NAME: z.string().default("Twigo"),

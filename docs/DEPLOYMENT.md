@@ -285,15 +285,27 @@ In Docker (section 5, `dc` = `docker compose --env-file .env.production`):
   volume (`JOBS_ENABLED=true`), compressed and encrypted with `BACKUP_ENCRYPTION_KEY`
   (AES-256-GCM; nothing is written unencrypted), and keeps the newest `BACKUP_KEEP`.
   Manual: **Admin → Backups → Back up now**, or `dc exec app npm run db:backup -- --label manual`.
-* **Copy backups and uploaded files off the server** daily. A backup on the same disk does not
-  survive disk loss. Example (from the VPS, into a folder that your off-site job copies):
+* **Copy backups, uploaded files and the erasure ledger off the server** daily. A backup on the same
+  disk does not survive disk loss. Example (from the VPS, into a folder that your off-site job copies;
+  the uploaded files are encrypted while they are archived, nothing is written in plain text):
 
   ```bash
+  dc exec -T app bash -c 'set -euo pipefail; tar -cz -C /data storage | npm run -s backup:artifact -- encrypt /data/backups/storage.tar.gz.cwenc'
   docker run --rm -v twigo_twigo-data:/data -v /srv/twigo-offsite:/out alpine \
-    sh -c 'cp -a /data/backups /out/ && tar -czf /out/storage.tgz -C /data storage'
+    sh -c 'cp -a /data/backups /out/ && cp /data/ledger/erasures.ledger /out/'
   ```
 
-  Keep `BACKUP_ENCRYPTION_KEY` in your password manager: without it the backups cannot be read.
+  Keep `BACKUP_ENCRYPTION_KEY` in your password manager: without it the backups, the encrypted
+  archives and the erasure ledger cannot be read.
+* **Erasure ledger** (`/data/ledger/erasures.ledger`, outside the database and its backups): every
+  account deletion is written here before the database is changed (encrypted, keyed hash chain, no
+  names or addresses). Each database backup records the ledger's head. A restore re-applies every
+  erasure in the ledger to the restored database **before it can be used**, and fails when the ledger
+  is missing, does not verify, or is older than the one the backup was made with. Never delete or
+  replace this file; keep its off-site copy with the backups. (`--without-ledger` exists only for a
+  site where no deletion was ever carried out.) If uploaded files are restored from an older
+  `storage.tar.gz.cwenc` after the database, run the database restore again afterwards (or remove the
+  erased accounts' profile photos by hand): the replay removes the photo files it finds at that moment.
 * **Restore test** (never touches the live database; the target name must contain "restore"):
 
   ```bash
@@ -302,8 +314,10 @@ In Docker (section 5, `dc` = `docker compose --env-file .env.production`):
   dc exec db dropdb -U twigo twigo_restore_check         # afterwards
   ```
 
-  It creates the database, runs the migrations, loads every table and verifies row counts and
-  checksums table by table. Verified in the Docker production build on this project's development
+  It creates the database, runs the migrations, loads every table, verifies row counts and
+  checksums table by table, then replays the erasure ledger (above). If any of this fails, the result
+  says "Restore verification FAILED" and the restored database must not be used (it may still contain
+  erased accounts' data): fix the cause and restore again. Verified in the Docker production build on this project's development
   computer on 23 November 2026 (docs/TWIGO-RELEASE-REPORT.md). Repeat after deployment and at least
   quarterly.
 * **Rollback to a backup** (after a failed release): restore into a new database whose name contains

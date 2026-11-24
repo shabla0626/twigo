@@ -98,6 +98,23 @@ wait_healthy() {
 }
 psql_q() { dc exec -T db psql -U "$DB_USER" -d "$DB_NAME" -At -v ON_ERROR_STOP=1 -c "$1"; }
 
+# Deployment backups older than 30 days are deleted after a successful deployment, except the current one
+# and the 3 most recent successful ones (marked DEPLOYED-OK). Folders are named by their time stamp.
+BACKUP_RETENTION_DAYS=30
+prune_deploy_backups() {
+  local d name day age keep=() k skip
+  while IFS= read -r d; do keep+=("$d"); done < <(for d in "$BACKUP_ROOT"/*/; do d="${d%/}"; [[ -f "$d/DEPLOYED-OK" ]] && echo "$d"; done | sort -r | head -n 3)
+  for d in "$BACKUP_ROOT"/*/; do
+    d="${d%/}"; [[ -d "$d" && "$d" != "$BK" ]] || continue
+    skip=0; for k in "${keep[@]}"; do [[ "$k" == "$d" ]] && skip=1; done; (( skip )) && continue
+    name="$(basename "$d")"; day="${name%%_*}"
+    [[ "$day" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}$ ]] || continue
+    age=$(( ( $(date +%s) - $(date -d "$day" +%s) ) / 86400 ))
+    (( age > BACKUP_RETENTION_DAYS )) || continue
+    if rm -rf -- "$d"; then note "old deployment backup deleted ($age days old; retention $BACKUP_RETENTION_DAYS days, 3 most recent successful kept): $d"; fi
+  done
+}
+
 rollback() {
   [[ "$SWAPPED" == "1" ]] || return 0
   say ""
@@ -105,6 +122,8 @@ rollback() {
   # Without a previous running version, the new one (if it was started) must not keep running.
   if [[ "$PREV_APP_RUNNING" != "1" && -f "$APP_DIR/docker-compose.yml" ]]; then dc stop app >> "$LOG" 2>&1 || true; fi
   if [[ -d "$APP_DIR" ]]; then mv "$APP_DIR" "$BK/app-failed" 2>>"$LOG" || true; fi
+  # The failed code folder keeps no plain copy of the settings (the encrypted snapshot is in $BK).
+  rm -f "$BK/app-failed/.env.production" 2>>"$LOG" || true
   if [[ -d "$BK/app-previous" ]]; then
     if mv "$BK/app-previous" "$APP_DIR" 2>>"$LOG"; then note "previous code restored to $APP_DIR"; else note "the previous code could NOT be moved back: it is in $BK/app-previous"; fi
   fi
@@ -332,9 +351,9 @@ note "existing installation: code=$([[ $PREV_EXISTS == 1 ]] && echo yes || echo 
 # -----------------------------------------------------------------------------------------------------
 step 4 "Creating backups"
 mkdir -p "$BK" && chmod 700 "$BACKUP_ROOT" "$BK"
-cp -p "$ENVF" "$BK/.env.production"
-[[ "$(sha256sum < "$ENVF")" == "$(sha256sum < "$BK/.env.production")" ]] || die "The copy of .env.production differs from the original."
-ok "settings file copied byte for byte"
+# No plain-text copy of the settings is kept here: an encrypted snapshot (env.production.cwenc) is written
+# after the image is built (step 6), together with the encrypted archive of uploaded files.
+ENV_SHA="$(sha256sum < "$ENVF" | awk '{print $1}')"
 {
   echo "date: $TS"
   echo "new archive: $(basename "$ARCHIVE") sha256 $ACTUAL"
@@ -359,11 +378,6 @@ if [[ "$PREV_EXISTS" == "1" && "$(health_of db)" == "healthy" ]]; then
   fi
 else
   skip "database backup (no running database from an earlier deployment)"
-fi
-if [[ "$DATA_VOL_EXISTS" == "1" && "$PREV_IMAGE" == "1" ]]; then
-  docker run --rm --user 0 -v "$VOL_DATA:/data:ro" -v "$BK:/out" --entrypoint sh "$IMAGE:previous-$TS" -c \
-    "[ -d /data/storage ] && tar -czf /out/storage.tar.gz -C /data storage && chown $(id -u):$(id -g) /out/storage.tar.gz || true" >> "$LOG" 2>&1 || true
-  [[ -f "$BK/storage.tar.gz" ]] && ok "uploaded files archived to $BK/storage.tar.gz (volume $VOL_DATA left untouched)"
 fi
 note "volumes $VOL_DB and $VOL_DATA are never removed by this script"
 
@@ -413,6 +427,23 @@ if ! dc build app >> "$LOG" 2>&1; then
   die "The Docker image could not be built." "The previous version is being restored. Details: $LOG"
 fi
 ok "image $IMAGE built (Next.js on 0.0.0.0:$PORT)"
+# Encrypted backups made with the new image (BACKUP_ENCRYPTION_KEY from .env.production; AES-256-GCM, the
+# database backups' format): the settings snapshot, the uploaded files and the erasure ledger. The archive
+# is encrypted while it is created (tar | encrypt), so no plain copy is ever written to disk here.
+# bash with pipefail: a tar that fails part-way fails the backup (and the archive is listed after decryption).
+if ! dc run --rm --no-deps -T -u 0 -v "$BK:/out" -v "$ENVF:/in/env.production:ro" --entrypoint bash app -c \
+  "set -euo pipefail
+   npm run -s backup:artifact -- encrypt /out/env.production.cwenc < /in/env.production
+   npm run -s backup:artifact -- verify /out/env.production.cwenc $ENV_SHA
+   if [ -d /data/storage ]; then
+     tar -cz -C /data storage | npm run -s backup:artifact -- encrypt /out/storage.tar.gz.cwenc
+     npm run -s backup:artifact -- decrypt /out/storage.tar.gz.cwenc | tar -tz > /dev/null
+   fi
+   if [ -f /data/ledger/erasures.ledger ]; then cp /data/ledger/erasures.ledger /out/erasures.ledger; fi
+   chown -R $(id -u):$(id -g) /out; chmod 600 /out/*.cwenc /out/erasures.ledger 2>/dev/null || true" >> "$LOG" 2>&1; then
+  die "The encrypted backups of the settings and uploaded files could not be made." "The previous version is being restored. Details: $LOG"
+fi
+ok "settings snapshot and uploaded files backed up encrypted to $BK (verified by decryption)"
 
 # -----------------------------------------------------------------------------------------------------
 step 7 "Starting PostgreSQL"
@@ -463,6 +494,8 @@ else
   elif [[ "$INTERACTIVE" == "1" ]]; then
     say "      $PUBLISHED of $LEGAL_DOCS legal documents are published. The others are shown as \"Draft awaiting legal review\"."
     say "      Publish them ONLY if a lawyer reviewed exactly the texts in this release. Their reviewer and date are recorded."
+    say "      (The Privacy Policy version 2 is approved in this release by the founder's recorded confirmation and is"
+    say "      published automatically when Twigo starts; it needs nothing here.)"
     read -r -p "      Type PUBLISH to publish the reviewed documents now, or press Enter to skip: " ANSWER
     if [[ "$ANSWER" == "PUBLISH" ]]; then
       DO_PUBLISH="yes"
@@ -475,7 +508,7 @@ else
     [[ -n "$BY" && "$ON_DATE" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}$ && "$EFF" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}$ ]] || die "Publishing needs the reviewer's name and dates as YYYY-MM-DD." "Nothing was published. Run again and answer the questions."
     PUB_OUT="$(dc run --rm --no-deps -T app npm run -s legal:publish-reviewed -- --owner "$OWNER_EMAIL" --reviewed-by "$BY" --reviewed-on "$ON_DATE" --effective "$EFF" 2>&1)" || { echo "$PUB_OUT" >> "$LOG"; die "Publishing the legal documents failed." "See the log: $LOG"; }
     echo "$PUB_OUT" >> "$LOG"
-    grep -E '^(published|already-published|text-differs|incomplete)' <<< "$PUB_OUT" | sed 's/^/      /'
+    grep -E '^(published|already-published|text-differs|incomplete|release-approval)' <<< "$PUB_OUT" | sed 's/^/      /'
     if grep -q '^text-differs' <<< "$PUB_OUT"; then manual "some legal documents were not published because their text differs from the reviewed one: Admin -> Legal"; fi
     if grep -q '^incomplete' <<< "$PUB_OUT"; then manual "some legal documents were not published because their text still says facts will be added before publication (it stays \"Draft awaiting legal review\"): see docs/TWIGO-LEGAL-DOCUMENTS-RESOLUTION-REPORT.md"; fi
     ok "legal publication step finished (reviewed by $BY on $ON_DATE, effective $EFF); see the lines above for each document"
@@ -514,6 +547,12 @@ note "  info  startup log: $ERRS error line(s) in the last 10 minutes (see: dock
 ok "all local checks passed"
 SWAPPED=0
 
+# Only after a successful deployment: the plain settings file inside the kept previous code is removed (its
+# content is in the encrypted snapshot), this backup is marked as a known-good deployment, and old
+# deployment backups are cleaned up (30 days; the 3 most recent successful ones are always kept).
+if [[ -f "$BK/app-previous/.env.production" ]]; then rm -f "$BK/app-previous/.env.production" && note "plain settings copy removed from $BK/app-previous (encrypted snapshot: $BK/env.production.cwenc)"; fi
+touch "$BK/DEPLOYED-OK"
+prune_deploy_backups
 HOPS="$(envval "$ENVF" TRUSTED_PROXY_HOPS)"
 manual "register twigo.space in the central Caddy with upstream 127.0.0.1:$PORT (WebSocket on, www.twigo.space -> https://twigo.space)"
 manual "Caddy must trust Cloudflare's addresses (global option: servers { trusted_proxies static <Cloudflare ranges> }); TRUSTED_PROXY_HOPS is $HOPS"

@@ -29,7 +29,19 @@ export type LegalDefinition = {
    * version the owner wrote in the admin area is never overwritten or numbered over. Publishing it still
    * needs the owner's approval in Admin, Legal, after a legal review.
    */
-  later?: { text: (name: string) => string; changeSummary: string; materialChange: boolean; requiresReacceptance: boolean }[];
+  later?: {
+    text: (name: string) => string;
+    changeSummary: string;
+    materialChange: boolean;
+    requiresReacceptance: boolean;
+    /**
+     * The founder's confirmation that a legal professional approved EXACTLY this text, recorded in the
+     * release. It applies only to the text whose SHA-256 equals `fingerprint` (the text generated with the
+     * production name). The version is then approved and published automatically (src/ops/legal-release.ts),
+     * with this statement in the audit history; no reviewer identity is invented.
+     */
+    releaseApproval?: { fingerprint: string; confirmedOn: string; statement: string };
+  }[];
 };
 
 export const LEGAL_DOCUMENTS: LegalDefinition[] = [
@@ -47,6 +59,12 @@ export const LEGAL_DOCUMENTS: LegalDefinition[] = [
           "Version 2: administrators can see a group's information only after a member's report and the owner's approval, for a limited time; how to ask for deletion of your account and personal data; backups; hosting and service providers described in general terms.",
         materialChange: true,
         requiresReacceptance: true,
+        releaseApproval: {
+          fingerprint: "047964c1de784fde3b3207a612cafeecff672c146eb990d460ae21ea748645b0",
+          confirmedOn: "2026-11-24",
+          statement:
+            "The founder confirmed on 24 November 2026 that a legal professional fully reviewed and approved this exact text (Privacy Policy version 2, SHA-256 047964c1de784fde3b3207a612cafeecff672c146eb990d460ae21ea748645b0). The reviewer's identity was not provided and is not recorded.",
+        },
       },
     ],
   },

@@ -32,6 +32,8 @@ const env = {
   SMTP_USER: "",
   SMTP_PASSWORD: "",
   RESEND_WEBHOOK_SECRET: "",
+  // The release's brand: the approved Privacy Policy version 2 is published when the server starts.
+  ORG_NAME: "Twigo",
   ORG_LEGAL_NAME: "",
   ORG_JURISDICTION: "",
   ORG_CONTACT_EMAIL: "",

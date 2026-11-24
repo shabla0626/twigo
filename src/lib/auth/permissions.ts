@@ -36,11 +36,11 @@ export const PERMISSIONS = [
   "admins.manage", // create / change / remove administrators
   "legal.manage", // legal documents: versions, approval, publication; legal notices (owner only)
   "support.manage", // voluntary community support records and reports (owner only)
-  "privacy.requests", // members' privacy requests (owner only)
+  "privacy.requests", // members' privacy requests: review and status (administrators and owner)
   "agreements.view", // see how many group project agreements exist and their state (no names, no terms)
   "group_access.request", // ask the owner for temporary access to one group's private information, after a member's report
   "group_access.approve", // approve, reject or end such access (owner only)
-  "privacy.erase", // carry out an approved account and personal-data deletion (owner only)
+  "privacy.erase", // carry out an approved deletion (administrators: ordinary requests; owner: also exceptions)
 ] as const;
 
 export type Permission = (typeof PERMISSIONS)[number];
@@ -63,6 +63,8 @@ const ADMIN: Permission[] = [
   "retention.preview",
   "agreements.view",
   "group_access.request",
+  "privacy.requests",
+  "privacy.erase",
 ];
 
 export const ROLE_PERMISSIONS: Record<UserRole, readonly Permission[]> = {

@@ -820,3 +820,183 @@ test("public pages and mobile layouts", async ({ browser }) => {
   await applicantPhone.close();
   await phone.close();
 });
+
+// ---------------------------------------------------------------- final completion (24 November 2026)
+// Two-step codes are single-use per account: wait for the next code when one was just used.
+const usedCodes = new Map<string, string>();
+async function freshTotp(account: string) {
+  for (;;) {
+    const code = totp();
+    if (usedCodes.get(account) !== code) {
+      usedCodes.set(account, code);
+      return code;
+    }
+    await new Promise((r) => setTimeout(r, 1000));
+  }
+}
+async function staffSignIn(page: Page, email: string) {
+  await page.goto("/login?next=/admin");
+  await page.getByLabel("Email address").fill(email);
+  await page.getByLabel("Password", { exact: true }).fill(E2E.password);
+  await page.getByRole("button", { name: "Sign In" }).click();
+  await expect(page).toHaveURL(/\/login\/verify/);
+  await page.getByLabel("Code").fill(await freshTotp(email));
+  await page.getByRole("button", { name: "Verify" }).click();
+  await expect(page.getByRole("heading", { name: "Overview" })).toBeVisible();
+}
+const ADMIN_EMAIL = "ada.admin@e2e.test";
+
+test("31. Privacy Policy version 2 is published; a member from before it acknowledges it once, and nothing opens until then", async ({ browser }) => {
+  const anon = await browser.newPage();
+  await anon.goto("/legal/privacy");
+  await expect(anon.getByText(/Version 2/).first()).toBeVisible();
+  // No draft or unpublished notice (the approved text itself mentions "draft versions" and periods "pending legal review").
+  await expect(anon.getByText(/Draft awaiting legal review|Approved, not yet published/)).toHaveCount(0);
+  await anon.close();
+
+  const s = await newSession(browser);
+  await signIn(s.page, "rita@e2e.test");
+  await expect(s.page).toHaveURL(/\/legal\/review/);
+  await expect(s.page.getByRole("link", { name: /Privacy Policy, version 2/ })).toBeVisible();
+  // Pages and APIs wait for the acknowledgment.
+  await s.page.goto("/community");
+  await expect(s.page).toHaveURL(/\/legal\/review/);
+  expect((await s.page.request.get("/api/files/anything")).status()).toBe(403);
+  await a11y(s.page, "legal review");
+  await s.page.getByRole("checkbox").check();
+  await s.page.getByRole("button", { name: "Accept and continue" }).click();
+  await expect(s.page).not.toHaveURL(/\/legal\/review/);
+  await s.page.goto("/community");
+  await expect(s.page).toHaveURL(/\/community$/);
+  expect((await s.page.request.get("/api/files/anything")).status()).toBe(404);
+  await s.ctx.close();
+  // Once only: signing in again (a new browser session) goes straight in.
+  const again = await newSession(browser);
+  await signIn(again.page, "rita@e2e.test");
+  await again.page.waitForURL((u) => !u.pathname.startsWith("/login"));
+  await expect(again.page).not.toHaveURL(/\/legal\/review/);
+  await again.page.goto("/community");
+  await expect(again.page).toHaveURL(/\/community$/);
+  await again.ctx.close();
+  // New members acknowledged version 2 at registration and were never asked again.
+  const a = sessions.A!.page;
+  await a.goto("/community");
+  await expect(a).toHaveURL(/\/community$/);
+});
+
+test("32. temporary investigation access: an administrator asks, the owner approves the chat only, every page is recorded, ending it closes access", async ({ browser }) => {
+  // A member of the group reports it.
+  const b = sessions.B!.page;
+  await b.goto(groupUrl);
+  await b.getByText("Report this group").click();
+  await b.getByLabel("Reason").selectOption("HARASSMENT");
+  await b.getByRole("button", { name: "Send report" }).click();
+  await expect(b.getByText(/report was sent/)).toBeVisible();
+
+  const adminS = await newSession(browser);
+  const ad = adminS.page;
+  await staffSignIn(ad, ADMIN_EMAIL);
+  await ad.goto("/admin/reports");
+  await ad.getByRole("link", { name: /Request access to investigate/ }).first().click();
+  await ad.locator('input[name="scope"][value="CHAT"]').check();
+  await ad.locator('input[name="scope"][value="FILES"]').check();
+  await ad.locator("#reason").fill("A member reports harassment in this group's chat; I need to read the messages.");
+  await ad.locator("#hours").fill("2");
+  await ad.getByRole("button", { name: "Send to the owner" }).click();
+  await ad.waitForURL(/\/admin\/group-access\/(?!new)[a-z0-9]+/);
+  const requestUrl = ad.url().split("?")[0]!;
+  await expect(ad.getByText("Hello team, shall we start with market research?")).toHaveCount(0); // nothing visible before approval
+
+  // The owner approves the chat only, for one hour.
+  const owner = sessions.admin!.page;
+  await owner.goto(requestUrl);
+  await owner.locator('input[name="scope"][value="FILES"]').uncheck();
+  const start = await owner.locator("#startsAt").inputValue();
+  const end = new Date(new Date(`${start}:00Z`).getTime() + 3600_000).toISOString().slice(0, 16);
+  await owner.locator("#expiresAt").fill(end);
+  await owner.locator('button[name="decision"][value="approve"]').click();
+  await expect(owner.locator('button[name="decision"]')).toHaveCount(0);
+
+  await ad.goto(`${requestUrl}?section=CHAT`);
+  await expect(ad.getByText("Hello team, shall we start with market research?")).toBeVisible();
+  await expect(ad.getByText(/message\(s\) on this page \(at most 100\)/)).toBeVisible();
+  await expect(ad.locator('a[href*="section=FILES"]')).toHaveCount(0); // not approved
+  await a11y(ad, "investigation chat");
+  // Ended early by the owner: the next page is refused at once.
+  await owner.goto(requestUrl);
+  await owner.getByRole("button", { name: "End access now" }).click();
+  await expect(owner.getByRole("button", { name: "End access now" })).toHaveCount(0);
+  await ad.goto(`${requestUrl}?section=CHAT`);
+  await expect(ad.getByText("Hello team, shall we start with market research?")).toHaveCount(0);
+  await expect(ad.getByText(/This access is not active/)).toBeVisible();
+  await owner.goto("/admin/audit");
+  await expect(owner.getByText("group_access.viewed").first()).toBeVisible();
+  await adminS.ctx.close();
+});
+
+test("33. deletion: the member asks (identity confirmed, typed DELETE MY ACCOUNT), an administrator carries it out with a fresh identity check, the completion email arrives", async ({ browser }) => {
+  // Member D writes in a group chat first (kept afterwards, shown without the name).
+  const d = sessions.D!.page;
+  await d.goto(groupUrl);
+  await d.getByRole("button", { name: "Join group" }).first().click();
+  await expect(d.getByText(/You joined the group/)).toBeVisible();
+  await d.goto(`${groupUrl}/chat`);
+  await expect(d.getByTestId("chat-status")).toHaveText(/Connected/);
+  await d.getByLabel("Message").fill("Here is my last weekly summary.");
+  await d.getByRole("button", { name: "Send" }).click();
+  await expect(d.getByTestId("chat-messages").getByText("Here is my last weekly summary.")).toBeVisible();
+
+  await d.goto("/account/data/delete");
+  await d.getByRole("button", { name: "Continue" }).click();
+  await expect(d.getByText("What deletion means")).toBeVisible();
+  await expect(d.getByText(/management team/).first()).toBeVisible();
+  await d.getByRole("link", { name: "Confirm my identity" }).click();
+  await d.getByLabel("Password").fill(E2E.password);
+  await d.getByRole("button", { name: "Confirm", exact: true }).click();
+  await expect(d.getByText("Final confirmation")).toBeVisible();
+  await d.locator('input[name="confirm"]').check();
+  await d.getByLabel("Type DELETE MY ACCOUNT to confirm").fill("DELETE MY ACCOUNT");
+  await d.getByRole("button", { name: "Send my deletion request" }).click();
+  await expect(d.getByText(/Your deletion request was received/)).toBeVisible();
+
+  // The administrator approves and carries it out.
+  const adminS = await newSession(browser);
+  const ad = adminS.page;
+  await staffSignIn(ad, ADMIN_EMAIL);
+  await ad.goto("/admin/privacy-requests");
+  await ad.locator("article", { hasText: MEMBERS.D.email }).getByRole("link", { name: "Review, plan and status" }).click();
+  await expect(ad.getByText("Your decision")).toHaveCount(0); // no open choices: the member's own choice decides
+  await ad.getByLabel("Status").selectOption("APPROVED_FOR_DELETION");
+  await ad.getByRole("button", { name: "Save" }).click();
+  await expect(ad.getByText("Carry out the deletion")).toBeVisible();
+  await a11y(ad, "privacy request");
+  const erase = async () => {
+    await ad.getByLabel("Type ERASE to confirm").fill("ERASE");
+    await ad.getByRole("button", { name: "Erase account and personal data" }).click();
+  };
+  await erase();
+  await ad.waitForLoadState("networkidle");
+  if (/\/account\/confirm/.test(ad.url())) {
+    await ad.getByLabel("Password").fill(E2E.password);
+    await ad.getByLabel("Code from your authenticator app").fill(await freshTotp(ADMIN_EMAIL));
+    await ad.getByRole("button", { name: "Confirm", exact: true }).click();
+    await expect(ad.getByText("Carry out the deletion")).toBeVisible();
+    await erase();
+  }
+  await expect(ad.getByText(/Deletion carried out/)).toBeVisible();
+  await expect(ad.getByText(/handed to the email system/)).toBeVisible();
+  // The completion notice reached the local test mail server (not a real provider's delivery).
+  await expect.poll(() => mailsTo(MEMBERS.D.email).some((m) => /deletion request was completed/.test(m.subject))).toBe(true);
+  // The member is signed out everywhere and cannot sign in again.
+  await d.goto("/community");
+  await expect(d).toHaveURL(/\/login/);
+  await signIn(d, MEMBERS.D.email);
+  await expect(d).toHaveURL(/\/login/);
+  // The chat message stays for the group, without the name.
+  const a = sessions.A!.page;
+  await a.goto(`${groupUrl}/chat`);
+  await expect(a.getByTestId("chat-messages").getByText("Here is my last weekly summary.")).toBeVisible();
+  await expect(a.getByTestId("chat-messages").getByText("Former member").first()).toBeVisible();
+  await expect(a.getByTestId("chat-messages").getByText(MEMBERS.D.name)).toHaveCount(0);
+  await adminS.ctx.close();
+});

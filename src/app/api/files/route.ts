@@ -1,6 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { db } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth/guard";
+import { pendingAcknowledgment } from "@/server/legal";
 import { env } from "@/lib/env";
 import { uploadOriginAllowed } from "@/lib/origin";
 import { storeUpload } from "@/server/community/files";
@@ -41,6 +42,8 @@ export async function POST(req: NextRequest) {
   if (!sameOrigin(req)) return NextResponse.json({ ok: false, error: "Invalid origin." }, { status: 403 });
   const user = await getCurrentUser();
   if (!user || !user.communityAccess || !user.displayName) return NextResponse.json({ ok: false, error: "Only approved members can upload files." }, { status: 401 });
+  // A published policy that asks everyone to accept it again must be accepted first (also for this API).
+  if (await pendingAcknowledgment(user.id)) return NextResponse.json({ ok: false, error: "Please review and accept the updated policies first (/legal/review)." }, { status: 403 });
   // The size limit is enforced while the upload is being read, not taken from what the
   // request says about itself: an upload without a declared size is refused, and reading
   // stops as soon as the limit is passed, so an oversized upload never fills the memory.

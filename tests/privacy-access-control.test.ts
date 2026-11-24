@@ -26,7 +26,7 @@ import { endorseIdea, createIdea } from "@/server/community/ideas";
 import { fileReport } from "@/server/community/reports";
 import { createGroupProject, openForAcceptance, saveAgreementDraft, acceptAgreement } from "@/server/community/group-projects";
 import { reactivateUser } from "@/server/accounts";
-import { DELETION_PHRASE, DELETION_PURPOSE, DELETION_SCOPE, deletionPlan, executeDeletion, submitDeletionRequest, updatePrivacyRequest } from "@/server/privacy-deletion";
+import { DELETION_PHRASE, DELETION_PURPOSE, DELETION_SCOPE, deletionPlan, executeDeletion, stepSubject, submitDeletionRequest, updatePrivacyRequest } from "@/server/privacy-deletion";
 import { submitPrivacyRequest } from "@/server/privacy-requests";
 import { displayedVersion, ensureLegalDocuments, publicVersion } from "@/server/legal";
 import { publishReviewedDocuments } from "@/ops/legal-publish";
@@ -190,7 +190,7 @@ async function groupOfThreeElsewhere() {
 }
 
 describe("deletion requests: the first stage cannot be bypassed", () => {
-  const token = (userId: string, at = Date.now()) => issueStepToken(DELETION_PURPOSE, `${userId}:${DELETION_SCOPE}`, at);
+  const token = (userId: string, at = Date.now()) => issueStepToken(DELETION_PURPOSE, stepSubject(userId, { removeIdeas: false, removeComments: false, removeChat: false }), at);
   const input = (t: string, over: Record<string, unknown> = {}) => ({ token: t, scope: DELETION_SCOPE, confirm: true, phrase: DELETION_PHRASE, ...over });
 
   it("needs the step token, an identity check made after it, the tick and the phrase; then reaches the queue once", async () => {
@@ -233,36 +233,48 @@ describe("deletion: review, plan, execution, retention and notice", () => {
     await db.applicant.create({ data: { userId: s.b.id, email: s.b.email, fullName: "Bob Example", country: "United States" } });
     await db.notification.create({ data: { userId: s.b.id, type: "ADMIN_MESSAGE", title: "Hello" } });
     await signIn(s.b.id);
-    const t = issueStepToken(DELETION_PURPOSE, `${s.b.id}:${DELETION_SCOPE}`, Date.now() - 60_000);
-    const res = await submitDeletionRequest(s.b.id, { reauthAt: new Date() }, { token: t, scope: DELETION_SCOPE, confirm: true, phrase: DELETION_PHRASE });
+    // The member chose to have their chat messages removed too.
+    const choices = { removeIdeas: false, removeComments: false, removeChat: true };
+    const t = issueStepToken(DELETION_PURPOSE, stepSubject(s.b.id, choices), Date.now() - 60_000);
+    const res = await submitDeletionRequest(s.b.id, { reauthAt: new Date() }, { token: t, scope: DELETION_SCOPE, confirm: true, phrase: DELETION_PHRASE, ...choices });
     if (!res.ok) throw new Error(res.error);
     return { ...s, requestId: res.id, versionId: v.id };
   }
 
   it("the plan names every category and how it is handled; backups are never reported as erased", async () => {
     const s = await requested();
-    const plan = await deletionPlan(s.b.id);
+    const plan = await deletionPlan(s.b.id, { removeIdeas: false, removeComments: false, removeChat: true });
     const by = Object.fromEntries(plan.map((p) => [p.category, p]));
     expect(by["Account record"]!.action).toBe("anonymize");
     expect(by["Profile and profile photo"]!.action).toBe("delete");
     expect(by["Group memberships"]).toMatchObject({ action: "end", count: 1 });
-    expect(by["Project agreements (participations)"]).toMatchObject({ action: "retain", count: 1 });
-    expect(by["Records of accepted policies"]!.action).toBe("retain");
-    expect(by["Audit log entries"]!.action).toBe("retain");
-    expect(by["Chat messages"]!.action).toBe("founder-decision");
-    expect(by["Backups"]!.action).toBe("retain-temporarily");
+    expect(by["Project agreements (participations)"]).toMatchObject({ action: "keep", count: 1 });
+    expect(by["Records of accepted policies"]!.action).toBe("keep");
+    expect(by["Audit log entries"]!.action).toBe("keep");
+    // No open choice for the person carrying it out: the member's own choice decides.
+    expect(by["Chat messages"]!.action).toBe("remove");
+    expect(by["Comments and group discussions"]!.action).toBe("keep");
+    expect(plan.every((p) => ["delete", "anonymize", "end", "remove", "keep", "keep-necessary", "backup-expiry"].includes(p.action))).toBe(true);
+    expect(by["Backups"]!.action).toBe("backup-expiry");
     expect(by["Backups"]!.explanation).toContain(`The ${env().BACKUP_KEEP} most recent daily backups`);
   });
 
-  it("only the owner, only after approval, only with the typed confirmation; erasure anonymizes and keeps shared records", async () => {
+  it("only after approval, with a fresh identity check and the typed confirmation; an administrator processes an ordinary request; erasure anonymizes and keeps shared records", async () => {
     const s = await requested();
-    expect(await executeDeletion(s.owner.id, { id: s.requestId, phrase: "ERASE" })).toMatchObject({ ok: false }); // not approved yet
-    expect((await updatePrivacyRequest(s.owner.id, { id: s.requestId, status: "APPROVED_FOR_DELETION", response: "" })).ok).toBe(true);
-    expect(await executeDeletion(s.admin.id, { id: s.requestId, phrase: "ERASE" })).toMatchObject({ ok: false }); // administrator
-    expect(await executeDeletion(s.owner.id, { id: s.requestId, phrase: "erase" })).toMatchObject({ ok: false });
+    const fresh = { reauthAt: new Date() };
+    expect(await executeDeletion(s.admin.id, { id: s.requestId, phrase: "ERASE" }, fresh)).toMatchObject({ ok: false }); // not approved yet
+    expect((await updatePrivacyRequest(s.admin.id, { id: s.requestId, status: "APPROVED_FOR_DELETION", response: "" })).ok).toBe(true);
+    const member = await createMember("Mona");
+    expect(await executeDeletion(member.id, { id: s.requestId, phrase: "ERASE" }, fresh)).toMatchObject({ ok: false }); // not staff
+    expect(await executeDeletion(s.admin.id, { id: s.requestId, phrase: "ERASE" }, { reauthAt: null })).toMatchObject({ ok: false }); // no fresh identity check
+    expect(await executeDeletion(s.admin.id, { id: s.requestId, phrase: "ERASE" }, { reauthAt: new Date(Date.now() - 11 * 60_000) })).toMatchObject({ ok: false });
+    expect(await executeDeletion(s.admin.id, { id: s.requestId, phrase: "erase" }, fresh)).toMatchObject({ ok: false });
     const acceptancesBefore = await db.legalAcceptance.count({ where: { userId: s.b.id } });
-    const res = await executeDeletion(s.owner.id, { id: s.requestId, phrase: "ERASE", removeChat: true });
+    const channel = await db.groupChannel.findFirstOrThrow({ where: { groupId: s.g.id } });
+    await db.chatMessage.create({ data: { channelId: channel.id, authorId: s.b.id, body: "a message from Bob" } });
+    const res = await executeDeletion(s.admin.id, { id: s.requestId, phrase: "ERASE" }, fresh);
     expect(res.ok).toBe(true);
+    expect(await db.chatMessage.count({ where: { authorId: s.b.id, deletedAt: null, kind: "USER" } })).toBe(0); // the member's choice
     const u = await db.user.findUniqueOrThrow({ where: { id: s.b.id } });
     expect(u).toMatchObject({ name: "Erased account", passwordHash: null, totpSecretEnc: null, status: "DEACTIVATED", membershipStatus: "REVOKED" });
     expect(u.email).not.toBe("bob@example.test");
@@ -280,7 +292,7 @@ describe("deletion: review, plan, execution, retention and notice", () => {
     expect(r.status).toBe("COMPLETED");
     expect(r.completedAt).not.toBeNull();
     // Running it twice is refused; an erased account cannot be reactivated.
-    expect(await executeDeletion(s.owner.id, { id: s.requestId, phrase: "ERASE" })).toMatchObject({ ok: false });
+    expect(await executeDeletion(s.owner.id, { id: s.requestId, phrase: "ERASE" }, fresh)).toMatchObject({ ok: false });
     expect(await reactivateUser(s.owner.id, s.b.id)).toMatchObject({ ok: false });
     // Deactivation is not erasure: other accounts are untouched.
     expect((await db.user.findUniqueOrThrow({ where: { id: s.a.id } })).erasedAt).toBeNull();
@@ -289,7 +301,7 @@ describe("deletion: review, plan, execution, retention and notice", () => {
   it("the completion notice goes to the confirmed address and its real outcome is recorded (no email set up here: not sent)", async () => {
     const s = await requested();
     await updatePrivacyRequest(s.owner.id, { id: s.requestId, status: "APPROVED_FOR_DELETION", response: "" });
-    const res = await executeDeletion(s.owner.id, { id: s.requestId, phrase: "ERASE" });
+    const res = await executeDeletion(s.owner.id, { id: s.requestId, phrase: "ERASE" }, { reauthAt: new Date() });
     if (!res.ok) throw new Error(res.error);
     expect(res.email?.status).toBe("not_configured");
     const r = await db.privacyRequest.findUniqueOrThrow({ where: { id: s.requestId } });

@@ -73,3 +73,6 @@ Thumbs.db
 
 # Release archives (built from a tag with git archive)
 /release/
+
+# Erasure ledger of the local development site (never committed)
+/ledger/

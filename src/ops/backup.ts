@@ -37,6 +37,8 @@ export type Manifest = {
   schema: string;
   migrations: string[];
   tables: { name: string; rows: number; sha256: string }[];
+  /** The erasure ledger's head when the backup was made (src/ops/erasure-ledger.ts); checked at a restore. */
+  ledger?: { seq: number; hash: string } | null;
 };
 
 function parseConn(connectionString: string) {
@@ -86,6 +88,16 @@ function encKey(secret: string, salt: Buffer) {
   return scryptSync(secret, salt, 32);
 }
 
+/** AES-256-GCM with a scrypt-derived key, in the backup file format ("CWBAK1" + salt + iv + tag + data). */
+export function encryptBuffer(buf: Buffer, secret: string): Buffer {
+  return encrypt(buf, secret);
+}
+/** The reverse of encryptBuffer; throws when the data was changed or the key is wrong (authenticated). */
+export function decryptBuffer(buf: Buffer, secret: string): Buffer {
+  if (!buf.subarray(0, 6).equals(MAGIC)) throw new Error("Not an encrypted Twigo backup artifact.");
+  return decrypt(buf, secret);
+}
+
 function encrypt(buf: Buffer, secret: string): Buffer {
   const salt = randomBytes(16);
   const iv = randomBytes(12);
@@ -103,7 +115,15 @@ function decrypt(buf: Buffer, secret: string): Buffer {
   return Buffer.concat([decipher.update(buf.subarray(50)), decipher.final()]);
 }
 
-export type BackupOptions = { connectionString: string; dir: string; encryptionKey?: string; keep?: number; label?: string };
+export type BackupOptions = {
+  connectionString: string;
+  dir: string;
+  encryptionKey?: string;
+  keep?: number;
+  label?: string;
+  /** The erasure ledger's head, read before the snapshot is taken (so the backup contains at least those erasures). */
+  ledgerHead?: () => { seq: number; hash: string } | null;
+};
 export type BackupResult = { file: string; manifest: Manifest; bytes: number; deleted: string[] };
 
 export async function createBackup(opts: BackupOptions): Promise<BackupResult> {
@@ -114,6 +134,7 @@ export async function createBackup(opts: BackupOptions): Promise<BackupResult> {
   const stamp = new Date().toISOString().replace(/[-:]/g, "").replace(/\..+/, "").replace("T", "-");
   const base = `${database}-${stamp}${opts.label ? `-${opts.label}` : ""}.cwbak.gz`;
   const gzPath = path.join(opts.dir, base);
+  const ledger = opts.ledgerHead ? opts.ledgerHead() : undefined;
   try {
     // A repeatable-read snapshot gives a consistent view across all tables.
     await client.query("BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY");
@@ -143,6 +164,7 @@ export async function createBackup(opts: BackupOptions): Promise<BackupResult> {
       schema,
       migrations,
       tables: sections.map((s) => ({ name: s.info.name, rows: s.info.rows, sha256: s.info.sha256 })),
+      ...(ledger !== undefined ? { ledger } : {}),
     };
 
     async function* generate() {
@@ -217,8 +239,18 @@ export type RestoreOptions = {
   /** Allows dropping an existing target only when its name contains "restore". */
   replaceExisting?: boolean;
   migrate: (connectionString: string) => Promise<void>;
+  /**
+   * Runs after the data was loaded and verified, before the restore is reported as successful: the
+   * erasure-ledger replay (src/ops/erasure-ledger.ts). If it fails or reports not ok, the restore is not ok.
+   */
+  reconcile?: (connectionString: string, manifest: Manifest) => Promise<{ ok: boolean; detail: unknown }>;
 };
-export type RestoreResult = { targetDb: string; tables: { name: string; expected: number; restored: number; ok: boolean }[]; ok: boolean };
+export type RestoreResult = {
+  targetDb: string;
+  tables: { name: string; expected: number; restored: number; ok: boolean }[];
+  reconciliation?: { ok: boolean; detail: unknown };
+  ok: boolean;
+};
 
 export async function restoreBackup(opts: RestoreOptions): Promise<RestoreResult> {
   if (!/^[a-z0-9_]+$/.test(opts.targetDb)) throw new Error("Target database name must be lower_snake_case.");
@@ -249,6 +281,7 @@ export async function restoreBackup(opts: RestoreOptions): Promise<RestoreResult
   const client = new Client({ connectionString: target.toString() });
   await client.connect();
   const results: RestoreResult["tables"] = [];
+  let loadedManifest: Manifest | null = null;
   try {
     await client.query(`SET search_path TO ${q(schema)}`);
     // Drop foreign keys during load (works without superuser), re-add afterwards (re-validates).
@@ -295,6 +328,7 @@ export async function restoreBackup(opts: RestoreOptions): Promise<RestoreResult
       buffer.push(line);
     }
     if (current) throw new Error("Backup file is truncated.");
+    loadedManifest = manifest;
 
     for (const fk of fks) await client.query(`ALTER TABLE ${fk.table} ADD CONSTRAINT ${q(fk.name)} ${fk.def}`);
     await client.query("COMMIT");
@@ -309,7 +343,15 @@ export async function restoreBackup(opts: RestoreOptions): Promise<RestoreResult
   } finally {
     await client.end();
   }
-  return { targetDb: opts.targetDb, tables: results, ok: results.every((r) => r.ok) };
+  const tablesOk = results.every((r) => r.ok);
+  if (!opts.reconcile || !tablesOk || !loadedManifest) return { targetDb: opts.targetDb, tables: results, ok: tablesOk && !opts.reconcile };
+  let reconciliation: { ok: boolean; detail: unknown };
+  try {
+    reconciliation = await opts.reconcile(targetWithSchema.toString(), loadedManifest);
+  } catch (err) {
+    reconciliation = { ok: false, detail: (err as Error).message };
+  }
+  return { targetDb: opts.targetDb, tables: results, reconciliation, ok: tablesOk && reconciliation.ok };
 }
 
 export async function readManifest(file: string, encryptionKey?: string): Promise<Manifest> {

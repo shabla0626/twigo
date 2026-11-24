@@ -169,24 +169,21 @@ export async function authorizeGroupRead(adminId: string, input: { requestId?: s
   return grant;
 }
 
-/** The information an approved investigation may read, section by section (read-only). */
-export async function investigationData(adminId: string, requestId: string, scope: GroupAccessScope) {
+/** Messages per page in the investigation chat view. */
+export const CHAT_PAGE_SIZE = 100;
+export type ChatPageQuery = { before?: string; after?: string; from?: Date; to?: Date };
+
+/** The information an approved investigation may read, section by section (read-only). The chat is paged. */
+export async function investigationData(adminId: string, requestId: string, scope: GroupAccessScope, page: ChatPageQuery = {}) {
   const r = await db.groupAccessRequest.findUnique({ where: { id: requestId }, select: { groupId: true } });
   if (!r) return null;
-  const grant = await authorizeGroupRead(adminId, { requestId, groupId: r.groupId, scope, what: `investigation view: ${scope}` });
+  const what = scope === "CHAT" ? `investigation view: CHAT page${page.before ? ` before ${page.before}` : page.after ? ` after ${page.after}` : " (latest)"}${page.from || page.to ? ` ${page.from?.toISOString() ?? "…"}–${page.to?.toISOString() ?? "…"}` : ""}` : `investigation view: ${scope}`;
+  const grant = await authorizeGroupRead(adminId, { requestId, groupId: r.groupId, scope, what });
   if (!grant) return null;
   const g = r.groupId;
   switch (scope) {
     case "CHAT":
-      return {
-        scope,
-        messages: await db.chatMessage.findMany({
-          where: { channel: { groupId: g } },
-          orderBy: { createdAt: "asc" },
-          take: 2000,
-          select: { id: true, kind: true, body: true, createdAt: true, editedAt: true, deletedAt: true, author: { select: { profile: { select: { displayName: true } } } }, attachments: { where: { deletedAt: null }, select: { id: true, originalName: true } } },
-        }),
-      };
+      return { scope, ...(await chatPage(g, page)) };
     case "RESEARCH":
       return {
         scope,
@@ -227,3 +224,40 @@ export async function listGroupAccess(viewer: { id: string; role: string }) {
 export async function groupAccessHistory(requestId: string) {
   return db.auditLog.findMany({ where: { entityType: "GroupAccessRequest", entityId: requestId }, orderBy: { createdAt: "asc" }, include: { actor: { select: { name: true } } } });
 }
+
+const chatSelect = {
+  id: true,
+  kind: true,
+  body: true,
+  createdAt: true,
+  editedAt: true,
+  deletedAt: true,
+  author: { select: { profile: { select: { displayName: true } } } },
+  attachments: { where: { deletedAt: null }, select: { id: true, originalName: true } },
+} satisfies Prisma.ChatMessageSelect;
+
+/**
+ * One page of a group's chat, oldest first within the page. Without a cursor: the latest page. `before`:
+ * the page just before that message; `after`: the page just after it. Ties on the time are broken by id,
+ * so no message is skipped or repeated. `from`/`to` limit the range (inclusive start, exclusive end).
+ */
+async function chatPage(groupId: string, q: ChatPageQuery) {
+  const range: Prisma.ChatMessageWhereInput = { channel: { groupId }, ...(q.from || q.to ? { createdAt: { ...(q.from ? { gte: q.from } : {}), ...(q.to ? { lt: q.to } : {}) } } : {}) };
+  const cursorId = q.before ?? q.after;
+  const cursor = cursorId ? await db.chatMessage.findFirst({ where: { id: cursorId, channel: { groupId } }, select: { id: true, createdAt: true } }) : null;
+  if (cursorId && !cursor) return { messages: [], hasOlder: false, hasNewer: false };
+  const olderThan = (c: { id: string; createdAt: Date }): Prisma.ChatMessageWhereInput => ({ OR: [{ createdAt: { lt: c.createdAt } }, { createdAt: c.createdAt, id: { lt: c.id } }] });
+  const newerThan = (c: { id: string; createdAt: Date }): Prisma.ChatMessageWhereInput => ({ OR: [{ createdAt: { gt: c.createdAt } }, { createdAt: c.createdAt, id: { gt: c.id } }] });
+  let messages;
+  if (q.after && cursor) {
+    messages = await db.chatMessage.findMany({ where: { AND: [range, newerThan(cursor)] }, orderBy: [{ createdAt: "asc" }, { id: "asc" }], take: CHAT_PAGE_SIZE, select: chatSelect });
+  } else {
+    const desc = await db.chatMessage.findMany({ where: cursor ? { AND: [range, olderThan(cursor)] } : range, orderBy: [{ createdAt: "desc" }, { id: "desc" }], take: CHAT_PAGE_SIZE, select: chatSelect });
+    messages = desc.reverse();
+  }
+  const first = messages[0];
+  const last = messages[messages.length - 1];
+  const [hasOlder, hasNewer] = first && last ? await Promise.all([db.chatMessage.count({ where: { AND: [range, olderThan(first)] } }).then((n) => n > 0), db.chatMessage.count({ where: { AND: [range, newerThan(last)] } }).then((n) => n > 0)]) : [false, false];
+  return { messages, hasOlder, hasNewer };
+}
+

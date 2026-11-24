@@ -4,12 +4,15 @@
  *   npm run db:backup                                  create a backup in BACKUP_DIR (default ./backups)
  *   npm run db:backup -- --label before-phase1         add a label to the file name
  *   npm run db:restore -- <file> --into cowork_restore_check [--replace]
+ *        [--without-ledger]   only where no erasure was ever carried out and no ledger file exists
  *
  * Restore ALWAYS creates a new, separate database and verifies row counts and
  * checksums. It refuses to target the database in DATABASE_URL.
  */
 import path from "node:path";
 import { createBackup, restoreBackup } from "../src/ops/backup";
+import { createPrismaClient } from "../src/lib/db-core";
+import { currentLedgerHead, ledgerKey, reconcileRestore } from "../src/ops/erasure-ledger";
 import { deploy } from "./migrate";
 import { loadDotEnv } from "./load-env";
 
@@ -32,6 +35,7 @@ async function main() {
       encryptionKey: key,
       keep: Number(process.env.BACKUP_KEEP || 14),
       label: arg("label"),
+      ledgerHead: () => currentLedgerHead(),
     });
     const rows = res.manifest.tables.reduce((n, t) => n + t.rows, 0);
     console.log(`Backup written: ${res.file} (${res.bytes} bytes, ${res.manifest.tables.length} tables, ${rows} rows)`);
@@ -52,9 +56,40 @@ async function main() {
       encryptionKey: key,
       replaceExisting: process.argv.includes("--replace"),
       migrate: (cs) => deploy(cs, () => {}),
+      // Before the restore counts as successful: every erasure recorded in the ledger (kept outside the
+      // database and its backups) is applied again, so an older backup cannot bring erased data back.
+      // If the ledger cannot be read or verified, the restore is reported as failed.
+      // If the ledger is missing, cannot be verified, or is older than the one the backup was made with,
+      // the restore is reported as failed. `--without-ledger` is only for a site where no erasure was
+      // ever carried out and no ledger file exists.
+      reconcile: async (cs, manifest) => {
+        const restored = createPrismaClient(cs);
+        try {
+          return await reconcileRestore(restored, manifest, {
+            dir: path.resolve(process.env.LEDGER_DIR || "ledger"),
+            key: ledgerKey({ BACKUP_ENCRYPTION_KEY: process.env.BACKUP_ENCRYPTION_KEY, ENCRYPTION_KEY: process.env.ENCRYPTION_KEY }),
+            storageDir: process.env.STORAGE_DIR ? path.resolve(process.env.STORAGE_DIR) : undefined,
+            allowMissing: process.argv.includes("--without-ledger"),
+          });
+        } finally {
+          await restored.$disconnect();
+        }
+      },
     });
     for (const t of res.tables) console.log(`${t.ok ? "ok  " : "FAIL"} ${t.name}: ${t.restored}/${t.expected} rows`);
-    console.log(res.ok ? `Restore verified into "${res.targetDb}".` : "Restore verification FAILED.");
+    if (res.reconciliation) {
+      const d = res.reconciliation.detail as { entries?: number; applied?: { changed: boolean }[]; problems?: unknown[] } | string;
+      console.log(
+        typeof d === "string"
+          ? `FAIL erasure ledger: ${d}`
+          : `${res.reconciliation.ok ? "ok  " : "FAIL"} erasure ledger: ${d.entries ?? 0} entries, ${(d.applied ?? []).filter((a) => a.changed).length} erasure(s) re-applied, ${(d.problems ?? []).length} problem(s)`,
+      );
+    }
+    console.log(
+      res.ok
+        ? `Restore verified into "${res.targetDb}".`
+        : `Restore verification FAILED. Do NOT use the database "${res.targetDb}": it may still contain data of erased accounts. Fix the cause and restore again.`,
+    );
     if (!res.ok) process.exit(1);
     return;
   }

@@ -1,5 +1,6 @@
 // Minimal in-process scheduler for daily jobs (retention, backup).
 // A Postgres advisory lock makes sure only one server instance runs a job.
+import { currentLedgerHead } from "./erasure-ledger";
 import type { PrismaClient } from "@prisma/client";
 import path from "node:path";
 import { Client } from "pg";
@@ -62,7 +63,7 @@ export function startScheduler(db: PrismaClient, opts: { databaseUrl: string; st
         if (await ranRecently(db, "backup", 23 * HOUR)) return;
         const run = await db.jobRun.create({ data: { job: "backup" } });
         try {
-          const res = await createBackup({ connectionString: opts.databaseUrl, dir: path.resolve(opts.backupDir), encryptionKey: opts.backupKey, keep: opts.backupKeep });
+          const res = await createBackup({ connectionString: opts.databaseUrl, dir: path.resolve(opts.backupDir), encryptionKey: opts.backupKey, keep: opts.backupKeep, ledgerHead: () => currentLedgerHead() });
           await db.jobRun.update({
             where: { id: run.id },
             data: { finishedAt: new Date(), ok: true, summary: { file: path.basename(res.file), bytes: res.bytes, tables: res.manifest.tables.length, pruned: res.deleted.length } },

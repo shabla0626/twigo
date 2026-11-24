@@ -35,7 +35,10 @@ export default async function GroupAccessDetail({ params, searchParams }: Props)
   const active = isActive(r, now);
   const mine = r.requestedById === admin.id;
   const section = (sp.section as GroupAccessScope | undefined) ?? null;
-  const data = mine && section && r.grantedScope.includes(section) ? await investigationData(admin.id, r.id, section) : null;
+  const day = (v?: string) => (v && /^\d{4}-\d{2}-\d{2}$/.test(v) ? new Date(`${v}T00:00:00Z`) : undefined);
+  const pageQuery = { before: sp.before || undefined, after: sp.after || undefined, from: day(sp.from), to: day(sp.to) };
+  const data = mine && section && r.grantedScope.includes(section) ? await investigationData(admin.id, r.id, section, section === "CHAT" ? pageQuery : {}) : null;
+  const chatLink = (extra: Record<string, string>) => `/admin/group-access/${r.id}?${new URLSearchParams({ section: "CHAT", ...(sp.from ? { from: sp.from } : {}), ...(sp.to ? { to: sp.to } : {}), ...extra }).toString()}`;
   const history = await groupAccessHistory(r.id);
   const statusText = r.status === "APPROVED" && r.expiresAt && r.expiresAt <= now ? "Expired" : active ? "Active now" : STATUS_TEXT[r.status];
   return (
@@ -83,6 +86,35 @@ export default async function GroupAccessDetail({ params, searchParams }: Props)
                 </>
               )}
               {section && active && !data && <p className="mt-4 text-sm text-red-700">Not available.</p>}
+              {data?.scope === "CHAT" && (
+                <div className="mt-4 space-y-2 text-sm">
+                  <form method="get" className="flex flex-wrap items-end gap-2">
+                    <input type="hidden" name="section" value="CHAT" />
+                    <label className={smallLabel} htmlFor="from">
+                      From (UTC date)
+                    </label>
+                    <input id="from" name="from" type="date" defaultValue={sp.from ?? ""} className={`${smallInput} w-auto`} />
+                    <label className={smallLabel} htmlFor="to">
+                      Until (UTC date, not included)
+                    </label>
+                    <input id="to" name="to" type="date" defaultValue={sp.to ?? ""} className={`${smallInput} w-auto`} />
+                    <button className={buttonClass("secondary", "sm")}>Show</button>
+                  </form>
+                  <div className="flex gap-2">
+                    {data.hasOlder && data.messages[0] && (
+                      <Link href={chatLink({ before: data.messages[0].id })} className={buttonClass("secondary", "sm")}>
+                        ← Older messages
+                      </Link>
+                    )}
+                    {data.hasNewer && data.messages.at(-1) && (
+                      <Link href={chatLink({ after: data.messages.at(-1)!.id })} className={buttonClass("secondary", "sm")}>
+                        Newer messages →
+                      </Link>
+                    )}
+                    <span className="self-center text-xs text-ink-500">{data.messages.length} message(s) on this page (at most 100). Every page you open is recorded.</span>
+                  </div>
+                </div>
+              )}
               {data && <Section data={data} />}
             </Panel>
           )}

@@ -1,5 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { getCurrentUser } from "@/lib/auth/guard";
+import { pendingAcknowledgment } from "@/server/legal";
 import { db } from "@/lib/db";
 import { authorizeGroupRead } from "@/server/admin/group-access";
 import { env } from "@/lib/env";
@@ -14,6 +15,7 @@ export const dynamic = "force-dynamic";
 export async function GET(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const user = await getCurrentUser();
   if (!user || !user.communityAccess) return new NextResponse("Not found", { status: 404 });
+  if (await pendingAcknowledgment(user.id)) return new NextResponse("Please review and accept the updated policies first (/legal/review).", { status: 403 });
   const { id } = await params;
   // Members use their own group or participant access. Owner and administrator accounts have NO standing
   // access to a group's agreements: only during an owner-approved investigation covering the group's

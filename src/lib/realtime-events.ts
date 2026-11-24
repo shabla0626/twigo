@@ -19,7 +19,9 @@ export type RealtimeEvent =
   /** Unread notification count changed for a user. */
   | { t: "notifications.changed"; userId: string }
   /** Something visible on a group page changed (meeting started, announcement...). */
-  | { t: "group.updated"; groupId: string; what: "meeting" | "announcement" | "members" | "status" | "research" };
+  | { t: "group.updated"; groupId: string; what: "meeting" | "announcement" | "members" | "status" | "research" }
+  /** A policy version that everyone must accept again was published: open chats are re-checked (src/realtime/server.ts). */
+  | { t: "legal.reacceptance_required" };
 
 export async function publishRealtime(db: PrismaClient, event: RealtimeEvent): Promise<void> {
   try {

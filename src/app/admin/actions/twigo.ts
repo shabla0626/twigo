@@ -106,19 +106,30 @@ export async function privacyRequestStatusAction(fd: FormData) {
   redirect(withFlash(back, res.ok ? { ok: "Request updated. The member sees the new status on their Privacy & data page (and in the app, if they have community access)." } : { error: res.error }));
 }
 
-/** Carries out an approved deletion request (owner only; final confirmation required). */
+/** Carries out an approved deletion request (privacy.erase; exceptions are the owner's). Needs a fresh identity check. */
 export async function executeDeletionAction(fd: FormData) {
-  const owner = await requireAdmin("privacy.erase");
+  const actor = await requireAdmin("privacy.erase");
   const id = str(fd, "id");
+  const back = `/admin/privacy-requests/${id}`;
+  const { getSession, isRecentlyAuthenticated } = await import("@/lib/auth/guard");
+  if (!(await isRecentlyAuthenticated())) redirect(`/account/confirm?next=${encodeURIComponent(back)}`);
+  const session = await getSession();
   const { executeDeletion } = await import("@/server/privacy-deletion");
-  const res = await executeDeletion(owner.id, {
-    id,
-    phrase: str(fd, "phrase"),
-    removeIdeas: fd.get("removeIdeas") === "on",
-    removeComments: fd.get("removeComments") === "on",
-    removeChat: fd.get("removeChat") === "on",
-  });
-  if (!res.ok) redirect(withFlash(`/admin/privacy-requests/${id}`, { error: res.error }));
-  const notice = !res.email ? "No completion email was sent (the address was never confirmed)." : res.email.status === "sent" ? "The completion notice was handed to the email system (see its delivery status below)." : `The completion notice was NOT sent (${res.email.status}); see the delivery status below and retry it from Admin, Email.`;
-  redirect(withFlash(`/admin/privacy-requests/${id}`, { ok: `Deletion carried out. ${notice}` }));
+  const res = await executeDeletion(actor.id, { id, phrase: str(fd, "phrase") }, { reauthAt: session?.reauthAt ?? null });
+  if (!res.ok) redirect(withFlash(back, { error: res.error }));
+  const notice = !res.email
+    ? "No completion email was sent (the address was never confirmed)."
+    : res.email.status === "sent"
+      ? "The completion notice was handed to the email system (see its delivery status below; provider acceptance is not inbox delivery)."
+      : `The completion notice was NOT sent (${res.email.status}); see the delivery status below and retry it from Admin, Email.`;
+  redirect(withFlash(back, { ok: `Deletion carried out. ${notice}` }));
+}
+
+/** The owner sets or clears a legal hold on a privacy request. */
+export async function legalHoldAction(fd: FormData) {
+  const owner = await requireAdmin("privacy.requests");
+  const id = str(fd, "id");
+  const { setLegalHold } = await import("@/server/privacy-deletion");
+  const res = await setLegalHold(owner.id, id, str(fd, "hold") === "set", str(fd, "reason"));
+  redirect(withFlash(`/admin/privacy-requests/${id}`, res.ok ? { ok: str(fd, "hold") === "set" ? "Legal hold set." : "Legal hold cleared." } : { error: res.error }));
 }

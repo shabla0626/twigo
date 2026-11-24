@@ -136,18 +136,40 @@ BKDIR="$(ls -1d "$SERVER/backups/twigo"/*/ | tail -n 1)"
 if [[ $rc -eq 0 ]] && ran_ok && healthy_on_1010 && [[ "$(sql "SELECT count(*) FROM \"User\" WHERE role='OWNER'")" == 1 ]] \
    && [[ "$(sql "SELECT count(DISTINCT \"documentId\") FROM \"LegalDocumentVersion\" WHERE status='PUBLISHED'")" == 8 ]] \
    && [[ "$(sql "SELECT value::text FROM \"OrgSetting\" WHERE key='deploytest.marker'")" == '"keep me"' ]] \
-   && ls "$BKDIR" | grep -q '\.cwbak\.gz\.enc$' && [[ -d "$BKDIR/app-previous" ]] && [[ -f "$BKDIR/.env.production" ]]; then
-  result pass "upgrade: owner kept (1), data kept, 8 documents published, encrypted database backup + previous code + settings in $BKDIR"
+   && ls "$BKDIR" | grep -q '\.cwbak\.gz\.enc$' && [[ -d "$BKDIR/app-previous" ]] \
+   && [[ -f "$BKDIR/env.production.cwenc" && -f "$BKDIR/storage.tar.gz.cwenc" && -f "$BKDIR/DEPLOYED-OK" ]] \
+   && [[ ! -e "$BKDIR/.env.production" && ! -e "$BKDIR/app-previous/.env.production" && ! -e "$BKDIR/storage.tar.gz" ]] \
+   && [[ "$(head -c 6 "$BKDIR/env.production.cwenc")" == CWBAK1 && "$(head -c 6 "$BKDIR/storage.tar.gz.cwenc")" == CWBAK1 ]] \
+   && ! grep -qaF "AUTH_SECRET=" "$BKDIR/env.production.cwenc" \
+   && [[ "$(dc run --rm --no-deps -T -u 0 -v "$BKDIR:/in:ro" app npm run -s backup:artifact -- decrypt /in/env.production.cwenc | sha256sum)" == "$(sha256sum < "$SERVER/twigo/.env.production")" ]] \
+   && dc run --rm --no-deps -T -u 0 -v "$BKDIR:/in:ro" app sh -c "npm run -s backup:artifact -- decrypt /in/storage.tar.gz.cwenc | tar -tz" | grep -q '^storage/' \
+   && [[ "$(sql "SELECT status FROM \"LegalDocumentVersion\" v JOIN \"LegalDocument\" d ON d.id = v.\"documentId\" WHERE d.key = 'privacy' AND v.version = 2")" == PUBLISHED ]]; then
+  result pass "upgrade: owner kept, data kept, 8 documents published (Privacy v2 by release approval), encrypted DB backup, encrypted settings snapshot and uploaded files (decrypted and verified), no plain settings copy, previous code in $BKDIR"
 else result fail "repeated deployment (exit $rc)"; tail -30 "$ROOT/last-run.txt"; fi
 unset TWIGO_LEGAL_PUBLISH TWIGO_LEGAL_REVIEWED_BY TWIGO_LEGAL_REVIEWED_ON
 
 # ---------------------------------------------------------------- 9. idempotent third run
 deploy; rc=$?
 if [[ $rc -eq 0 ]] && ran_ok && said "already published" && said "owner account exists" \
-   && [[ "$(sql "SELECT count(*) FROM \"LegalDocumentVersion\"")" == 8 ]] && [[ "$(sql "SELECT count(*) FROM \"User\"")" == 1 ]]; then
-  result pass "repeated again: no duplicate owner, no duplicate legal versions"
+   && [[ "$(sql "SELECT count(*) FROM \"LegalDocumentVersion\"")" == 9 ]] && [[ "$(sql "SELECT count(*) FROM \"User\"")" == 1 ]]; then
+  result pass "repeated again: no duplicate owner, no duplicate legal versions (8 documents, 9 versions: Privacy v1 and v2)"
 else result fail "idempotent run (exit $rc)"; tail -30 "$ROOT/last-run.txt"; fi
 GOOD_RELEASE="$(release_marker)"
+
+# ---------------------------------------------------------------- 9a. retention of deployment backups
+# Old folders (by their time-stamp name): two successful and one failed deployment, all older than 30 days.
+# After the next successful deployment they are deleted; the 3 most recent successful ones and the
+# current one stay, and every deletion is logged.
+for n in 2026-01-01_00-00-00 2026-01-02_00-00-00 2026-01-03_00-00-00; do mkdir -p "$SERVER/backups/twigo/$n"; done
+touch "$SERVER/backups/twigo/2026-01-01_00-00-00/DEPLOYED-OK" "$SERVER/backups/twigo/2026-01-02_00-00-00/DEPLOYED-OK"
+RECENT_OK="$(for d in "$SERVER"/backups/twigo/2026-1[1-2]*/; do [[ -f "$d/DEPLOYED-OK" ]] && echo "${d%/}"; done | sort -r | head -n 2)"
+deploy; rc=$?
+DEPLOYLOG="$(ls -1t "$SERVER"/logs/twigo-deploy-*.log | head -n 1)"
+KEPT=1; for d in $RECENT_OK; do [[ -d "$d" ]] || KEPT=0; done
+if [[ $rc -eq 0 ]] && ran_ok && [[ ! -e "$SERVER/backups/twigo/2026-01-01_00-00-00" && ! -e "$SERVER/backups/twigo/2026-01-02_00-00-00" && ! -e "$SERVER/backups/twigo/2026-01-03_00-00-00" ]] \
+   && [[ $KEPT -eq 1 ]] && [[ "$(grep -c "old deployment backup deleted" "$DEPLOYLOG")" -ge 3 ]]; then
+  result pass "backup retention: folders older than 30 days deleted after a successful deployment, recent successful ones kept, deletions logged"
+else result fail "backup retention (exit $rc)"; tail -30 "$ROOT/last-run.txt"; fi
 
 # ---------------------------------------------------------------- 9b. Docker usable only through sudo
 # The user's Docker client points at a missing socket (like a user not yet in the docker group); a stand-in

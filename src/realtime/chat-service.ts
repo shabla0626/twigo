@@ -2,6 +2,7 @@
 // so no `server-only` / `next/*` imports. Every function re-checks access.
 import type { Prisma, PrismaClient } from "@prisma/client";
 import { hasCommunityAccess } from "../lib/auth/session-core";
+import { hasPendingReacceptance } from "../ops/legal-release";
 
 /** `staff`: the author is an owner or administrator (shown as a label, so members always know). */
 export type ChatAuthor = { id: string; name: string; staff: boolean };
@@ -53,16 +54,22 @@ export async function channelAccess(db: PrismaClient, userId: string, channelId:
   // Owner and administrator accounts never use a group's live chat, not even with an investigation
   // grant (that grant gives a read-only view in the admin area, re-checked on every request).
   if (user.role === "OWNER" || user.role === "ADMIN") return null;
+  // A member who still has to accept an updated policy is treated like the pages treat them: no access
+  // until they accept it (/legal/review). Re-checked on every chat operation.
+  if (await hasPendingReacceptance(db, userId)) return null;
   return { channelId: ch.id, groupId: ch.group.id, groupSlug: ch.group.slug, canPost: ch.group.status !== "ARCHIVED", historyFrom: chatBoundary(user.role, m.joinedAt) };
 }
 
 const include = {
-  author: { select: { id: true, role: true, profile: { select: { displayName: true } } } },
-  replyTo: { select: { id: true, body: true, deletedAt: true, createdAt: true, author: { select: { profile: { select: { displayName: true } } } } } },
+  author: { select: { id: true, role: true, erasedAt: true, profile: { select: { displayName: true } } } },
+  replyTo: { select: { id: true, body: true, deletedAt: true, createdAt: true, author: { select: { erasedAt: true, profile: { select: { displayName: true } } } } } },
   attachments: { where: { deletedAt: null }, select: { id: true, originalName: true, mimeType: true, size: true } },
 } satisfies Prisma.ChatMessageInclude;
 
 type Row = Prisma.ChatMessageGetPayload<{ include: typeof include }>;
+
+/** The name shown for an author: an erased account is shown neutrally, as everywhere else ("Former member"). */
+const authorName = (a: { erasedAt: Date | null; profile: { displayName: string } | null } | null) => (!a || a.erasedAt ? "Former member" : (a.profile?.displayName ?? "Member"));
 
 /**
  * `visibleFrom`: the reader's history boundary. A reply quotes the message it
@@ -80,11 +87,11 @@ export function toDTO(m: Row, visibleFrom: Date | null = null): ChatMessageDTO {
     deleted,
     editedAt: m.editedAt?.toISOString() ?? null,
     createdAt: m.createdAt.toISOString(),
-    author: m.author ? { id: m.author.id, name: m.author.profile?.displayName ?? "Member", staff: m.author.role !== "MEMBER" } : null,
+    author: m.author ? { id: m.author.id, name: authorName(m.author), staff: m.author.role !== "MEMBER" } : null,
     replyTo: m.replyTo
       ? {
           id: m.replyTo.id,
-          authorName: quoteHidden ? "" : (m.replyTo.author?.profile?.displayName ?? "Member"),
+          authorName: quoteHidden ? "" : authorName(m.replyTo.author),
           excerpt: quoteHidden ? "(a message from before you joined)" : m.replyTo.deletedAt ? "(deleted message)" : m.replyTo.body.slice(0, 140),
         }
       : null,

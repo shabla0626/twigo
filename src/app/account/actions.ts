@@ -149,8 +149,11 @@ export async function requestDeletionAction(_prev: FormState, fd: FormData): Pro
     confirm: fd.get("confirm") === "on",
     phrase: String(fd.get("phrase") ?? ""),
     details: String(fd.get("details") ?? ""),
+    removeIdeas: fd.get("removeIdeas") === "on",
+    removeComments: fd.get("removeComments") === "on",
+    removeChat: fd.get("removeChat") === "on",
   });
   if (!res.ok) return { error: res.error };
-  redirect(withFlash("/account/data", { ok: "Your deletion request was received. Nothing has been deleted yet: the owner reviews it first, and you will be told the outcome." }));
+  redirect(withFlash("/account/data", { ok: "Your deletion request was received. Nothing has been deleted yet: the management team reviews it first, and you will be told the outcome." }));
 }
 

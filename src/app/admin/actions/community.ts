@@ -1,5 +1,6 @@
 "use server";
 
+import { currentLedgerHead } from "@/ops/erasure-ledger";
 import { brand } from "@/config/brand";
 import path from "node:path";
 import { redirect } from "next/navigation";
@@ -257,7 +258,7 @@ export async function backupNowAction() {
   // because redirect() works by throwing and would otherwise be caught as a failure.
   let written: string | null = null;
   try {
-    const res = await createBackup({ connectionString: e.DATABASE_URL, dir: path.resolve(e.BACKUP_DIR), encryptionKey: e.BACKUP_ENCRYPTION_KEY || undefined, keep: e.BACKUP_KEEP, label: "manual" });
+    const res = await createBackup({ connectionString: e.DATABASE_URL, dir: path.resolve(e.BACKUP_DIR), encryptionKey: e.BACKUP_ENCRYPTION_KEY || undefined, keep: e.BACKUP_KEEP, label: "manual", ledgerHead: () => currentLedgerHead() });
     await db.jobRun.update({ where: { id: run.id }, data: { finishedAt: new Date(), ok: true, summary: { file: path.basename(res.file), bytes: res.bytes, tables: res.manifest.tables.length } } });
     await audit(owner.id, "backup.manual", "System", run.id);
     written = path.basename(res.file);

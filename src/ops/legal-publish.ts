@@ -10,6 +10,7 @@
 import { createHash } from "node:crypto";
 import type { PrismaClient } from "@prisma/client";
 import { LEGAL_DOCUMENTS, publicationProblem, withoutReviewDisclaimer } from "../content/legal";
+import { ensureLegalState, type ReleaseApprovalOutcome } from "./legal-release";
 
 /**
  * published          approved and published now
@@ -77,4 +78,14 @@ export async function publishReviewedDocuments(
     out.push({ key: def.key, title: def.title, result: "published", version: version.version, fingerprint });
   }
   return out;
+}
+
+/**
+ * The versions approved in the release itself (the founder's recorded confirmation, bound to the exact
+ * fingerprint; src/content/legal/index.ts), applied by the same routine the server runs at start-up.
+ * Idempotent; never publishes a different text or over a newer version.
+ */
+export async function applyReleaseApprovals(db: PrismaClient, orgName: string, opts: { dryRun?: boolean } = {}): Promise<ReleaseApprovalOutcome[]> {
+  if (opts.dryRun) return [];
+  return ensureLegalState(db, orgName);
 }

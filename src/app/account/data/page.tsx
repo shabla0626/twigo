@@ -1,20 +1,27 @@
 import Link from "next/link";
 import { ActionForm } from "@/components/forms/action-form";
-import { Field, Input } from "@/components/forms/fields";
+import { Field, FormAlert, Input } from "@/components/forms/fields";
 import { buttonClass } from "@/components/ui/primitives";
 import { SettingsCard } from "@/components/ui/settings-card";
 import { isRecentlyAuthenticated, requireUser } from "@/lib/auth/guard";
+import { readFlash } from "@/lib/flash";
 import { PRIVACY_REQUEST_KINDS, PRIVACY_REQUEST_STATUSES } from "@/lib/labels";
 import { myPrivacyRequests } from "@/server/privacy-requests";
 import { deactivateSelfAction, privacyRequestAction } from "../actions";
 
-export default async function DataPage() {
+type Props = { searchParams: Promise<Record<string, string | undefined>> };
+
+export default async function DataPage({ searchParams }: Props) {
   const user = await requireUser("/account/data");
+  // The outcome of a deletion request (sent from /account/data/delete) is shown here.
+  const flash = readFlash(await searchParams);
   const recent = await isRecentlyAuthenticated();
   const requests = await myPrivacyRequests(user.id);
   return (
     <>
       <h1 className="text-2xl font-semibold text-ink-950">Privacy & data</h1>
+      {flash.ok && <FormAlert tone="success">{flash.ok}</FormAlert>}
+      {flash.error && <FormAlert tone="error">{flash.error}</FormAlert>}
       <SettingsCard
         title="Download your data"
         description="A JSON file with your account, profile, application, ideas, comments, group memberships, chat messages you wrote, notifications, file list, the policies you accepted, your project agreements and your privacy requests. Other members’ private information is not included."
@@ -76,7 +83,7 @@ export default async function DataPage() {
       </SettingsCard>
       <SettingsCard
         title="Request deletion of your account and personal data"
-        description="Your request is checked by the owner before anything is deleted. You will see exactly what is deleted and what has to be kept before you confirm."
+        description="Your request is checked by the management team before anything is deleted. You will see exactly what is deleted and what has to be kept before you confirm."
       >
         <Link href="/account/data/delete" className={buttonClass("secondary")}>
           Request deletion

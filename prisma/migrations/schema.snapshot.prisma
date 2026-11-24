@@ -1501,6 +1501,14 @@ model PrivacyRequest {
   outcome            Json?
   /// The completion notice: its EmailDelivery row (status shows whether it was accepted or failed).
   completionEmailId  String?
+  /// The member's own choice when asking (deletion requests): also remove their ideas without a group,
+  /// their comments and discussions, their chat messages. Applied exactly as chosen.
+  removeIdeas        Boolean              @default(false)
+  removeComments     Boolean              @default(false)
+  removeChat         Boolean              @default(false)
+  /// Set by the owner: the request must not be carried out (legal retention, dispute, evidence) until cleared.
+  legalHold          Boolean              @default(false)
+  legalHoldReason    String?
 
   user      User? @relation("PrivacyRequester", fields: [userId], references: [id], onDelete: SetNull)
   handledBy User? @relation("PrivacyHandler", fields: [handledById], references: [id], onDelete: SetNull)

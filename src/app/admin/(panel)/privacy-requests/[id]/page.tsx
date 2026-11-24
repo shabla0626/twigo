@@ -8,17 +8,18 @@ import { db } from "@/lib/db";
 import { EMAIL_STATUS_INFO } from "@/lib/email/status";
 import { readFlash } from "@/lib/flash";
 import { PRIVACY_REQUEST_KINDS, PRIVACY_REQUEST_STATUSES } from "@/lib/labels";
-import { deletionPlan } from "@/server/privacy-deletion";
-import { executeDeletionAction, privacyRequestStatusAction } from "../../../actions/twigo";
+import { deletionExceptions, deletionPlan } from "@/server/privacy-deletion";
+import { executeDeletionAction, legalHoldAction, privacyRequestStatusAction } from "../../../actions/twigo";
 
 type Props = { params: Promise<{ id: string }>; searchParams: Promise<Record<string, string | undefined>> };
 export const dynamic = "force-dynamic";
 
-const ACTION_LABEL = { delete: "Delete", anonymize: "Anonymize", end: "End", retain: "Keep", "retain-temporarily": "Kept temporarily", "founder-decision": "Your decision" } as const;
+const ACTION_LABEL = { delete: "Delete", anonymize: "Anonymize", end: "End", remove: "Remove (member asked)", keep: "Keep", "keep-necessary": "Keep only what is necessary", "backup-expiry": "Kept until backups expire" } as const;
 
 /** One privacy request: verification, related groups and projects, the deletion plan, notes, history and execution. */
 export default async function PrivacyRequestDetail({ params, searchParams }: Props) {
   const owner = await requireAdmin("privacy.requests");
+  const isOwner = owner.role === "OWNER";
   const { id } = await params;
   const sp = await searchParams;
   const r = await db.privacyRequest.findUnique({ where: { id }, include: { user: { select: { id: true, name: true, status: true, erasedAt: true, role: true } }, handledBy: { select: { name: true } } } });
@@ -26,13 +27,14 @@ export default async function PrivacyRequestDetail({ params, searchParams }: Pro
   const deletion = r.kind === "DELETION";
   const live = deletion && r.user && !r.user.erasedAt;
   const [plan, groups, projects, history, email] = await Promise.all([
-    live ? deletionPlan(r.user!.id) : Promise.resolve([]),
+    live ? deletionPlan(r.user!.id, { removeIdeas: r.removeIdeas, removeComments: r.removeComments, removeChat: r.removeChat }) : Promise.resolve([]),
     live ? db.groupMembership.findMany({ where: { userId: r.user!.id, status: "ACTIVE" }, select: { role: true, group: { select: { name: true } } } }) : Promise.resolve([]),
     live ? db.projectAgreementParticipant.findMany({ where: { userId: r.user!.id }, distinct: ["versionId"], select: { version: { select: { status: true, version: true, project: { select: { name: true, status: true } } } } } }) : Promise.resolve([]),
     db.auditLog.findMany({ where: { entityType: "PrivacyRequest", entityId: r.id }, orderBy: { createdAt: "asc" }, include: { actor: { select: { name: true } } } }),
     r.completionEmailId ? db.emailDelivery.findUnique({ where: { id: r.completionEmailId }, select: { status: true, error: true, createdAt: true, providerEvent: true } }) : Promise.resolve(null),
   ]);
   const editable = r.status !== "COMPLETED" && r.status !== "PROCESSING";
+  const exceptions = live ? await deletionExceptions(r.user!.id, r) : [];
   return (
     <>
       <p className="mb-4 text-sm">
@@ -51,6 +53,10 @@ export default async function PrivacyRequestDetail({ params, searchParams }: Pro
                 ["Member", r.user ? `${r.user.erasedAt ? "Erased account" : r.user.name} (${r.user.erasedAt ? "erased" : r.user.status.toLowerCase()})` : "account no longer linked"],
                 ["Received", fmtDate(r.createdAt, true)],
                 ["Requested", deletion ? "Deletion of the account and personal data" : PRIVACY_REQUEST_KINDS[r.kind]],
+                ...(deletion
+                  ? ([["Member’s choice for their content", [r.removeIdeas && "remove ideas without a group", r.removeComments && "remove comments and discussions", r.removeChat && "remove chat messages"].filter(Boolean).join("; ") || "keep (shown without the name)"]] as [string, string][])
+                  : []),
+                ...(r.legalHold ? ([["Legal hold", r.legalHoldReason ?? "set"]] as [string, string][]) : []),
                 ["Identity verification", r.verifiedAt ? `Verified by ${r.verificationMethod} on ${fmtDate(r.verifiedAt, true)}` : "Not verified through the deletion flow"],
                 ["Member’s text", r.details],
                 ["Answer shown to the member", r.response ?? "—"],
@@ -90,7 +96,7 @@ export default async function PrivacyRequestDetail({ params, searchParams }: Pro
                       <td className="py-2 pr-2 font-medium">{p.category}</td>
                       <td className="py-2 pr-2 tabular-nums">{p.category === "Backups" ? "—" : p.count}</td>
                       <td className="py-2 pr-2">
-                        <Badge tone={p.action === "founder-decision" ? "warn" : p.action === "delete" || p.action === "anonymize" ? "danger" : "neutral"}>{ACTION_LABEL[p.action]}</Badge>
+                        <Badge tone={p.action === "keep-necessary" ? "warn" : p.action === "delete" || p.action === "anonymize" || p.action === "remove" ? "danger" : "neutral"}>{ACTION_LABEL[p.action]}</Badge>
                       </td>
                       <td className="py-2 text-ink-700">{p.explanation}</td>
                     </tr>
@@ -145,25 +151,47 @@ export default async function PrivacyRequestDetail({ params, searchParams }: Pro
               </form>
             </Panel>
           )}
-          {deletion && r.status === "APPROVED_FOR_DELETION" && live && can(owner.role, "privacy.erase") && (
+          {deletion && live && exceptions.length > 0 && (
+            <Panel title="Needs the owner">
+              <ul className="list-disc space-y-1 pl-5 text-sm text-ink-800">
+                {exceptions.map((x) => (
+                  <li key={x}>{x}</li>
+                ))}
+              </ul>
+              {!isOwner && <p className="mt-2 text-xs text-ink-600">Administrators cannot carry out this request. The owner decides.</p>}
+            </Panel>
+          )}
+          {deletion && live && isOwner && (
+            <Panel title="Legal hold (owner)">
+              <form action={legalHoldAction} className="space-y-2 text-sm">
+                <input type="hidden" name="id" value={r.id} />
+                {r.legalHold ? (
+                  <button name="hold" value="clear" className={buttonClass("secondary", "sm")}>
+                    Clear the legal hold
+                  </button>
+                ) : (
+                  <>
+                    <label htmlFor="reason" className={smallLabel}>
+                      Reason (for example legal retention, a dispute, evidence)
+                    </label>
+                    <input id="reason" name="reason" className={smallInput} maxLength={500} />
+                    <button name="hold" value="set" className={buttonClass("secondary", "sm")}>
+                      Set a legal hold
+                    </button>
+                  </>
+                )}
+              </form>
+            </Panel>
+          )}
+          {deletion && r.status === "APPROVED_FOR_DELETION" && live && can(owner.role, "privacy.erase") && !r.legalHold && (isOwner || exceptions.length === 0) && (
             <Panel title="Carry out the deletion">
               <form action={executeDeletionAction} className="space-y-3 text-sm">
                 <input type="hidden" name="id" value={r.id} />
                 <p className="text-ink-700">
-                  This applies the plan on the left in one step and cannot be undone (except from a backup). Shared records are kept without the person’s name.
+                  This applies the plan on the left in one step and cannot be undone. It is first written to the erasure record, so restoring an older backup
+                  re-applies it. Content removal follows the member’s own choice. You will be asked to confirm your identity if you have not done so in the
+                  last minutes.
                 </p>
-                <fieldset className="space-y-1">
-                  <legend className={smallLabel}>Also remove (your decision; hidden now, deleted by the regular clean-up)</legend>
-                  <label className="flex items-center gap-2">
-                    <input type="checkbox" name="removeIdeas" /> Ideas without a group
-                  </label>
-                  <label className="flex items-center gap-2">
-                    <input type="checkbox" name="removeComments" /> Comments and group discussions
-                  </label>
-                  <label className="flex items-center gap-2">
-                    <input type="checkbox" name="removeChat" /> Chat messages
-                  </label>
-                </fieldset>
                 <div>
                   <label htmlFor="phrase" className={smallLabel}>
                     Type ERASE to confirm

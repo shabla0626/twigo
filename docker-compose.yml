@@ -37,6 +37,8 @@ services:
       DATABASE_URL: "postgresql://twigo:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env.production}@db:5432/${TWIGO_DB_NAME:-twigo}?schema=public"
       STORAGE_DIR: /data/storage
       BACKUP_DIR: /data/backups
+      # Erasure ledger: kept outside the database and its backups (src/ops/erasure-ledger.ts).
+      LEDGER_DIR: /data/ledger
     ports:
       - "127.0.0.1:1010:1010"
     volumes:

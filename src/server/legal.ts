@@ -1,4 +1,5 @@
 import "server-only";
+import { publishRealtime } from "@/lib/realtime-events";
 import { cache } from "react";
 import type { AcceptanceKind, LegalDocumentStatus, Prisma } from "@prisma/client";
 import { brand } from "@/config/brand";
@@ -6,6 +7,7 @@ import { LEGAL_DOCUMENTS, REGISTRATION_ACCEPT, REGISTRATION_ACK, isLegalKey, leg
 import { audit } from "@/lib/audit";
 import { sha256 } from "@/lib/crypto";
 import { db } from "@/lib/db";
+import { ensureLegalState, hasPendingReacceptance } from "@/ops/legal-release";
 
 /**
  * Legal documents: versions, states, fingerprints and acceptance records.
@@ -32,95 +34,32 @@ export const fingerprint = (content: string) => sha256(content);
 /** A short form for display: the full fingerprint is always available too. */
 export const shortFingerprint = (hash: string) => `${hash.slice(0, 8)} ${hash.slice(8, 16)}`;
 
-/** Creates any document (and its version 1) that does not exist yet, then adds versions prepared in this release. Safe to call at any time. */
-export const ensureLegalDocuments = cache(async () => {
-  const existing = await db.legalDocument.findMany({ select: { key: true } });
-  const have = new Set(existing.map((d) => d.key));
-  const missing = LEGAL_DOCUMENTS.filter((d) => !have.has(d.key));
-  const name = brand().name;
-  for (const [i, def] of LEGAL_DOCUMENTS.entries()) {
-    if (have.has(def.key)) continue;
-    const content = def.text(name);
-    try {
-      await db.legalDocument.create({
-        data: {
-          key: def.key,
-          title: def.title,
-          summary: def.summary,
-          sortOrder: i,
-          versions: {
-            create: {
-              version: 1,
-              status: "PENDING_LEGAL_REVIEW",
-              content,
-              contentHash: fingerprint(content),
-              // The review state is the status (PENDING_LEGAL_REVIEW); the summary only describes the change.
-              changeSummary: "First version, prepared for the Twigo community.",
-              submittedAt: new Date(),
-            },
-          },
-        },
-      });
-    } catch (err) {
-      // Another request created it at the same moment: fine.
-      if ((err as { code?: string }).code !== "P2002") throw err;
-    }
-  }
-  if (missing.length || !releaseVersionsChecked) await addReleaseVersions(name);
-});
-
-/** Once every release-prepared version is present (or the owner's own versions took over), nothing more to check in this process. */
-let releaseVersionsChecked = false;
-
 /**
- * Adds the later versions prepared in this release (LegalDefinition.later) as "Pending legal review".
- * Version N+1 is added only when the document's latest version is version N with exactly the previous
- * text of the release; otherwise the owner has written their own version and nothing is added. An older
- * version that was only shown (never published) is marked superseded by the new one, as publication
- * would do; a PUBLISHED version stays in force until the new one is published. Nothing is deleted.
+ * Brings the legal documents to the state the release defines (version 1, release versions, release
+ * approvals; src/ops/legal-release.ts). Runs once per process after it found nothing left to do, and
+ * whenever a document is missing (for example after the tests emptied the database).
  */
-async function addReleaseVersions(name: string) {
-  let pending = false;
-  for (const def of LEGAL_DOCUMENTS) {
-    if (!def.later?.length) continue;
-    const doc = await db.legalDocument.findUnique({ where: { key: def.key }, select: { id: true } });
-    if (!doc) {
-      pending = true;
-      continue;
-    }
-    const texts = [def.text, ...def.later.map((l) => l.text)];
-    for (let n = 1; n < texts.length; n++) {
-      const latest = await db.legalDocumentVersion.findFirst({ where: { documentId: doc.id }, orderBy: { version: "desc" } });
-      if (!latest || latest.version !== n) break; // already added (or the owner's own numbering): stop
-      if (latest.contentHash !== fingerprint(texts[n - 1]!(name))) break; // the owner's own text: never numbered over
-      const later = def.later[n - 1]!;
-      const content = later.text(name);
-      try {
-        await db.$transaction(async (tx) => {
-          const now = new Date();
-          const v = await tx.legalDocumentVersion.create({
-            data: {
-              documentId: doc.id,
-              version: n + 1,
-              status: "PENDING_LEGAL_REVIEW",
-              content,
-              contentHash: fingerprint(content),
-              changeSummary: later.changeSummary,
-              materialChange: later.materialChange,
-              requiresReacceptance: later.materialChange && later.requiresReacceptance,
-              submittedAt: now,
-            },
-          });
-          await tx.legalDocumentVersion.updateMany({ where: { documentId: doc.id, version: { lt: n + 1 }, status: { in: ["PENDING_LEGAL_REVIEW", "APPROVED"] } }, data: { status: "SUPERSEDED", supersededAt: now } });
-          await tx.auditLog.create({ data: { actorId: null, action: "legal.release_version_added", entityType: "LegalDocumentVersion", entityId: v.id, metadata: { key: def.key, version: n + 1, contentHash: v.contentHash } } });
-        });
-      } catch (err) {
-        if ((err as { code?: string }).code !== "P2002") throw err; // added at the same moment by another request
-      }
-    }
+export const ensureLegalDocuments = cache(async () => {
+  if (inflight) return inflight;
+  if (legalStateSettled) {
+    const count = await db.legalDocument.count();
+    // Checked again after the query: a run may have started meanwhile (it must be waited for).
+    if (inflight) return inflight;
+    if (count >= LEGAL_DOCUMENTS.length) return;
   }
-  if (!pending) releaseVersionsChecked = true;
-}
+  // Single flight: simultaneous first requests wait for the same run, so none of them reads the documents
+  // while version 1 is being created or a release version is being added.
+  inflight ??= ensureLegalState(db, brand().name)
+    .then((res) => {
+      legalStateSettled = res.every((r) => r.result !== "not-applicable");
+    })
+    .finally(() => {
+      inflight = null;
+    });
+  await inflight;
+});
+let legalStateSettled = false;
+let inflight: Promise<void> | null = null;
 
 const SHOWN: LegalDocumentStatus[] = ["PUBLISHED", "APPROVED", "PENDING_LEGAL_REVIEW"];
 
@@ -311,6 +250,20 @@ export async function changeStatus(
   to: "PENDING_LEGAL_REVIEW" | "APPROVED" | "PUBLISHED" | "DRAFT",
   input: { approvalNote?: string; effectiveDate?: Date | null } = {},
 ): Promise<Result> {
+  const res = await changeStatusTx(ownerId, versionId, to, input);
+  if (res.ok && to === "PUBLISHED") {
+    const v = await db.legalDocumentVersion.findUnique({ where: { id: versionId }, select: { requiresReacceptance: true } });
+    if (v?.requiresReacceptance) await publishRealtime(db, { t: "legal.reacceptance_required" });
+  }
+  return res;
+}
+
+function changeStatusTx(
+  ownerId: string,
+  versionId: string,
+  to: "PENDING_LEGAL_REVIEW" | "APPROVED" | "PUBLISHED" | "DRAFT",
+  input: { approvalNote?: string; effectiveDate?: Date | null },
+): Promise<Result> {
   return db.$transaction(async (tx) => {
     const v = await tx.legalDocumentVersion.findUnique({ where: { id: versionId }, include: { _count: { select: { acceptances: true } } } });
     if (!v) return { ok: false as const, error: "Version not found." };
@@ -363,3 +316,12 @@ export async function adminLegalOverview() {
 }
 
 export const definitionOf = (key: LegalKey) => legalDefinition(key);
+
+/** For APIs outside the page guard: true while a published version that asks everyone to accept it again is not yet accepted. Staff are exempt (as in the admin area). */
+export async function pendingAcknowledgment(userId: string): Promise<boolean> {
+  await ensureLegalDocuments();
+  const u = await db.user.findUnique({ where: { id: userId }, select: { role: true } });
+  if (!u || u.role !== "MEMBER") return false;
+  return hasPendingReacceptance(db, userId);
+}
+

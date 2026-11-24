@@ -26,3 +26,5 @@ process.env.ADMIN_NOTIFICATION_EMAIL = "";
 process.env.ENCRYPTION_KEY = "test-encryption-key-different-from-auth-secret-123";
 process.env.STORAGE_DIR = path.join(os.tmpdir(), "cowork-test-storage");
 process.env.JOBS_ENABLED = "false";
+// The erasure ledger of the tests: a temporary folder, never the project folder.
+process.env.LEDGER_DIR = path.join(os.tmpdir(), "cowork-test-ledger");
