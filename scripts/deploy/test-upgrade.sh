@@ -76,9 +76,16 @@ EOF
 if dco build app > "$ROOT/old-build.txt" 2>&1; then result pass "previous release image built from $(basename "$OLD_ARCHIVE")"; else result fail "previous release build"; tail -30 "$ROOT/old-build.txt"; exit 1; fi
 
 # ---------------------------------------------------------------- 1. previous release with data
-dco up -d --no-build > "$ROOT/old-up.txt" 2>&1
+# As deploy-twigo.sh does: database first, migrations, then the app.
+dco up -d --wait db > "$ROOT/old-up.txt" 2>&1
+dco run --rm --no-deps -T app npm run -s db:deploy >> "$ROOT/old-up.txt" 2>&1 || { result fail "previous release migrations"; tail -20 "$ROOT/old-up.txt"; exit 1; }
+export ADMIN_PASSWORD="Owner-$(h 12)-pass1"
+dco run --rm --no-deps -T -e ADMIN_PASSWORD app npm run -s admin:create -- --email founder@upgradetest.dev --name "Upgrade Owner" --role OWNER >> "$ROOT/old-up.txt" 2>&1 || { result fail "owner account"; tail -20 "$ROOT/old-up.txt"; exit 1; }
+dco up -d --no-build app >> "$ROOT/old-up.txt" 2>&1
 if healthy; then result pass "previous release running and healthy"; else result fail "previous release did not start"; dco logs app | tail -30; exit 1; fi
 BEFORE_MIGRATIONS="$(sql "SELECT count(*) FROM _prisma_migrations WHERE finished_at IS NOT NULL")"
+# The previous release creates its legal documents on the first page that shows them.
+curl -fsS -o /dev/null http://127.0.0.1:1010/legal/privacy || true
 sql "INSERT INTO \"User\" (id, email, name, role, status, \"membershipStatus\", \"emailVerifiedAt\", \"updatedAt\") VALUES ('upgrade_member_1', 'member@upgrade.test', 'Uma Upgrade', 'MEMBER', 'ACTIVE', 'ACTIVE', now(), now())" > /dev/null
 sql "INSERT INTO \"MemberProfile\" (id, \"userId\", \"displayName\", \"updatedAt\") VALUES ('upgrade_profile_1', 'upgrade_member_1', 'Uma Upgrade', now())" > /dev/null
 sql "INSERT INTO \"LegalAcceptance\" (id, \"userId\", \"versionId\", \"documentKey\", version, \"contentHash\", kind, method) SELECT 'upgrade_acc_' || d.key, 'upgrade_member_1', v.id, d.key, 1, v.\"contentHash\", 'ACKNOWLEDGED', 'registration' FROM \"LegalDocumentVersion\" v JOIN \"LegalDocument\" d ON d.id = v.\"documentId\" WHERE v.version = 1" > /dev/null
