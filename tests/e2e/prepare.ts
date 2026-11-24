@@ -2,6 +2,8 @@
  * Prepares a FRESH end-to-end database before the e2e server starts.
  * Refuses to touch any database whose name does not end in "_e2e".
  */
+import { rmSync } from "node:fs";
+import path from "node:path";
 import { Client } from "pg";
 import { createUtf8Database } from "../../src/ops/create-database";
 import { createPrismaClient } from "../../src/lib/db-core";
@@ -15,6 +17,10 @@ async function main() {
   const url = new URL(process.env.DATABASE_URL!);
   const name = url.pathname.slice(1);
   if (!name.endsWith("_e2e")) throw new Error(`Refusing to reset database "${name}"`);
+  // The browser tests' own erasure ledger belongs to that database: reset with it (never another ledger).
+  const ledger = process.env.LEDGER_DIR ?? "";
+  if (path.basename(path.resolve(ledger)) !== ".e2e-ledger") throw new Error(`Refusing to reset the erasure ledger "${ledger}"`);
+  rmSync(path.resolve(ledger), { recursive: true, force: true });
   const admin = new Client({ connectionString: Object.assign(new URL(url), { pathname: "/postgres", search: "" }).toString() });
   await admin.connect();
   await admin.query(`DROP DATABASE IF EXISTS "${name}" WITH (FORCE)`);

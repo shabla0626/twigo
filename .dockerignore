@@ -13,6 +13,7 @@ storage
 .dev-mail
 .e2e-mail
 .e2e-storage
+.e2e-ledger
 .demo-storage
 .walk-*
 .retest

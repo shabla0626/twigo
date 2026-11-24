@@ -41,6 +41,8 @@ const env = {
   SEND_APPLICANT_CONFIRMATION: "true",
   JOBS_ENABLED: "false",
   STORAGE_DIR: ".e2e-storage",
+  // Its own erasure ledger: never the development site's (a different key), reset with the database.
+  LEDGER_DIR: ".e2e-ledger",
   NEXT_DIST_DIR: ".next-e2e",
   E2E_OWNER_EMAIL: E2E.ownerEmail,
   E2E_PASSWORD: E2E.password,
