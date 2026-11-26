@@ -10,7 +10,7 @@ import { TEMPLATES } from "@/lib/email/templates";
 import { LIST_PAGE_SIZE, pageHref, pageNumber, pageWindow } from "@/lib/paging";
 import { channelAccess, sendMessage } from "@/realtime/chat-service";
 import { groupUnread } from "@/server/community/group-page";
-import { joinGroup, myGroups, unreadSince } from "@/server/community/groups";
+import { admitMember, myGroups, unreadSince } from "@/server/community/groups";
 import { createIdea, endorseIdea } from "@/server/community/ideas";
 import { listNotifications, markRead, notify } from "@/server/community/notifications";
 import { cookieJar, createMember, resetDb } from "./helpers";
@@ -289,8 +289,8 @@ describe("P3-13: a new group member does not start with a full unread badge", ()
     await say(b.id, one.channelId, "old two");
     await say(a.id, two.channelId, "old three");
     await pause(20);
-    expect((await joinGroup(dora.id, one.g.id)).ok).toBe(true);
-    expect((await joinGroup(dora.id, two.g.id)).ok).toBe(true);
+    expect((await admitMember(dora.id, one.g.id)).ok).toBe(true);
+    expect((await admitMember(dora.id, two.g.id)).ok).toBe(true);
     expect(await groupUnread(one.g.id, dora.id)).toBe(0);
     expect((await myGroups(dora.id)).map((x) => x.unread)).toEqual([0, 0]);
 

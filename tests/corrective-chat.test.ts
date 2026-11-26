@@ -10,7 +10,7 @@ import { db } from "@/lib/db";
 import { SESSION_COOKIE } from "@/lib/auth/constants";
 import { createSession } from "@/lib/auth/session";
 import { createIdea, endorseIdea } from "@/server/community/ideas";
-import { adminAssignCoordinator, joinGroup, leaveGroup, myGroups, removeMember, transferCoordinator } from "@/server/community/groups";
+import { adminAssignCoordinator, admitMember, leaveGroup, myGroups, removeMember, transferCoordinator } from "@/server/community/groups";
 import { authorizeDownload, listGroupFiles } from "@/server/community/files";
 import { fileReport, recordPrivateReportView } from "@/server/community/reports";
 import { suspendUser } from "@/server/accounts";
@@ -95,21 +95,21 @@ describe("P1-1: membership changes are visible to the group and recorded", () =>
   it("joining and leaving each write a line into the chat and an audit entry", async () => {
     const { g, channelId } = await setup();
     const dora = await createMember("Dora");
-    expect((await joinGroup(dora.id, g.id)).ok).toBe(true);
+    expect((await admitMember(dora.id, g.id)).ok).toBe(true);
     await leaveGroup(dora.id, g.id);
     expect(await systemLines(channelId)).toEqual(["Dora joined the group", "Dora left the group"]);
     expect(await db.auditLog.count({ where: { action: "group.member_joined", actorId: dora.id, entityId: g.id } })).toBe(1);
     expect(await db.auditLog.count({ where: { action: "group.member_left", actorId: dora.id, entityId: g.id } })).toBe(1);
     // Joining twice (already a member) writes nothing more.
-    await joinGroup(dora.id, g.id);
-    await joinGroup(dora.id, g.id);
+    await admitMember(dora.id, g.id);
+    await admitMember(dora.id, g.id);
     expect((await systemLines(channelId)).filter((l) => l === "Dora joined the group")).toHaveLength(2);
   });
 
   it("an owner or administrator cannot join a group, so no join line is written for them (decision of 24 November 2026)", async () => {
     const { owner, g, channelId } = await setup();
     const before = await systemLines(channelId);
-    expect(await joinGroup(owner.id, g.id)).toMatchObject({ ok: false });
+    expect(await admitMember(owner.id, g.id)).toMatchObject({ ok: false });
     expect(await systemLines(channelId)).toEqual(before);
     expect(await db.auditLog.count({ where: { action: "group.member_joined", actorId: owner.id } })).toBe(0);
   });
@@ -134,7 +134,7 @@ describe("P1-1: membership changes are visible to the group and recorded", () =>
     await emit(ca, "channel:join", { channelId });
     const seen = collect(ca, "message:new");
     const dora = await createMember("Dora");
-    await joinGroup(dora.id, g.id);
+    await admitMember(dora.id, g.id);
     await pause();
     expect(seen.map((m) => [m.kind, m.body, m.author])).toEqual([["SYSTEM", "Dora joined the group", null]]);
   });
@@ -142,7 +142,7 @@ describe("P1-1: membership changes are visible to the group and recorded", () =>
   it("a line written by the site cannot be edited, deleted, answered or reported, and is not counted as unread", async () => {
     const { a, b, g, channelId } = await setup();
     const dora = await createMember("Dora");
-    await joinGroup(dora.id, g.id);
+    await admitMember(dora.id, g.id);
     const line = await db.chatMessage.findFirstOrThrow({ where: { channelId, kind: "SYSTEM" } });
     const access = (await channelAccess(db, a.id, channelId))!;
     expect((await editMessage(db, a.id, access, line.id, "changed")).ok).toBe(false);
@@ -160,12 +160,12 @@ describe("administrators never see a group's chat (replaces the earlier join-wit
   it("an owner's socket is refused by the chat, and a member still sees the history", async () => {
     const { a, owner, g, channelId } = await setup();
     await say(a.id, channelId, "private plan from before");
-    await joinGroup(owner.id, g.id);
+    await admitMember(owner.id, g.id);
     const co = await connectAs(owner.id, "OWNER");
     expect((await emit<JoinAnswer>(co, "channel:join", { channelId })).ok).toBe(false);
     expect(await channelAccess(db, owner.id, channelId)).toBeNull();
     const dora = await createMember("Dora");
-    await joinGroup(dora.id, g.id);
+    await admitMember(dora.id, g.id);
     const cd = await connectAs(dora.id);
     expect(bodies((await emit<JoinAnswer>(cd, "channel:join", { channelId })).messages)).toContain("private plan from before");
   });

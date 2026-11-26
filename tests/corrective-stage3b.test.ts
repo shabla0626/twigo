@@ -25,7 +25,7 @@ import {
   transferCoordinatorAction,
 } from "@/app/community/actions";
 import { liftRemovalAction } from "@/app/admin/actions/community";
-import { adminLiftRemoval, joinGroup, removeMember } from "@/server/community/groups";
+import { adminLiftRemoval, admitMember, joinGroup, removeMember } from "@/server/community/groups";
 import { createIdea, endorseIdea } from "@/server/community/ideas";
 import { addTask, saveNote } from "@/server/community/research";
 import { cookieJar, createMember, createUser, resetDb, signIn } from "./helpers";
@@ -251,6 +251,7 @@ describe("P3-14: actions that cannot be undone", () => {
     const owner = await createUser({ email: "owner@example.test", role: "OWNER", totp: true });
     expect((await removeMember(a.id, g.id, b.id)).ok).toBe(true);
     expect((await joinGroup(b.id, g.id)).ok).toBe(false);
+    expect((await admitMember(b.id, g.id)).ok).toBe(false);
 
     // Nothing to lift for an active member or a stranger.
     expect((await adminLiftRemoval(owner.id, g.id, a.id)).ok).toBe(false);

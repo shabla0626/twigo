@@ -83,6 +83,38 @@ export const IconArrow = (p: SVGProps<SVGSVGElement>) => (
     <path d="M5 12h14M13 6l6 6-6 6" />
   </Icon>
 );
+export const IconEye = (p: SVGProps<SVGSVGElement>) => (
+  <Icon {...p}>
+    <path d="M2.5 12S6 6.5 12 6.5 21.5 12 21.5 12 18 17.5 12 17.5 2.5 12 2.5 12z" />
+    <circle cx="12" cy="12" r="2.6" />
+  </Icon>
+);
+export const IconEyeOff = (p: SVGProps<SVGSVGElement>) => (
+  <Icon {...p}>
+    <path d="M4 5l16 14" />
+    <path d="M9.5 6.7A9.8 9.8 0 0 1 12 6.5C18 6.5 21.5 12 21.5 12a18 18 0 0 1-3.2 3.6" />
+    <path d="M6.2 8.2C4 9.8 2.5 12 2.5 12S6 17.5 12 17.5c1.1 0 2.1-.2 3-.6" />
+    <path d="M10 10.2a2.6 2.6 0 0 0 3.6 3.6" />
+  </Icon>
+);
+export const IconMail = (p: SVGProps<SVGSVGElement>) => (
+  <Icon {...p}>
+    <rect x="3.5" y="5.5" width="17" height="13" rx="2" />
+    <path d="M4 7l8 6 8-6" />
+  </Icon>
+);
+export const IconLock = (p: SVGProps<SVGSVGElement>) => (
+  <Icon {...p}>
+    <rect x="5" y="10.5" width="14" height="9.5" rx="2" />
+    <path d="M8 10.5V8a4 4 0 0 1 8 0v2.5" />
+  </Icon>
+);
+export const IconUser = (p: SVGProps<SVGSVGElement>) => (
+  <Icon {...p}>
+    <circle cx="12" cy="8" r="3.2" />
+    <path d="M5 19c.8-3.2 3.4-5 7-5s6.2 1.8 7 5" />
+  </Icon>
+);
 export const IconBriefcase = (p: SVGProps<SVGSVGElement>) => (
   <Icon {...p}>
     <rect x="3" y="7" width="18" height="13" rx="2" />

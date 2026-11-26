@@ -53,11 +53,18 @@ export async function runRetention(db: PrismaClient, opts: { dryRun: boolean; st
     const discussionWhere = commentWhere;
     const messageWhere = cCut ? { deletedAt: { lt: cCut } } : null;
     const ideaWhere = cCut ? { status: "REMOVED" as const, removedAt: { lt: cCut } } : null;
+    const fieldWhere = cCut ? { removedAt: { lt: cCut } } : null;
+    const articleWhere = fieldWhere;
     const deletedCount =
       (commentWhere ? await db.comment.count({ where: { ...commentWhere, replies: { none: {} } } }) : 0) +
       (discussionWhere ? await db.groupDiscussion.count({ where: discussionWhere }) : 0) +
       (messageWhere ? await db.chatMessage.count({ where: messageWhere }) : 0) +
-      (ideaWhere ? await db.businessIdea.count({ where: { ...ideaWhere, group: null } }) : 0);
+      (ideaWhere ? await db.businessIdea.count({ where: { ...ideaWhere, group: null } }) : 0) +
+      (fieldWhere ? await db.fieldPost.count({ where: fieldWhere }) : 0) +
+      (articleWhere ? await db.boardArticle.count({ where: articleWhere }) : 0) +
+      (articleWhere ? await db.projectBroadcast.count({ where: articleWhere }) : 0) +
+      (articleWhere ? await db.culturalWork.count({ where: articleWhere }) : 0) +
+      (articleWhere ? await db.projectBroadcastComment.count({ where: { removedAt: { lt: cCut! } } }) : 0);
     add("deleted_content", "Deleted or removed posts, comments and messages", cDays, deletedCount);
 
     // 4. Old chat history (optional; default keep).
@@ -109,6 +116,13 @@ export async function runRetention(db: PrismaClient, opts: { dryRun: boolean; st
         await db.comment.deleteMany({ where: { ...commentWhere, replies: { none: {} } } });
       }
       if (discussionWhere) await db.groupDiscussion.deleteMany({ where: discussionWhere });
+      if (fieldWhere) await db.fieldPost.deleteMany({ where: fieldWhere });
+      if (articleWhere) {
+        await db.projectBroadcastComment.deleteMany({ where: { removedAt: { lt: cCut! } } });
+        await db.projectBroadcast.deleteMany({ where: articleWhere });
+        await db.culturalWork.deleteMany({ where: articleWhere });
+        await db.boardArticle.deleteMany({ where: articleWhere });
+      }
       // Attachments go with their messages (the link is cleared when a message is deleted,
       // so they are collected first; otherwise they would stay behind, visible in the group's files).
       const doomed = [...(messageWhere ? [messageWhere] : []), ...(chatWhere ? [chatWhere] : [])];

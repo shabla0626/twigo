@@ -3,6 +3,7 @@ import { ActionForm } from "@/components/forms/action-form";
 import { Field, Input, Textarea } from "@/components/forms/fields";
 import { EmptyState, Panel, TextBody, Time } from "@/components/community/ui";
 import { db } from "@/lib/db";
+import { anonymousLabel } from "@/lib/anonymous-label";
 import { listDiscussions } from "@/server/community/comments";
 import { loadGroupPage } from "@/server/community/group-page";
 import { announcementAction, createDiscussionAction } from "../../../../actions";
@@ -10,14 +11,15 @@ import { announcementAction, createDiscussionAction } from "../../../../actions"
 /** Announcements from the coordinator, and longer discussions any member can read and reply to. */
 export default async function DiscussionsPage({ params }: { params: Promise<{ slug: string }> }) {
   const { slug } = await params;
-  const { group, isOpen, isCoordinator } = await loadGroupPage(slug);
+  const { group, isOpen, isCoordinator, isMember } = await loadGroupPage(slug);
+  const shown = (id: string | null | undefined, name: string | null | undefined) => (!id ? "Former member" : isMember ? name?.trim() || "Member" : anonymousLabel(id));
   const [discussions, announcements] = await Promise.all([
     listDiscussions(group.id),
     db.groupAnnouncement.findMany({
       where: { groupId: group.id },
       orderBy: { createdAt: "desc" },
       take: 10,
-      include: { author: { select: { profile: { select: { displayName: true } } } } },
+      include: { author: { select: { id: true, profile: { select: { displayName: true } } } } },
     }),
   ]);
   return (
@@ -37,7 +39,7 @@ export default async function DiscussionsPage({ params }: { params: Promise<{ sl
               <li key={a.id} className="rounded-2xl border border-ink-100 bg-white p-5">
                 <p className="font-semibold text-ink-950">{a.title}</p>
                 <p className="text-xs text-ink-500">
-                  {a.author?.profile?.displayName ?? "Coordinator"} · <Time date={a.createdAt} />
+                  {shown(a.author?.id, a.author?.profile?.displayName)} · <Time date={a.createdAt} />
                 </p>
                 <TextBody text={a.body} className="mt-2 text-sm leading-6" />
               </li>
@@ -93,7 +95,7 @@ export default async function DiscussionsPage({ params }: { params: Promise<{ sl
                 <Link href={`/community/groups/${slug}/discussions/${d.id}`} className="block px-5 py-4 hover:bg-ink-50">
                   <p className="font-semibold text-ink-950">{d.title}</p>
                   <p className="mt-0.5 text-xs text-ink-500">
-                    {d.author?.profile?.displayName ?? "Former member"} · {d.commentCount} repl{d.commentCount === 1 ? "y" : "ies"} · active <Time date={d.lastActivityAt} />
+                    {shown(d.author?.id, d.author?.profile?.displayName)} · {d.commentCount} repl{d.commentCount === 1 ? "y" : "ies"} · active <Time date={d.lastActivityAt} />
                   </p>
                 </Link>
               </li>

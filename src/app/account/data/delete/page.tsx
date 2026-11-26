@@ -58,7 +58,7 @@ export default async function RequestDeletionPage({ searchParams }: Props) {
                 <input type="checkbox" name="i" value="1" className="mt-1" /> <span>Remove my ideas that did not start a group</span>
               </label>
               <label className="flex items-start gap-3">
-                <input type="checkbox" name="c" value="1" className="mt-1" /> <span>Remove my comments and group discussions</span>
+                <input type="checkbox" name="c" value="1" className="mt-1" /> <span>Remove my comments, group discussions, field notes, discussion pieces, project-channel pieces and cultural installments</span>
               </label>
               <label className="flex items-start gap-3">
                 <input type="checkbox" name="m" value="1" className="mt-1" /> <span>Remove my chat messages</span>
@@ -110,7 +110,7 @@ function Consequences({ next, choices }: { next: string; choices: ErasureChoices
               <strong>Things you shared with others</strong>, such as your contributions in group chats, notes, tasks, decisions and files, and ideas that
               started a group. Other members rely on them. They stay, shown without your name. Your ideas, comments, discussions and chat
               messages are removed too if you asked for it in step 1. You asked to remove:{" "}
-              {[choices.removeIdeas && "your ideas without a group", choices.removeComments && "your comments and discussions", choices.removeChat && "your chat messages"].filter(Boolean).join(", ") || "nothing (go back to change this)"}.
+              {[choices.removeIdeas && "your ideas without a group", choices.removeComments && "your comments, discussions, field notes, discussion pieces, project-channel pieces and cultural installments", choices.removeChat && "your chat messages"].filter(Boolean).join(", ") || "nothing (go back to change this)"}.
             </li>
             <li>
               <strong>Project agreements you accepted.</strong> They are the record of what the participants agreed; the text, including participants’ names,

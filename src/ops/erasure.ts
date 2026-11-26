@@ -7,8 +7,8 @@
  * preferences, chat read markers, meeting attendance, the application (unless it is linked to earlier
  * project records with compensation, where only what is necessary is kept: see `retainApplicant`).
  * Anonymized: the account row (kept as a placeholder so shared records keep valid links).
- * Ended: group memberships. Removed as the member chose: ideas without a group, comments and
- * discussions, chat messages (hidden now; permanently deleted by the regular clean-up).
+ * Ended: group memberships. Removed as the member chose: ideas without a group, comments,
+ * discussions, field notes and discussion pieces, chat messages (hidden now; permanently deleted by the regular clean-up).
  * Kept (shared or evidence): research notes, tasks, decisions, links, group files, ideas that formed a
  * group, project agreements, acceptance records, privacy requests, reports, audit log, email log.
  */
@@ -73,8 +73,19 @@ export async function eraseAccountData(tx: Prisma.TransactionClient, userId: str
   }
   if (o.removeIdeas) counts.ideasRemoved = (await tx.businessIdea.updateMany({ where: { authorId: userId, group: null, status: { not: "REMOVED" } }, data: { status: "REMOVED", removedAt: o.now } })).count;
   if (o.removeComments) {
+    const touchedArticles = await tx.comment.findMany({ where: { authorId: userId, articleId: { not: null } }, select: { articleId: true }, distinct: ["articleId"] });
     counts.commentsRemoved = (await tx.comment.updateMany({ where: { authorId: userId, deletedAt: null }, data: { deletedAt: o.now } })).count;
     counts.discussionsRemoved = (await tx.groupDiscussion.updateMany({ where: { authorId: userId, deletedAt: null }, data: { deletedAt: o.now } })).count;
+    counts.fieldPostsRemoved = (await tx.fieldPost.updateMany({ where: { authorId: userId, removedAt: null }, data: { removedAt: o.now, removedReason: "Removed with the author's account." } })).count;
+    counts.articlesRemoved = (await tx.boardArticle.updateMany({ where: { authorId: userId, removedAt: null }, data: { removedAt: o.now, removedReason: "Removed with the author's account." } })).count;
+    counts.broadcastsRemoved = (await tx.projectBroadcast.updateMany({ where: { authorId: userId, removedAt: null }, data: { removedAt: o.now, removedReason: "Removed with the author's account." } })).count;
+    counts.culturalWorksRemoved = (await tx.culturalWork.updateMany({ where: { authorId: userId, removedAt: null }, data: { removedAt: o.now, removedReason: "Removed with the author's account." } })).count;
+    await tx.projectBroadcastComment.updateMany({ where: { authorId: userId, removedAt: null }, data: { removedAt: o.now } });
+    for (const row of touchedArticles) {
+      if (!row.articleId) continue;
+      const n = await tx.comment.count({ where: { articleId: row.articleId, deletedAt: null, removedAt: null } });
+      await tx.boardArticle.updateMany({ where: { id: row.articleId }, data: { commentCount: n } });
+    }
   }
   if (o.removeChat) {
     const msgs = await tx.chatMessage.findMany({ where: { authorId: userId, deletedAt: null, kind: "USER" }, select: { id: true } });
@@ -110,6 +121,11 @@ export async function verifyErased(tx: Prisma.TransactionClient, userId: string,
   if (await tx.groupMembership.count({ where: { userId, status: "ACTIVE" } })) problems.push("active group memberships remain");
   if (choices.removeChat && (await tx.chatMessage.count({ where: { authorId: userId, deletedAt: null, kind: "USER" } }))) problems.push("chat messages remain");
   if (choices.removeComments && (await tx.comment.count({ where: { authorId: userId, deletedAt: null } }))) problems.push("comments remain");
+  if (choices.removeComments && (await tx.fieldPost.count({ where: { authorId: userId, removedAt: null } }))) problems.push("field notes remain");
+  if (choices.removeComments && (await tx.boardArticle.count({ where: { authorId: userId, removedAt: null } }))) problems.push("discussion pieces remain");
+  if (choices.removeComments && (await tx.projectBroadcast.count({ where: { authorId: userId, removedAt: null } }))) problems.push("project channel pieces remain");
+  if (choices.removeComments && (await tx.culturalWork.count({ where: { authorId: userId, removedAt: null } }))) problems.push("cultural installments remain");
+  if (choices.removeComments && (await tx.projectBroadcastComment.count({ where: { authorId: userId, removedAt: null } }))) problems.push("project channel comments remain");
   if (choices.removeIdeas && (await tx.businessIdea.count({ where: { authorId: userId, group: null, status: { not: "REMOVED" } } }))) problems.push("ideas remain");
   return problems;
 }

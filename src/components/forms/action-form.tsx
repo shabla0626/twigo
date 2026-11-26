@@ -1,6 +1,7 @@
 "use client";
 
 import { useActionState, useEffect, useRef, type ReactNode } from "react";
+import { IconArrow } from "../ui/icons";
 import { Button, cn } from "../ui/primitives";
 import { FormAlert } from "./fields";
 
@@ -21,6 +22,7 @@ export function ActionForm({
   variant = "primary",
   fullWidth = false,
   submitClassName,
+  withArrow = false,
 }: {
   action: FormAction;
   children?: ReactNode;
@@ -31,6 +33,7 @@ export function ActionForm({
   variant?: "primary" | "secondary" | "danger" | "soft" | "ghost";
   fullWidth?: boolean;
   submitClassName?: string;
+  withArrow?: boolean;
 }) {
   const [state, formAction, pending] = useActionState<FormState, FormData>(action, undefined);
   const ref = useRef<HTMLFormElement>(null);
@@ -47,6 +50,7 @@ export function ActionForm({
       {children}
       <Button type="submit" variant={variant} disabled={pending} className={cn(fullWidth && "w-full", submitClassName)}>
         {pending ? pendingLabel : submitLabel}
+        {!pending && withArrow && <IconArrow className="h-4 w-4" />}
       </Button>
     </form>
   );

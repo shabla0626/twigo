@@ -24,6 +24,7 @@ export const MORE_LINKS: { title: string; links: NavLink[] }[] = [
     title: "Community",
     links: [
       { href: "/about", label: "About" },
+      { href: "/operators", label: "Who operates Twigo" },
       { href: "/compensation", label: "Pay & Fairness" },
       { href: "/support", label: "Community Support" },
       { href: "/work-with-us", label: "For Businesses" },
@@ -44,6 +45,7 @@ export const MORE_LINKS: { title: string; links: NavLink[] }[] = [
 
 /** Pages under "More pages" in the phone menu (the header links are listed above it). */
 export const MOBILE_MORE_LINKS: NavLink[] = [
+  { href: "/operators", label: "Who operates Twigo" },
   { href: "/participation", label: "Who Can Participate" },
   { href: "/founding-contributors", label: "Founding Contributors" },
   { href: "/work-with-us", label: "For Businesses" },

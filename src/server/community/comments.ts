@@ -1,19 +1,32 @@
 import "server-only";
 import type { Prisma } from "@prisma/client";
 import { db } from "@/lib/db";
+import { hasCommunityAccess } from "@/lib/auth/session-core";
 import { audit } from "@/lib/audit";
 import { rateLimit } from "@/lib/rate-limit";
+import { publishRealtime } from "@/lib/realtime-events";
 import { notify } from "./notifications";
 
 const MAX_DEPTH = 3;
 
-type Target = { ideaId: string } | { discussionId: string };
+type Target = { ideaId: string } | { discussionId: string } | { articleId: string };
+
+function sameThread(parent: { ideaId: string | null; discussionId: string | null; articleId: string | null }, target: Target) {
+  if ("ideaId" in target) return parent.ideaId === target.ideaId;
+  if ("discussionId" in target) return parent.discussionId === target.discussionId;
+  return parent.articleId === target.articleId;
+}
 
 async function targetInfo(t: Target) {
   if ("ideaId" in t) {
     const idea = await db.businessIdea.findUnique({ where: { id: t.ideaId }, select: { id: true, title: true, authorId: true, status: true } });
     if (!idea || idea.status === "REMOVED") return null;
     return { kind: "idea" as const, id: idea.id, title: idea.title, ownerId: idea.authorId, link: `/community/ideas/${idea.id}` };
+  }
+  if ("articleId" in t) {
+    const article = await db.boardArticle.findUnique({ where: { id: t.articleId }, select: { id: true, title: true, authorId: true, removedAt: true } });
+    if (!article || article.removedAt) return null;
+    return { kind: "article" as const, id: article.id, title: article.title, ownerId: article.authorId, link: `/community/discuss/${article.id}` };
   }
   const d = await db.groupDiscussion.findUnique({
     where: { id: t.discussionId },
@@ -23,26 +36,38 @@ async function targetInfo(t: Target) {
   return { kind: "discussion" as const, id: d.id, title: d.title, ownerId: d.authorId, link: `/community/groups/${d.group.slug}/discussions/${d.id}`, archived: d.group.status === "ARCHIVED" };
 }
 
+async function isApprovedMember(userId: string) {
+  const u = await db.user.findUnique({ where: { id: userId }, select: { status: true, role: true, emailVerifiedAt: true, membershipStatus: true } });
+  return !!u && hasCommunityAccess({ status: u.status, role: u.role, emailVerified: Boolean(u.emailVerifiedAt), membership: u.membershipStatus });
+}
+
 export async function addComment(userId: string, target: Target, input: { body: string; parentId: string | null }) {
   if (!rateLimit(`comment:${userId}`, 30, 10 * 60_000).ok) return { ok: false as const, error: "You are commenting very quickly. Please wait a moment." };
   const info = await targetInfo(target);
   if (!info) return { ok: false as const, error: "This conversation is not available." };
   if ("archived" in info && info.archived) return { ok: false as const, error: "This group is archived." };
+  if (info.kind === "discussion" && !(await isApprovedMember(userId))) return { ok: false as const, error: "Only an approved community member can take part in a discussion." };
 
   let depth = 0;
   let parentAuthor: string | null = null;
   if (input.parentId) {
     const parent = await db.comment.findUnique({ where: { id: input.parentId } });
-    const same = parent && ("ideaId" in target ? parent.ideaId === target.ideaId : parent.discussionId === target.discussionId);
-    if (!parent || !same) return { ok: false as const, error: "The comment you replied to no longer exists." };
+    if (!parent || !sameThread(parent, target)) return { ok: false as const, error: "The comment you replied to no longer exists." };
     depth = Math.min(parent.depth + 1, MAX_DEPTH);
     parentAuthor = parent.authorId;
   }
   const comment = await db.$transaction(async (tx) => {
     const c = await tx.comment.create({
-      data: { authorId: userId, body: input.body, parentId: input.parentId, depth, ...("ideaId" in target ? { ideaId: target.ideaId } : { discussionId: target.discussionId }) },
+      data: {
+        authorId: userId,
+        body: input.body,
+        parentId: input.parentId,
+        depth,
+        ...("ideaId" in target ? { ideaId: target.ideaId } : "discussionId" in target ? { discussionId: target.discussionId } : { articleId: target.articleId }),
+      },
     });
     if (info.kind === "idea") await tx.businessIdea.update({ where: { id: info.id }, data: { commentCount: { increment: 1 }, lastActivityAt: new Date() } });
+    else if (info.kind === "article") await tx.boardArticle.update({ where: { id: info.id }, data: { commentCount: { increment: 1 }, lastActivityAt: new Date() } });
     else {
       const d = await tx.groupDiscussion.update({ where: { id: info.id }, data: { commentCount: { increment: 1 }, lastActivityAt: new Date() }, select: { groupId: true } });
       await tx.researchGroup.update({ where: { id: d.groupId }, data: { lastActivityAt: new Date() } });
@@ -62,6 +87,7 @@ export async function addComment(userId: string, target: Target, input: { body: 
       dedupeKey: `comments:${info.id}`,
     });
   }
+  if (info.kind === "article") await publishRealtime(db, { t: "board.updated", articleId: info.id });
   return { ok: true as const, id: comment.id };
 }
 
@@ -78,7 +104,7 @@ export async function editComment(userId: string, commentId: string, body: strin
  * author, not removed by moderation). Called whenever a comment disappears.
  * The parent row is locked first, so a comment added at the same moment is never lost from the count.
  */
-export async function recountComments(tx: Prisma.TransactionClient, target: { ideaId?: string | null; discussionId?: string | null }) {
+export async function recountComments(tx: Prisma.TransactionClient, target: { ideaId?: string | null; discussionId?: string | null; articleId?: string | null }) {
   const visible = { deletedAt: null, removedAt: null };
   if (target.ideaId) {
     await tx.$queryRaw`SELECT 1 FROM "BusinessIdea" WHERE "id" = ${target.ideaId} FOR UPDATE`;
@@ -87,6 +113,10 @@ export async function recountComments(tx: Prisma.TransactionClient, target: { id
   if (target.discussionId) {
     await tx.$queryRaw`SELECT 1 FROM "GroupDiscussion" WHERE "id" = ${target.discussionId} FOR UPDATE`;
     await tx.groupDiscussion.updateMany({ where: { id: target.discussionId }, data: { commentCount: await tx.comment.count({ where: { discussionId: target.discussionId, ...visible } }) } });
+  }
+  if (target.articleId) {
+    await tx.$queryRaw`SELECT 1 FROM "BoardArticle" WHERE "id" = ${target.articleId} FOR UPDATE`;
+    await tx.boardArticle.updateMany({ where: { id: target.articleId }, data: { commentCount: await tx.comment.count({ where: { articleId: target.articleId, ...visible } }) } });
   }
 }
 
@@ -98,6 +128,7 @@ export async function deleteComment(userId: string, commentId: string) {
     await recountComments(tx, c);
   });
   await audit(userId, "comment.deleted_by_author", "Comment", commentId);
+  if (c.articleId) await publishRealtime(db, { t: "board.updated", articleId: c.articleId });
   return { ok: true as const };
 }
 
@@ -114,7 +145,7 @@ export type CommentNode = {
 
 export async function commentTree(target: Target): Promise<CommentNode[]> {
   const rows = await db.comment.findMany({
-    where: "ideaId" in target ? { ideaId: target.ideaId } : { discussionId: target.discussionId },
+    where: "ideaId" in target ? { ideaId: target.ideaId } : "discussionId" in target ? { discussionId: target.discussionId } : { articleId: target.articleId },
     orderBy: { createdAt: "asc" },
     take: 1000,
     include: { author: { select: { id: true, profile: { select: { displayName: true } } } } },
@@ -145,6 +176,7 @@ export async function commentTree(target: Target): Promise<CommentNode[]> {
 // ---------------------------------------------------------------- group discussions
 
 export async function createDiscussion(userId: string, groupId: string, input: { title: string; body: string }) {
+  if (!(await isApprovedMember(userId))) return { ok: false as const, error: "Only an approved community member can take part in a discussion." };
   if (!rateLimit(`discussion:${userId}`, 10, 3600_000).ok) return { ok: false as const, error: "Please wait before starting another discussion." };
   const g = await db.researchGroup.findUnique({ where: { id: groupId } });
   if (!g || g.suspendedAt || g.status === "ARCHIVED") return { ok: false as const, error: "This group is not accepting new discussions." };

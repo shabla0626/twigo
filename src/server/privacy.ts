@@ -40,9 +40,14 @@ export async function exportUserData(userId: string) {
     }),
     db.privacyRequest.findMany({ where: { userId }, select: { kind: true, status: true, details: true, response: true, createdAt: true, handledAt: true } }),
   ]);
-  const [ideas, comments, endorsements, memberships, messages, notifications, files, sessions, reports] = await Promise.all([
+  const [ideas, fieldPosts, articles, broadcasts, culturalWorks, broadcastComments, comments, endorsements, memberships, messages, notifications, files, sessions, reports] = await Promise.all([
     db.businessIdea.findMany({ where: { authorId: userId }, omit: { authorId: true } }),
-    db.comment.findMany({ where: { authorId: userId }, select: { id: true, ideaId: true, discussionId: true, body: true, createdAt: true, editedAt: true, deletedAt: true } }),
+    db.fieldPost.findMany({ where: { authorId: userId }, select: { id: true, category: true, kind: true, title: true, body: true, links: true, createdAt: true, removedAt: true } }),
+    db.boardArticle.findMany({ where: { authorId: userId }, select: { id: true, title: true, body: true, createdAt: true, removedAt: true } }),
+    db.projectBroadcast.findMany({ where: { authorId: userId }, select: { id: true, title: true, body: true, createdAt: true, removedAt: true, group: { select: { name: true } } } }),
+    db.culturalWork.findMany({ where: { authorId: userId }, select: { id: true, kind: true, seriesTitle: true, title: true, body: true, createdAt: true, removedAt: true } }),
+    db.projectBroadcastComment.findMany({ where: { authorId: userId }, select: { id: true, postId: true, body: true, createdAt: true, removedAt: true } }),
+    db.comment.findMany({ where: { authorId: userId }, select: { id: true, ideaId: true, discussionId: true, articleId: true, body: true, createdAt: true, editedAt: true, deletedAt: true } }),
     db.ideaEndorsement.findMany({ where: { userId }, select: { ideaId: true, createdAt: true } }),
     db.groupMembership.findMany({ where: { userId }, select: { role: true, status: true, joinedAt: true, leftAt: true, group: { select: { name: true, slug: true } } } }),
     db.chatMessage.findMany({ where: { authorId: userId }, select: { id: true, body: true, createdAt: true, editedAt: true, deletedAt: true, channel: { select: { group: { select: { name: true } } } } } }),
@@ -58,6 +63,11 @@ export async function exportUserData(userId: string) {
     application: applicant,
     compensationAgreements: compensation,
     ideas,
+    fieldPosts,
+    articles,
+    broadcasts,
+    culturalWorks,
+    broadcastComments,
     endorsements,
     comments,
     groupMemberships: memberships,

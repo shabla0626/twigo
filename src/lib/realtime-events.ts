@@ -21,7 +21,9 @@ export type RealtimeEvent =
   /** Something visible on a group page changed (meeting started, announcement...). */
   | { t: "group.updated"; groupId: string; what: "meeting" | "announcement" | "members" | "status" | "research" }
   /** A policy version that everyone must accept again was published: open chats are re-checked (src/realtime/server.ts). */
-  | { t: "legal.reacceptance_required" };
+  | { t: "legal.reacceptance_required" }
+  /** A discussion piece, its comments, or its marks changed. The payload is an id only. */
+  | { t: "board.updated"; articleId: string };
 
 export async function publishRealtime(db: PrismaClient, event: RealtimeEvent): Promise<void> {
   try {

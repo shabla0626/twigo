@@ -10,6 +10,7 @@ import { MemberAvatar, Panel, TextBody, Time } from "@/components/community/ui";
 import { Badge, Button, buttonClass } from "@/components/ui/primitives";
 import { db } from "@/lib/db";
 import { COORDINATOR_STATUSES, GROUP_STATUS_HELP, GROUP_STATUS_LABELS } from "@/server/community/group-labels";
+import { anonymousLabel } from "@/lib/anonymous-label";
 import { groupMeetingNow, groupOverview, loadGroupPage } from "@/server/community/group-page";
 import { groupInfoAction, groupStatusAction, leaveGroupAction } from "../../../actions";
 
@@ -36,6 +37,7 @@ export default async function GroupOverviewPage({ params, searchParams }: Props)
         }),
       ])
     : [null, []];
+  const shown = (id: string | null | undefined, name: string | null | undefined) => (!id ? "Former member" : isMember ? name?.trim() || "Member" : anonymousLabel(id));
   const stageIndex = STAGES.indexOf(group.status as (typeof STAGES)[number]);
   const latest = overview.announcements[0];
   const base = `/community/groups/${slug}`;
@@ -50,8 +52,8 @@ export default async function GroupOverviewPage({ params, searchParams }: Props)
               investigate together; it does not mean its success is proven.
             </FormAlert>
           )}
-          {sp.joined && <FormAlert tone="success">You joined the group. Chat, meetings and shared research are now open to you.</FormAlert>}
-          {sp.left && <FormAlert tone="success">You left the group. Your account is still active, and you can rejoin at any time while the group is active.</FormAlert>}
+          {sp.joined && <FormAlert tone="success">You are a member of the project. Inside it, members can see one another’s profiles. Chat, meetings, shared research, and projects are open to you.</FormAlert>}
+          {sp.left && <FormAlert tone="success">You left the project. Your account is still active. You can join again from the project page.</FormAlert>}
           {flash.ok && <FormAlert tone="success">{flash.ok}</FormAlert>}
           {flash.error && <FormAlert tone="error">{flash.error}</FormAlert>}
         </div>
@@ -78,7 +80,7 @@ export default async function GroupOverviewPage({ params, searchParams }: Props)
               <Link href={`/community/ideas/${overview.idea.id}`} className="font-medium text-accent-700 underline">
                 {overview.idea.title}
               </Link>{" "}
-              by {overview.idea.author?.profile?.displayName ?? "a former member"}.
+              by {shown(overview.idea.author?.id, overview.idea.author?.profile?.displayName)}.
             </p>
           )}
         </Panel>
@@ -118,7 +120,7 @@ export default async function GroupOverviewPage({ params, searchParams }: Props)
           <Panel title="Latest announcement" action={<Link href={`${base}/discussions`} className="text-sm text-accent-700 hover:underline">All announcements</Link>}>
             <p className="font-semibold text-ink-950">{latest.title}</p>
             <p className="text-xs text-ink-500">
-              {latest.author?.profile?.displayName ?? "Coordinator"} · <Time date={latest.createdAt} />
+              {shown(latest.author?.id, latest.author?.profile?.displayName)} · <Time date={latest.createdAt} />
             </p>
             <TextBody text={latest.body} className="mt-2 text-sm leading-6" />
           </Panel>
@@ -205,14 +207,14 @@ export default async function GroupOverviewPage({ params, searchParams }: Props)
         >
           <ul className="space-y-2">
             {overview.memberships.slice(0, 8).map((m) => {
-              const name = m.user.profile?.displayName ?? "Member";
+              const name = shown(m.user.id, m.user.profile?.displayName);
               return (
                 <li key={m.user.id}>
                   <Link href={`/community/members/${m.user.id}`} className="flex items-center gap-3 rounded-lg text-sm hover:bg-ink-50">
                     <MemberAvatar name={name} size={30} />
                     <span className="truncate text-ink-900">{name}</span>
                     {m.role === "COORDINATOR" && <Badge tone="success">Coordinator</Badge>}
-                    {m.user.role !== "MEMBER" && <Badge>Administrator</Badge>}
+                    {isMember && m.user.role !== "MEMBER" && <Badge>Administrator</Badge>}
                   </Link>
                 </li>
               );

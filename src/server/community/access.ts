@@ -13,7 +13,7 @@ export class AccessError extends Error {
 export type GroupAccess = {
   group: ResearchGroup;
   membership: GroupMembership | null;
-  /** Active group member (may use chat, meetings, research, files). */
+  /** Active group member (may use chat, meetings, research, projects, and see profiles). */
   isMember: boolean;
   isCoordinator: boolean;
   /** Group accepts new activity (not archived or suspended). */

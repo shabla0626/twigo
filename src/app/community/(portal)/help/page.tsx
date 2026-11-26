@@ -16,12 +16,16 @@ const QUESTIONS: [string, string][] = [
     "What happens when a project group is created?",
     "The idea’s author and its supporters become the first members. The group gets its own page with chat, meetings, shared research and discussions. A group is a place to investigate an idea; it is not a company or a job.",
   ],
-  ["Can I join or leave groups freely?", "Yes. Join any active group from Explore Groups, and leave at any time from the group page. Leaving a group does not close your account."],
+  ["Can I join or leave groups freely?", "Anyone can join a project. A member can also invite you. Accepting an invitation adds you to the group; it does not replace approval of your community membership. You can leave at any time. Leaving does not close your account. Until you share a project with someone, you see them as an anonymous account."],
   [
     "How do meetings work?",
     "Meetings run in Google Meet. Anyone in the group can start one by pasting a Google Meet link; the group is notified and members join from the Meetings tab. Mute, camera and leave buttons are at the bottom of the Google Meet window. Meetings are not recorded by this site.",
   ],
-  ["Who can see what I post?", "Ideas, comments and group discussions are visible to all approved members. Group chat, meetings and shared research are visible only to that group’s current members. Whenever someone joins or leaves a group, a line in its chat says so."],
+  ["Who can see what I post?", "Ideas, comments, discussion pieces, group discussions, project channels, cultural installments and notes on the Fields page are visible to all approved members. They are not confidential. Every approved member can read, start, and reply in a group’s discussions. Members of a project publish on that project’s channel; other members can comment. Group chat, meetings, shared research, and project files are visible only to that group’s current members. Until you share a project, other members see an anonymous account, your pieces, your interests and your skills. Inside a project you share, members see one another’s profiles."],
+  [
+    "What is the discussion board?",
+    "It is a place to publish a view and to comment on other members’ pieces. The people who take part can propose a business idea from that discussion. A project group still opens only when enough other members support the idea. Members mark pieces worth reading. Those marks, not the operator, decide the recognized pieces and writers.",
+  ],
   [
     "Can administrators read our group chat or files?",
     "No. A group’s chat, research, files, tasks, decisions and projects are private to its members, and administrator accounts cannot join groups. If you report a message or the group, the moderators see the copy attached to your report. Anything more is possible only after a member of this group reported something, an administrator asked for access, and the owner approved it for a limited time and for specific information only. Access ends automatically and every view is recorded.",
@@ -55,6 +59,9 @@ export default async function HelpPage() {
       </ol>
       <div className="flex flex-wrap gap-2">
         <ButtonLink href="/community">Browse Business Ideas</ButtonLink>
+        <ButtonLink href="/community/discuss" variant="secondary">
+          Discussion
+        </ButtonLink>
         <ButtonLink href="/community/groups" variant="secondary">
           Explore Groups
         </ButtonLink>

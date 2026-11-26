@@ -3,9 +3,9 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { cn } from "../ui/primitives";
-import { IconChat, IconClipboard, IconInfo, IconMegaphone, IconNotes, IconVideo } from "./icons";
+import { IconBook, IconChat, IconClipboard, IconInfo, IconMegaphone, IconNotes, IconVideo } from "./icons";
 
-/** Six sections; members are listed on Overview, files live in Research. */
+/** The team's own sections, plus a public channel any member of the site can read. */
 const TABS = [
   { seg: "", label: "Overview", icon: IconInfo, private: false, also: ["members"] },
   { seg: "chat", label: "Chat", icon: IconChat, private: true, also: [] },
@@ -13,6 +13,7 @@ const TABS = [
   { seg: "research", label: "Research", icon: IconNotes, private: true, also: ["files"] },
   { seg: "projects", label: "Projects", icon: IconClipboard, private: true, also: [] },
   { seg: "discussions", label: "Discussions", icon: IconMegaphone, private: false, also: [] },
+  { seg: "broadcast", label: "Channel", icon: IconBook, private: false, also: [] },
 ];
 
 export function GroupTabs({ slug, isMember, unread = 0, live = false }: { slug: string; isMember: boolean; unread?: number; live?: boolean }) {
@@ -20,7 +21,7 @@ export function GroupTabs({ slug, isMember, unread = 0, live = false }: { slug: 
   const base = `/community/groups/${slug}`;
   return (
     <nav aria-label="Group sections">
-      <ul className="grid grid-cols-6 gap-1 rounded-2xl bg-ink-50 p-1 sm:flex sm:w-fit">
+      <ul className="flex flex-wrap gap-1 rounded-2xl bg-ink-50 p-1 sm:w-fit">
         {TABS.map((t) => {
           const href = t.seg ? `${base}/${t.seg}` : base;
           const active = t.seg ? path.startsWith(href) || t.also.some((a) => path.startsWith(`${base}/${a}`)) : path === base || t.also.some((a) => path.startsWith(`${base}/${a}`));

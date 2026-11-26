@@ -4,17 +4,20 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useRef } from "react";
 import { cn } from "../ui/primitives";
-import { IconBell, IconBulb, IconCompass, IconGear, IconGroup, IconHelp, IconUser } from "./icons";
+import { IconBell, IconBook, IconBulb, IconCompass, IconGear, IconGroup, IconHelp, IconMegaphone, IconNotes, IconUser } from "./icons";
 import { NotificationBadge } from "./notification-badge";
 
-type Area = "ideas" | "explore" | "mine" | null;
+type Area = "ideas" | "discuss" | "fields" | "culture" | "explore" | "mine" | null;
 
 /**
- * The three main areas. A group page counts as "My Groups" when the member
+ * The main areas. A group page counts as "My Groups" when the member
  * belongs to that group, otherwise as "Explore Groups".
  */
 function activeArea(path: string, mySlugs: string[]): Area {
   if (path === "/community" || path.startsWith("/community/ideas")) return "ideas";
+  if (path.startsWith("/community/discuss")) return "discuss";
+  if (path.startsWith("/community/fields")) return "fields";
+  if (path.startsWith("/community/culture")) return "culture";
   if (path === "/community/groups/mine") return "mine";
   const m = path.match(/^\/community\/groups\/([^/]+)/);
   if (m) return mySlugs.includes(m[1]!) ? "mine" : "explore";
@@ -24,8 +27,11 @@ function activeArea(path: string, mySlugs: string[]): Area {
 
 const PRIMARY = [
   { key: "ideas", href: "/community", label: "Business Ideas", short: "Ideas", icon: IconBulb },
+  { key: "discuss", href: "/community/discuss", label: "Discussion", short: "Discuss", icon: IconNotes },
+  { key: "fields", href: "/community/fields", label: "Fields", short: "Fields", icon: IconBook },
+  { key: "culture", href: "/community/culture", label: "Works", short: "Works", icon: IconMegaphone },
   { key: "explore", href: "/community/groups", label: "Explore Groups", short: "Explore", icon: IconCompass },
-  { key: "mine", href: "/community/groups/mine", label: "My Groups", short: "My Groups", icon: IconGroup },
+  { key: "mine", href: "/community/groups/mine", label: "My Groups", short: "Groups", icon: IconGroup },
 ] as const;
 
 export function PortalSidebarNav({ mySlugs }: { mySlugs: string[] }) {
@@ -56,12 +62,12 @@ export function PortalSidebarNav({ mySlugs }: { mySlugs: string[] }) {
   );
 }
 
-/** Bottom tab bar for phones: the same three main areas. */
+/** Bottom tab bar for phones: the same main areas. */
 export function PortalBottomNav({ mySlugs }: { mySlugs: string[] }) {
   const area = activeArea(usePathname(), mySlugs);
   return (
     <nav aria-label="Community (mobile)" className="fixed inset-x-0 bottom-0 z-30 border-t border-ink-100 bg-white/95 pb-[env(safe-area-inset-bottom)] backdrop-blur lg:hidden">
-      <ul className="mx-auto grid max-w-lg grid-cols-3">
+      <ul className="mx-auto grid max-w-lg grid-cols-6">
         {PRIMARY.map((i) => {
           const active = area === i.key;
           return (

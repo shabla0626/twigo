@@ -6,9 +6,11 @@ import { GroupAgreementNote } from "./group-agreement-note";
 export function MembersOnly({ groupId, what, canJoin }: { groupId: string; what: string; canJoin: boolean }) {
   return (
     <div className="rounded-2xl border border-dashed border-ink-200 bg-white px-6 py-12 text-center" data-testid="members-only">
-      <p className="text-lg font-semibold text-ink-950">For group members only</p>
+      <p className="text-lg font-semibold text-ink-950">For project members only</p>
       <p className="mx-auto mt-1 max-w-md text-sm leading-6 text-ink-600">
-        Join this group to use the {what.toLowerCase()}. You can leave again at any time, and leaving does not affect your account.
+        {canJoin
+          ? `Join this project to use the ${what.toLowerCase()}. Group discussions stay open to every approved member.`
+          : `The ${what.toLowerCase()} is for members of this project.`}
       </p>
       {canJoin && (
         <form action={joinGroupAction} className="mx-auto mt-5 max-w-sm space-y-2">

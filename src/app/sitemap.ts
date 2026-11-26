@@ -4,6 +4,7 @@ import { siteUrl } from "@/lib/env";
 const PATHS = [
   "/",
   "/about",
+  "/operators",
   "/how-it-works",
   "/participation",
   "/compensation",

@@ -11,6 +11,8 @@ import { requireMember } from "@/lib/auth/guard";
 import { IDEA_CATEGORIES } from "@/lib/validation/community";
 import { listGroups, myGroups } from "@/server/community/groups";
 import { listIdeas, type IdeaSort } from "@/server/community/ideas";
+import { memberLabel, teammateIds } from "@/server/community/identity";
+import { ensureStarterIdeas } from "@/server/community/opening-ideas";
 import { getSetting } from "@/server/settings";
 import { GroupAgreementNote } from "@/components/community/group-agreement-note";
 import { endorseAction } from "../actions";
@@ -33,8 +35,9 @@ export default async function BusinessIdeasPage({ searchParams }: Props) {
   const category = sp.category && sp.category in IDEA_CATEGORIES ? (sp.category as IdeaCategory) : undefined;
   const q = sp.q?.trim().slice(0, 100) || undefined;
   const filtered = Boolean(q || category || sort !== "recent");
+  await ensureStarterIdeas();
 
-  const [res, threshold, mine, newGroups, live, notes] = await Promise.all([
+  const [res, threshold, mine, newGroups, live, notes, teammates] = await Promise.all([
     listIdeas({ sort, category, q, cursor: sp.cursor }),
     getSetting("community.endorsementThreshold"),
     myGroups(user.id),
@@ -45,6 +48,7 @@ export default async function BusinessIdeasPage({ searchParams }: Props) {
       take: 3,
     }),
     db.notification.findMany({ where: { userId: user.id, readAt: null }, orderBy: { updatedAt: "desc" }, take: 3 }),
+    teammateIds(user.id),
   ]);
   const supported = new Set(
     (await db.ideaEndorsement.findMany({ where: { userId: user.id, ideaId: { in: res.items.map((i) => i.id) } }, select: { ideaId: true } })).map((e) => e.ideaId),
@@ -68,6 +72,14 @@ export default async function BusinessIdeasPage({ searchParams }: Props) {
               Welcome, {user.displayName}. Explore ideas, connect with other members, and discover opportunities to build something together.{" "}
               <Link href="/community/help" className="font-medium text-accent-700 underline-offset-2 hover:underline">
                 How it works
+              </Link>
+              {" · "}
+              <Link href="/community/discuss" className="font-medium text-accent-700 underline-offset-2 hover:underline">
+                Discussion
+              </Link>
+              {" · "}
+              <Link href="/community/fields" className="font-medium text-accent-700 underline-offset-2 hover:underline">
+                Fields
               </Link>
             </p>
             <GroupAgreementNote action="supporting" className="mt-1" />
@@ -156,7 +168,7 @@ export default async function BusinessIdeasPage({ searchParams }: Props) {
         {res.items.length ? (
           <div className="space-y-4">
             {res.items.map((i) => (
-              <IdeaCard key={i.id} idea={i} threshold={threshold} viewer={{ id: user.id, supports: supported.has(i.id) }} supportAction={endorseAction} />
+              <IdeaCard key={i.id} idea={i} threshold={threshold} viewer={{ id: user.id, supports: supported.has(i.id) }} supportAction={endorseAction} authorLabel={memberLabel(i.author?.id, i.author?.profile?.displayName, teammates)} />
             ))}
           </div>
         ) : (
@@ -165,7 +177,7 @@ export default async function BusinessIdeasPage({ searchParams }: Props) {
             body={
               q || category
                 ? "Try another word or category."
-                : "Be the first. An idea can be small and unfinished: a problem you noticed, a service people need, or a skill members could offer."
+                : "A starting point can be a problem you noticed or a service people need. Propose one, or support an idea that is already here."
             }
             action={q || category ? undefined : <ButtonLink href="/community/ideas/new">Propose the first idea</ButtonLink>}
           />

@@ -5,6 +5,7 @@ import { MemberAvatar, Panel, Time } from "@/components/community/ui";
 import { QuickAction } from "@/components/community/quick-action";
 import { Badge } from "@/components/ui/primitives";
 import { readFlash } from "@/lib/flash";
+import { anonymousLabel } from "@/lib/anonymous-label";
 import { groupOverview, loadGroupPage } from "@/server/community/group-page";
 import { removeMemberAction, transferCoordinatorAction } from "../../../../actions";
 
@@ -13,7 +14,7 @@ type Props = { params: Promise<{ slug: string }>; searchParams: Promise<Record<s
 export default async function MembersPage({ params, searchParams }: Props) {
   const { slug } = await params;
   const { ok } = readFlash(await searchParams);
-  const { user, group, isCoordinator } = await loadGroupPage(slug);
+  const { user, group, isCoordinator, isMember } = await loadGroupPage(slug);
   const overview = await groupOverview(slug);
   if (!overview) notFound();
   return (
@@ -27,7 +28,7 @@ export default async function MembersPage({ params, searchParams }: Props) {
       <Panel title={`Members (${overview.memberships.length})`}>
         <ul className="divide-y divide-ink-100">
           {overview.memberships.map((m) => {
-            const name = m.user.profile?.displayName ?? "Member";
+            const name = isMember ? (m.user.profile?.displayName ?? "Member") : anonymousLabel(m.user.id);
             return (
               <li key={m.user.id} className="flex flex-wrap items-center gap-3 py-3">
                 <MemberAvatar name={name} />
@@ -35,9 +36,9 @@ export default async function MembersPage({ params, searchParams }: Props) {
                   <Link href={`/community/members/${m.user.id}`} className="font-medium text-ink-950 hover:underline">
                     {name}
                   </Link>{" "}
-                  {m.role === "COORDINATOR" && <Badge tone="success">Coordinator</Badge>} {m.user.role !== "MEMBER" && <Badge>Administrator</Badge>}{" "}
+                  {m.role === "COORDINATOR" && <Badge tone="success">Coordinator</Badge>} {isMember && m.user.role !== "MEMBER" && <Badge>Administrator</Badge>}{" "}
                   {m.founding && <Badge>Founding member</Badge>}
-                  {m.user.profile?.headline && <p className="truncate text-sm text-ink-600">{m.user.profile.headline}</p>}
+                  {isMember && m.user.profile?.headline && <p className="truncate text-sm text-ink-600">{m.user.profile.headline}</p>}
                   <p className="text-xs text-ink-500">
                     Joined <Time date={m.joinedAt} />
                   </p>

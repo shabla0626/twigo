@@ -147,7 +147,7 @@ export async function getGroupOverview(slug: string) {
         orderBy: [{ role: "asc" }, { joinedAt: "asc" }],
         select: { role: true, joinedAt: true, founding: true, user: { select: { id: true, role: true, profile: { select: { displayName: true, headline: true } } } } },
       },
-      announcements: { orderBy: { createdAt: "desc" }, take: 5, include: { author: { select: { profile: { select: { displayName: true } } } } } },
+      announcements: { orderBy: { createdAt: "desc" }, take: 5, include: { author: { select: { id: true, profile: { select: { displayName: true } } } } } },
       project: { select: { id: true, title: true, status: true } },
     },
   });
@@ -192,7 +192,13 @@ export async function withGroupLock<T>(groupId: string, fn: (tx: Prisma.Transact
   }
 }
 
+/** Anyone who wants to may join. An invitation uses the same membership. */
 export async function joinGroup(userId: string, groupId: string) {
+  return admitMember(userId, groupId);
+}
+
+/** Adds an approved community member to the group. */
+export async function admitMember(userId: string, groupId: string) {
   const who = await db.user.findUnique({ where: { id: userId }, select: { role: true } });
   if (!who || isStaffRole(who.role))
     return { ok: false as const, error: "Administrator accounts cannot join project groups. Group information is private to its members; an administrator can see it only for an investigation the owner approved after a member's report." };

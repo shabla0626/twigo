@@ -13,6 +13,7 @@ import { requireMember } from "@/lib/auth/guard";
 import { readFlash } from "@/lib/flash";
 import { IDEA_CATEGORIES } from "@/lib/validation/community";
 import { commentTree } from "@/server/community/comments";
+import { memberLabel, teammateIds } from "@/server/community/identity";
 import { GROUP_STATUS_LABELS } from "@/server/community/group-labels";
 import { IdeaHistory } from "@/components/community/idea-history";
 import { IDEA_TEXT_FIELDS, getIdea, ideaRevisions } from "@/server/community/ideas";
@@ -47,7 +48,8 @@ export default async function IdeaPage({ params, searchParams }: Props) {
   const flash = readFlash(sp);
   const idea = await getIdea(id, user.id);
   if (!idea) notFound();
-  const [comments, threshold, revisions] = await Promise.all([commentTree({ ideaId: idea.id }), getSetting("community.endorsementThreshold"), ideaRevisions(idea.id)]);
+  const [comments, threshold, revisions, teammates] = await Promise.all([commentTree({ ideaId: idea.id }), getSetting("community.endorsementThreshold"), ideaRevisions(idea.id), teammateIds(user.id)]);
+  const knownIds = [...teammates];
   const isAuthor = idea.authorId === user.id;
   // The stored number counts only supporters who are active members right now: the same number the group decision uses.
   const eligible = idea.endorsementCount;
@@ -78,12 +80,21 @@ export default async function IdeaPage({ params, searchParams }: Props) {
             <span className="text-xs text-ink-500">{IDEA_CATEGORIES[idea.category]}</span>
           </div>
           <h1 className="mt-3 text-2xl font-semibold leading-tight text-ink-950 sm:text-3xl">{idea.title}</h1>
+          {idea.sourceArticle && !idea.sourceArticle.removedAt && (
+            <p className="mt-2 text-sm leading-6 text-ink-600">
+              Proposed from the discussion{" "}
+              <Link href={`/community/discuss/${idea.sourceArticle.id}`} className="font-medium text-accent-700 hover:underline">
+                {idea.sourceArticle.title}
+              </Link>
+              .
+            </p>
+          )}
           <div className="mt-3 flex items-center gap-3 text-sm text-ink-600">
-            <MemberAvatar name={idea.author?.profile?.displayName ?? "Former member"} size={32} />
+            <MemberAvatar name={memberLabel(idea.author?.id, idea.author?.profile?.displayName, teammates)} size={32} />
             <span>
               {idea.author ? (
                 <Link href={`/community/members/${idea.author.id}`} className="font-medium text-ink-900 hover:underline">
-                  {idea.author.profile?.displayName ?? "Member"}
+                  {memberLabel(idea.author.id, idea.author.profile?.displayName, teammates)}
                 </Link>
               ) : (
                 "Former member"
@@ -132,7 +143,14 @@ export default async function IdeaPage({ params, searchParams }: Props) {
               </ul>
             </div>
           )}
-          <IdeaHistory revisions={revisions} fieldLabels={IDEA_TEXT_FIELDS} categoryLabels={IDEA_CATEGORIES} />
+          <IdeaHistory
+            revisions={revisions.map((r) => ({
+              ...r,
+              editor: r.editor ? { profile: { displayName: memberLabel(r.editor.id, r.editor.profile?.displayName, teammates) } } : null,
+            }))}
+            fieldLabels={IDEA_TEXT_FIELDS}
+            categoryLabels={IDEA_CATEGORIES}
+          />
           <div className="mt-6 flex flex-wrap items-center gap-2 border-t border-ink-100 pt-4">
             {isAuthor ? (
               <>
@@ -228,9 +246,9 @@ export default async function IdeaPage({ params, searchParams }: Props) {
             <ul className="mt-4 space-y-2 border-t border-ink-100 pt-4 text-sm" aria-label="Supporters">
               {idea.endorsements.map((e) => (
                 <li key={e.user.id} className="flex items-center gap-2">
-                  <MemberAvatar name={e.user.profile?.displayName ?? "Member"} size={24} />
+                  <MemberAvatar name={memberLabel(e.user.id, e.user.profile?.displayName, teammates)} size={24} />
                   <Link href={`/community/members/${e.user.id}`} className="text-ink-800 hover:underline">
-                    {e.user.profile?.displayName ?? "Member"}
+                    {memberLabel(e.user.id, e.user.profile?.displayName, teammates)}
                   </Link>
                   <span className="ml-auto text-xs text-ink-500">
                     <Time date={e.createdAt} />
@@ -245,7 +263,7 @@ export default async function IdeaPage({ params, searchParams }: Props) {
       <div id="discussion" className="min-w-0 scroll-mt-24 xl:col-start-1">
         <Panel title={`Discussion (${idea.commentCount})`}>
           <p className="mb-4 text-sm text-ink-600">Questions and comments about this idea. Every approved member can read and answer them.</p>
-          <CommentThread comments={comments} viewerId={user.id} target={{ ideaId: idea.id, path: `/community/ideas/${idea.id}` }} />
+          <CommentThread comments={comments} viewerId={user.id} knownIds={knownIds} target={{ ideaId: idea.id, path: `/community/ideas/${idea.id}` }} />
         </Panel>
       </div>
     </div>

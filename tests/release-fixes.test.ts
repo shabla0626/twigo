@@ -24,7 +24,7 @@ import {
   withdrawFromProject,
   withdrawOpenVersion,
 } from "@/server/community/group-projects";
-import { joinGroup, leaveGroup, removeMember, adminLiftRemoval } from "@/server/community/groups";
+import { admitMember, leaveGroup, removeMember, adminLiftRemoval } from "@/server/community/groups";
 import { closeIdea, createIdea } from "@/server/community/ideas";
 import { changeStatus, createDraftVersion, displayedVersion, editDraft, pendingReacceptance, recordAcceptance } from "@/server/legal";
 import { registerAccount } from "@/server/onboarding";
@@ -125,7 +125,7 @@ describe("agreement workflow", () => {
     expect((await db.groupProject.findUniqueOrThrow({ where: { id: o.projectId } })).coordinatorId).toBeNull();
     const owner = await createUser({ email: "owner@example.test", totp: true });
     await adminLiftRemoval(owner.id, o.g.id, o.b.id);
-    await joinGroup(o.b.id, o.g.id);
+    await admitMember(o.b.id, o.g.id);
     expect((await projectDetail(o.projectId, o.b.id)).canEdit).toBe(false);
   });
 

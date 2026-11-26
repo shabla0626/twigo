@@ -5,7 +5,8 @@ import { Badge, Button } from "@/components/ui/primitives";
 import { GROUP_STATUS_LABELS } from "@/server/community/group-labels";
 import { groupMeetingNow, groupUnread, loadGroupPage } from "@/server/community/group-page";
 import { GroupAgreementNote } from "@/components/community/group-agreement-note";
-import { joinGroupAction, leaveGroupAction } from "../../../actions";
+import { pendingInviteFor } from "@/server/community/invitations";
+import { acceptInvitationAction, declineInvitationAction, joinGroupAction, leaveGroupAction } from "../../../actions";
 
 type Props = { children: React.ReactNode; params: Promise<{ slug: string }> };
 
@@ -21,6 +22,7 @@ export default async function GroupLayout({ children, params }: Props) {
   const { slug } = await params;
   const { user, group, isMember, isCoordinator, isOpen, membership } = await loadGroupPage(slug);
   const [unread, meeting] = isMember ? await Promise.all([groupUnread(group.id, user.id), groupMeetingNow(group.id)]) : [0, null];
+  const invite = isOpen && membership?.status !== "REMOVED" ? await pendingInviteFor(user.id, group.id) : null;
   const live = Boolean(meeting);
   return (
     <div className="space-y-5">
@@ -38,21 +40,39 @@ export default async function GroupLayout({ children, params }: Props) {
             </p>
           </div>
           {isMember ? (
-            // On phones the Leave button sits on the Overview tab, keeping room for the chat.
             <div className="hidden sm:block">
               <LeaveGroupButton groupId={group.id} action={leaveGroupAction} />
             </div>
           ) : isOpen && membership?.status !== "REMOVED" ? (
-            <form action={joinGroupAction} className="max-w-xs space-y-1.5 sm:text-right">
-              <input type="hidden" name="groupId" value={group.id} />
-              <Button type="submit">Join group</Button>
-              <GroupAgreementNote action="joining" />
-            </form>
+            <div className="max-w-xs space-y-2 sm:text-right">
+              <form action={joinGroupAction} className="space-y-1.5">
+                <input type="hidden" name="groupId" value={group.id} />
+                <Button type="submit">Join group</Button>
+                <GroupAgreementNote action="joining" />
+              </form>
+              {invite && (
+                <>
+                  <form action={acceptInvitationAction}>
+                    <input type="hidden" name="id" value={invite.id} />
+                    <Button type="submit" variant="secondary">
+                      Accept invitation
+                    </Button>
+                  </form>
+                  <form action={declineInvitationAction}>
+                    <input type="hidden" name="id" value={invite.id} />
+                    <Button type="submit" variant="secondary">
+                      Decline invitation
+                    </Button>
+                  </form>
+                </>
+              )}
+            </div>
           ) : null}
         </div>
         {!isMember && isOpen && (
           <p className="rounded-xl bg-accent-50 p-3 text-sm leading-6 text-accent-950">
-            You can read the overview and discussions. <strong>Join the group</strong> to use its chat, meetings and shared research.
+            Anyone can join. Discussion is open to every approved member. Chat, meetings, research, and projects open when you join.
+            {invite ? " You have an invitation." : ""}
           </p>
         )}
         {group.suspendedAt && <p className="rounded-xl bg-red-50 p-3 text-sm text-red-900">This group is suspended while the moderators review it. Its content is read-only.</p>}

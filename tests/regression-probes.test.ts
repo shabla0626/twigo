@@ -20,7 +20,7 @@ import { attachRealtime } from "@/realtime/server";
 import { reactivateUser, setMembership, suspendUser } from "@/server/accounts";
 import { updateApplicationStatus } from "@/server/admin/applications";
 import { activeMemberIds, groupAccess } from "@/server/community/access";
-import { adminSetGroupState, getGroupOverview, joinGroup, leaveGroup } from "@/server/community/groups";
+import { adminSetGroupState, admitMember, getGroupOverview, leaveGroup } from "@/server/community/groups";
 import { createIdea, endorseIdea } from "@/server/community/ideas";
 import { backupNowAction } from "@/app/admin/actions/community";
 import { cookieJar, createMember, createUser, resetDb, signIn, submitTestApplication } from "./helpers";
@@ -188,7 +188,7 @@ describe("audit scenarios, now with the corrected behaviour asserted", () => {
     expect(reopened.status).not.toBe("ARCHIVED");
     expect(reopened.adminManaged).toBe(true);
     const d = await createMember("Dora");
-    expect((await joinGroup(d.id, g.id)).ok).toBe(true);
+    expect((await admitMember(d.id, g.id)).ok).toBe(true);
     const after = await state(g.id);
     expectSoundCoordination(after);
     expect(after.coordinators.map((x) => x.name)).toEqual(["Dora"]);
@@ -232,7 +232,7 @@ describe("audit scenarios, now with the corrected behaviour asserted", () => {
     const { a, g, channelId } = await group();
     const accA = (await channelAccess(db, a.id, channelId))!;
     await sendMessage(db, a.id, accA, { channelId, body: "private plan", clientId: "regression-probe-client-1", attachmentIds: [] });
-    expect((await joinGroup(owner.id, g.id)).ok).toBe(false);
+    expect((await admitMember(owner.id, g.id)).ok).toBe(false);
     expect(await channelAccess(db, owner.id, channelId)).toBeNull();
     const lines = (await db.chatMessage.findMany({ where: { channelId, kind: "SYSTEM" } })).map((m) => m.body);
     expect(lines.some((l) => /Olivia Owner/.test(l))).toBe(false);

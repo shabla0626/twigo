@@ -10,8 +10,8 @@ import { requireMember } from "@/lib/auth/guard";
 import { readFlash } from "@/lib/flash";
 import { IDEA_CATEGORIES } from "@/lib/validation/community";
 import { GROUP_STATUS_LABELS } from "@/server/community/group-labels";
-import { listGroups } from "@/server/community/groups";
 import { GroupAgreementNote } from "@/components/community/group-agreement-note";
+import { listGroups } from "@/server/community/groups";
 import { joinGroupAction } from "../../actions";
 
 export const metadata = { title: "Explore Groups" };
@@ -48,7 +48,7 @@ export default async function GroupsPage({ searchParams }: Props) {
         title="Explore Groups"
         description={
           <>
-            Every group investigates one business idea. Open a group to read about it, and join the ones you would like to work on. Groups you have joined are under{" "}
+            Every group investigates one business idea. Anyone can join. A member can also invite someone. Group discussions are open to every approved member. Groups you belong to are under{" "}
             <Link href="/community/groups/mine" className="font-medium text-accent-700 hover:underline">
               My Groups
             </Link>

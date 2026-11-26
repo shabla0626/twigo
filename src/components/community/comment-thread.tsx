@@ -1,4 +1,5 @@
 import { addCommentAction, deleteCommentAction, editCommentAction } from "@/app/community/actions";
+import { anonymousLabel } from "@/lib/anonymous-label";
 import type { CommentNode } from "@/server/community/comments";
 import { ActionForm } from "../forms/action-form";
 import { cn } from "../ui/primitives";
@@ -6,13 +7,14 @@ import { QuickAction } from "./quick-action";
 import { ReportButton } from "./report-button";
 import { MemberAvatar, TextBody, Time } from "./ui";
 
-type Target = { ideaId?: string; discussionId?: string; path: string };
+type Target = { ideaId?: string; discussionId?: string; articleId?: string; path: string };
 
 function Hidden({ target }: { target: Target }) {
   return (
     <>
       {target.ideaId && <input type="hidden" name="ideaId" value={target.ideaId} />}
       {target.discussionId && <input type="hidden" name="discussionId" value={target.discussionId} />}
+      {target.articleId && <input type="hidden" name="articleId" value={target.articleId} />}
       <input type="hidden" name="path" value={target.path} />
     </>
   );
@@ -35,15 +37,22 @@ export function CommentComposer({ target, parentId, placeholder = "Ask a questio
   );
 }
 
-function Comment({ c, viewerId, target, canPost }: { c: CommentNode; viewerId: string; target: Target; canPost: boolean }) {
+function shownName(c: CommentNode, knownIds?: string[]) {
+  if (!c.author) return c.state === "visible" ? "Former member" : "";
+  if (!knownIds || knownIds.includes(c.author.id)) return c.author.displayName;
+  return anonymousLabel(c.author.id);
+}
+
+function Comment({ c, viewerId, target, canPost, knownIds }: { c: CommentNode; viewerId: string; target: Target; canPost: boolean; knownIds?: string[] }) {
   const mine = c.author?.id === viewerId;
+  const name = shownName(c, knownIds);
   return (
     <li id={`comment-${c.id}`} className={cn("scroll-mt-24", c.depth > 0 && "border-l-2 border-ink-100 pl-4")}>
       <div className="flex gap-3">
-        {c.author ? <MemberAvatar name={c.author.displayName} size={32} /> : <span className="h-8 w-8 shrink-0 rounded-full bg-ink-100" />}
+        {c.author ? <MemberAvatar name={name} size={32} /> : <span className="h-8 w-8 shrink-0 rounded-full bg-ink-100" />}
         <div className="min-w-0 flex-1">
           <p className="text-sm">
-            <span className="font-semibold text-ink-950">{c.author?.displayName ?? (c.state === "visible" ? "Former member" : "")}</span>{" "}
+            <span className="font-semibold text-ink-950">{name}</span>{" "}
             <span className="text-ink-500">
               <Time date={c.createdAt} />
               {c.editedAt && " · edited"}
@@ -60,7 +69,7 @@ function Comment({ c, viewerId, target, canPost }: { c: CommentNode; viewerId: s
                 <details className="w-full sm:w-auto">
                   <summary className="cursor-pointer list-none rounded-full px-2 py-1 text-ink-600 hover:bg-ink-50">Reply</summary>
                   <div className="mt-2 sm:w-[32rem]">
-                    <CommentComposer target={target} parentId={c.id} placeholder={`Reply to ${c.author?.displayName ?? "this comment"}`} />
+                    <CommentComposer target={target} parentId={c.id} placeholder={`Reply to ${name || "this comment"}`} />
                   </div>
                 </details>
               )}
@@ -88,7 +97,7 @@ function Comment({ c, viewerId, target, canPost }: { c: CommentNode; viewerId: s
           {c.replies.length > 0 && (
             <ul className="mt-3 space-y-4">
               {c.replies.map((r) => (
-                <Comment key={r.id} c={r} viewerId={viewerId} target={target} canPost={canPost} />
+                <Comment key={r.id} c={r} viewerId={viewerId} target={target} canPost={canPost} knownIds={knownIds} />
               ))}
             </ul>
           )}
@@ -98,14 +107,14 @@ function Comment({ c, viewerId, target, canPost }: { c: CommentNode; viewerId: s
   );
 }
 
-export function CommentThread({ comments, viewerId, target, canPost = true }: { comments: CommentNode[]; viewerId: string; target: Target; canPost?: boolean }) {
+export function CommentThread({ comments, viewerId, target, canPost = true, knownIds }: { comments: CommentNode[]; viewerId: string; target: Target; canPost?: boolean; knownIds?: string[] }) {
   return (
     <div className="space-y-6">
       <CommentComposer target={target} canPost={canPost} />
       {comments.length ? (
         <ul className="space-y-5">
           {comments.map((c) => (
-            <Comment key={c.id} c={c} viewerId={viewerId} target={target} canPost={canPost} />
+            <Comment key={c.id} c={c} viewerId={viewerId} target={target} canPost={canPost} knownIds={knownIds} />
           ))}
         </ul>
       ) : (
