@@ -138,7 +138,7 @@ export async function deletionPlan(userId: string, choices: ErasureChoices): Pro
   if (!u) return [];
   const applicant = await db.applicant.findFirst({ where: { userId }, select: { _count: { select: { applications: true } } } });
   const compensation = await db.compensationAgreement.count({ where: { assignment: { participant: { applicant: { userId } } } } });
-  const [sessions, tokens, codes, profile, photo, notes, prefs, readStates, attendance, ideasOpen, ideasGrouped, comments, discussions, chat, groupFiles, research, tasks, decisions, links, memberships, agreements, acceptances, requests, reportsFiled, emails, audits, inquiries] = await Promise.all([
+  const [sessions, tokens, codes, profile, photo, notes, prefs, readStates, attendance, ideasOpen, ideasGrouped, comments, discussions, fieldPosts, articles, broadcasts, culturalWorks, broadcastComments, chat, groupFiles, research, tasks, decisions, links, memberships, agreements, acceptances, requests, reportsFiled, emails, audits, inquiries] = await Promise.all([
     db.session.count({ where: { userId } }),
     db.accountToken.count({ where: { userId } }),
     db.recoveryCode.count({ where: { userId } }),
@@ -152,6 +152,11 @@ export async function deletionPlan(userId: string, choices: ErasureChoices): Pro
     db.businessIdea.count({ where: { authorId: userId, group: { isNot: null } } }),
     db.comment.count({ where: { authorId: userId, deletedAt: null } }),
     db.groupDiscussion.count({ where: { authorId: userId, deletedAt: null } }),
+    db.fieldPost.count({ where: { authorId: userId, removedAt: null } }),
+    db.boardArticle.count({ where: { authorId: userId, removedAt: null } }),
+    db.projectBroadcast.count({ where: { authorId: userId, removedAt: null } }),
+    db.culturalWork.count({ where: { authorId: userId, removedAt: null } }),
+    db.projectBroadcastComment.count({ where: { authorId: userId, removedAt: null } }),
     db.chatMessage.count({ where: { authorId: userId, deletedAt: null, kind: "USER" } }),
     db.storedFile.count({ where: { ownerId: userId, scope: "GROUP_FILE", deletedAt: null } }),
     db.researchNote.count({ where: { authorId: userId } }),
@@ -179,7 +184,7 @@ export async function deletionPlan(userId: string, choices: ErasureChoices): Pro
     { category: "Notifications, preferences, chat read markers, meeting attendance", count: notes + prefs + readStates + attendance, action: "delete", explanation: "Personal records with no value to others." },
     { category: "Group memberships", count: memberships, action: "end", explanation: "The person leaves every group (shown in each group's chat as for any leave). Coordinator roles pass on. In those chats, the automatic lines that name the person (joined, left, coordinator changes) then say “a former member”." },
     { category: "Ideas without a group", count: ideasOpen, action: removed(choices.removeIdeas), explanation: chosen(choices.removeIdeas) },
-    { category: "Comments and group discussions", count: comments + discussions, action: removed(choices.removeComments), explanation: chosen(choices.removeComments) },
+    { category: "Comments, group discussions, field notes, discussion pieces, project channels and cultural installments", count: comments + discussions + fieldPosts + articles + broadcasts + culturalWorks + broadcastComments, action: removed(choices.removeComments), explanation: chosen(choices.removeComments) },
     { category: "Chat messages", count: chat, action: removed(choices.removeChat), explanation: chosen(choices.removeChat) + " Other members' replies stay." },
     { category: "Ideas that formed a group; research notes, tasks, decisions, links and group files", count: ideasGrouped + research + tasks + decisions + links + groupFiles, action: "keep", explanation: "Shared group records other members rely on (Privacy Policy version 2, section 7, point 5). Kept; shown as by a former member, without the name." },
     { category: "Project agreements (participations)", count: agreements, action: "keep", explanation: "Kept as evidence of what was agreed (Privacy Policy version 2, sections 3 and 7). The agreement text, which names its participants, is fingerprinted and cannot change; it is not anonymized." },

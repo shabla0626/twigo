@@ -120,7 +120,7 @@ export async function ideaRevisions(ideaId: string) {
     where: { ideaId },
     orderBy: { createdAt: "desc" },
     take: 50,
-    select: { id: true, kind: true, before: true, changedFields: true, supportersBefore: true, supportReset: true, createdAt: true, editor: { select: { profile: { select: { displayName: true } } } } },
+    select: { id: true, kind: true, before: true, changedFields: true, supportersBefore: true, supportReset: true, createdAt: true, editor: { select: { id: true, profile: { select: { displayName: true } } } } },
   });
 }
 
@@ -190,6 +190,7 @@ export async function getIdea(ideaId: string, viewerId: string) {
     where: { id: ideaId },
     include: {
       author: { select: { id: true, status: true, profile: { select: { displayName: true } } } },
+      sourceArticle: { select: { id: true, title: true, removedAt: true } },
       group: { select: { id: true, slug: true, name: true, status: true, memberCount: true } },
       endorsements: {
         orderBy: { createdAt: "asc" },

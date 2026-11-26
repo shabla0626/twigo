@@ -153,8 +153,44 @@ export const REPORT_REASONS = {
   OTHER: "Something else",
 } as const;
 
+export const FIELD_POST_KINDS = {
+  EXPERIENCE: "Experience or material",
+  COLLABORATION: "Collaboration request",
+} as const;
+
+export const fieldPostSchema = z.object({
+  title: text(5, 120, "Title"),
+  body: text(20, 5_000, "The note"),
+  category: z.enum(categoryKeys, { message: "Choose a field." }),
+  kind: z.enum(["EXPERIENCE", "COLLABORATION"], { message: "Choose experience or a collaboration request." }),
+  links: z
+    .string()
+    .optional()
+    .transform((v) => (v ?? "").split(/\s+/).map((s) => s.trim()).filter(Boolean))
+    .pipe(z.array(httpsUrl).max(5, "At most 5 links.")),
+});
+export type FieldPostInput = z.infer<typeof fieldPostSchema>;
+
+export const articleSchema = z.object({
+  title: text(5, 140, "Title"),
+  body: text(40, 20_000, "The piece"),
+});
+export type ArticleInput = z.infer<typeof articleSchema>;
+
+export const broadcastSchema = z.object({
+  title: text(5, 140, "Title"),
+  body: text(40, 20_000, "The piece"),
+});
+
+export const culturalWorkSchema = z.object({
+  kind: z.enum(["SOCIAL", "LITERATURE", "CREATIVE"], { message: "Choose a kind of work." }),
+  seriesTitle: optText(120),
+  title: text(5, 140, "Title"),
+  body: text(40, 30_000, "The installment"),
+});
+
 export const reportSchema = z.object({
-  targetType: z.enum(["IDEA", "COMMENT", "DISCUSSION", "MESSAGE", "GROUP", "USER"]),
+  targetType: z.enum(["IDEA", "COMMENT", "DISCUSSION", "MESSAGE", "GROUP", "USER", "FIELD_POST", "ARTICLE", "PROJECT_BROADCAST", "CULTURAL_WORK"]),
   targetId: z.string().min(1).max(40),
   reason: z.enum(Object.keys(REPORT_REASONS) as [keyof typeof REPORT_REASONS, ...(keyof typeof REPORT_REASONS)[]]),
   details: optText(2_000),

@@ -2,7 +2,7 @@ import Link from "next/link";
 import type { GroupStatus, IdeaCategory } from "@prisma/client";
 import { IDEA_CATEGORIES } from "@/lib/validation/community";
 import { GROUP_STATUS_LABELS } from "@/server/community/group-labels";
-import { Badge, Button, buttonClass, cn } from "../ui/primitives";
+import { Badge, Button, buttonClass } from "../ui/primitives";
 import { IconChat, IconCheck, IconGroup, IconThumb, IconVideo } from "./icons";
 import { Time } from "./ui";
 
@@ -37,11 +37,13 @@ export function IdeaCard({
   threshold,
   viewer,
   supportAction,
+  authorLabel,
 }: {
   idea: IdeaCardData;
   threshold: number;
   viewer?: Viewer;
   supportAction?: (fd: FormData) => Promise<void>;
+  authorLabel?: string;
 }) {
   const status = ideaStatus(idea, threshold);
   const isAuthor = viewer && idea.author?.id === viewer.id;
@@ -54,7 +56,7 @@ export function IdeaCard({
         </Link>
       </h3>
       <p className="mt-1 text-sm text-ink-500">
-        {idea.author?.profile?.displayName ?? "Former member"} · <Time date={idea.createdAt} />
+        {authorLabel ?? idea.author?.profile?.displayName ?? "Former member"} · <Time date={idea.createdAt} />
       </p>
       <p className="mt-2 line-clamp-3 text-[15px] leading-6 text-ink-700">{idea.summary}</p>
       <div className="mt-4 flex flex-wrap items-center gap-x-4 gap-y-3 text-sm text-ink-600">
@@ -103,7 +105,7 @@ type GroupCardData = {
 
 /**
  * One group: name, the idea it came from, short description, members, stage
- * and the next action (join, or open for members).
+ * and the next action (view, or open for members).
  */
 export function GroupCard({
   group,
@@ -153,18 +155,18 @@ export function GroupCard({
               {unread} new message{unread === 1 ? "" : "s"}
             </Link>
           ) : null}
-          {isMember || !joinAction || group.status === "ARCHIVED" ? (
+          {isMember || !joinAction || !groupId || group.status === "ARCHIVED" ? (
             <Link href={href} className={buttonClass(isMember ? "primary" : "secondary", "sm")}>
               {isMember ? "Open group" : "View group"}
             </Link>
           ) : (
             <>
-              <Link href={href} className={cn(buttonClass("ghost", "sm"))}>
+              <Link href={href} className={buttonClass("ghost", "sm")}>
                 View
               </Link>
               <form action={joinAction}>
                 <input type="hidden" name="groupId" value={groupId} />
-                <Button type="submit" size="sm" aria-label={`Join “${group.name}”`}>
+                <Button type="submit" size="sm">
                   Join group
                 </Button>
               </form>

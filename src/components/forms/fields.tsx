@@ -10,6 +10,7 @@ export function Field({
   hint,
   error,
   optional,
+  icon,
   children,
   className,
 }: {
@@ -18,6 +19,7 @@ export function Field({
   hint?: ReactNode;
   error?: string;
   optional?: boolean;
+  icon?: ReactNode;
   children: ReactNode;
   className?: string;
 }) {
@@ -32,7 +34,10 @@ export function Field({
           {hint}
         </p>
       )}
-      <div className="mt-1.5">{children}</div>
+      <div className={icon ? "relative mt-1.5 [&_input]:pl-11" : "mt-1.5"}>
+        {icon && <span className="pointer-events-none absolute inset-y-0 left-0 flex w-11 items-center justify-center text-ink-400">{icon}</span>}
+        {children}
+      </div>
       <FieldError id={id} error={error} />
     </div>
   );

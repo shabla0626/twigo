@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { Photo } from "@/components/photos/photo";
 import { Card, PageHeader, Section, SectionHeading } from "@/components/ui/primitives";
 import { AbilitiesVisual } from "@/components/visuals/illustrations";
@@ -129,6 +130,13 @@ export default async function AboutPage() {
             <p>
               Whatever its size, {c.company.name} intends to remain fair and transparent: no fees, no commission on members&apos;
               projects, agreements decided by the people who do the work, and open reporting of any voluntary support it receives.
+            </p>
+            <p>
+              The site is operated by its founder.{" "}
+              <Link href="/operators" className="font-medium text-accent-700 underline">
+                Who operates {c.company.name}
+              </Link>{" "}
+              says what that person does, and what members decide for themselves.
             </p>
           </div>
         </div>

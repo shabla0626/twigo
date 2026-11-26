@@ -54,7 +54,7 @@ export default async function PrivacyRequestDetail({ params, searchParams }: Pro
                 ["Received", fmtDate(r.createdAt, true)],
                 ["Requested", deletion ? "Deletion of the account and personal data" : PRIVACY_REQUEST_KINDS[r.kind]],
                 ...(deletion
-                  ? ([["Member’s choice for their content", [r.removeIdeas && "remove ideas without a group", r.removeComments && "remove comments and discussions", r.removeChat && "remove chat messages"].filter(Boolean).join("; ") || "keep (shown without the name)"]] as [string, string][])
+                  ? ([["Member’s choice for their content", [r.removeIdeas && "remove ideas without a group", r.removeComments && "remove comments, discussions, field notes, discussion pieces, project channels and cultural installments", r.removeChat && "remove chat messages"].filter(Boolean).join("; ") || "keep (shown without the name)"]] as [string, string][])
                   : []),
                 ...(r.legalHold ? ([["Legal hold", r.legalHoldReason ?? "set"]] as [string, string][]) : []),
                 ["Identity verification", r.verifiedAt ? `Verified by ${r.verificationMethod} on ${fmtDate(r.verifiedAt, true)}` : "Not verified through the deletion flow"],

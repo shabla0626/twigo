@@ -9,7 +9,7 @@ import { lookupSession } from "@/lib/auth/session-core";
 import { createSession } from "@/lib/auth/session";
 import { reactivateUser, setMembership, suspendUser } from "@/server/accounts";
 import { updateApplicationStatus } from "@/server/admin/applications";
-import { adminSetGroupState, joinGroup, leaveGroup } from "@/server/community/groups";
+import { adminSetGroupState, admitMember, leaveGroup } from "@/server/community/groups";
 import { createIdea, endorseIdea } from "@/server/community/ideas";
 import { APPROVAL_MESSAGE, accessState } from "@/server/membership-grant";
 import { verifyEmailToken } from "@/server/onboarding";
@@ -122,12 +122,12 @@ describe("P2-6: a group that everyone left can be brought back", () => {
     expect(await db.researchGroup.findUniqueOrThrow({ where: { id: g.id } })).toMatchObject({ status: "ARCHIVED", adminManaged: true, memberCount: 0 });
     // While archived nobody can join.
     const dora = await createMember("Dora");
-    expect((await joinGroup(dora.id, g.id)).ok).toBe(false);
+    expect((await admitMember(dora.id, g.id)).ok).toBe(false);
 
     expect((await adminSetGroupState(owner.id, g.id, "reopen")).ok).toBe(true);
     expect(await db.researchGroup.findUniqueOrThrow({ where: { id: g.id } })).toMatchObject({ status: "FORMING", adminManaged: true, archivedAt: null });
 
-    expect((await joinGroup(dora.id, g.id)).ok).toBe(true);
+    expect((await admitMember(dora.id, g.id)).ok).toBe(true);
     const after = await db.researchGroup.findUniqueOrThrow({ where: { id: g.id }, include: { memberships: { where: { status: "ACTIVE" } } } });
     expect(after).toMatchObject({ status: "FORMING", adminManaged: false, memberCount: 1 });
     expect(after.memberships.map((m) => [m.userId, m.role])).toEqual([[dora.id, "COORDINATOR"]]);
@@ -137,7 +137,7 @@ describe("P2-6: a group that everyone left can be brought back", () => {
 
     // A second person joins as an ordinary member; the coordinator stays.
     const eve = await createMember("Eve");
-    await joinGroup(eve.id, g.id);
+    await admitMember(eve.id, g.id);
     const roles = await db.groupMembership.findMany({ where: { groupId: g.id, status: "ACTIVE" }, orderBy: { joinedAt: "asc" } });
     expect(roles.map((m) => m.role)).toEqual(["COORDINATOR", "MEMBER"]);
   });

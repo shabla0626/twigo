@@ -1,17 +1,17 @@
 import Link from "next/link";
 import { Photo } from "@/components/photos/photo";
-import { SplitSection } from "@/components/photos/layouts";
-import { CheckList, CtaBand } from "@/components/site/blocks";
+import { CtaBand } from "@/components/site/blocks";
 import { JourneySteps } from "@/components/site/community-model";
 import { IconArrow, IconCheck, IconDoc } from "@/components/ui/icons";
 import { ButtonLink, Container, Section, SectionHeading } from "@/components/ui/primitives";
 import { GlyphIcon, type GlyphName } from "@/components/visuals/glyphs";
 import { HeroNetwork } from "@/components/visuals/hero-network";
-import { AbilitiesVisual, FoundationVisual } from "@/components/visuals/illustrations";
 import { Reveal } from "@/components/visuals/reveal";
+import { STARTER_IDEAS, homeDifferences } from "@/content/opening";
 import type { PhotoId } from "@/content/photos";
 import { brand } from "@/config/brand";
 import { getSiteContent } from "@/lib/content";
+import { IDEA_CATEGORIES } from "@/lib/validation/community";
 
 const WHO: { photo: PhotoId; glyph: GlyphName; title: string; body: string }[] = [
   {
@@ -36,6 +36,7 @@ const WHO: { photo: PhotoId; glyph: GlyphName; title: string; body: string }[] =
 
 export default async function HomePage() {
   const c = await getSiteContent();
+  const name = brand().name;
   const founding = c.announcement.enabled
     ? c.announcement
     : {
@@ -93,38 +94,55 @@ export default async function HomePage() {
         </Container>
       </section>
 
-      {/* 1. Our mission */}
-      <SplitSection
-        id="mission"
-        tone="blue"
-        eyebrow="Our mission"
-        title="Accomplish together what is hard to accomplish alone."
-        mediaSide="left"
-        media={
-          <Photo
-            id="home-mission"
-            sizes="(min-width: 1024px) 40vw, 100vw"
-            className="mx-auto max-w-md lg:max-w-none"
-            fallback={<AbilitiesVisual className="w-full max-w-xs" />}
-          />
-        }
-      >
-        <p>{c.company.mission}</p>
-        <p>
-          Many capable people want to earn additional income but find it hard to build a business alone. Working as a team, members can take on work that
-          no single person could deliver.
-        </p>
-        <p className="text-base text-ink-600">
+      <Section tone="blue" labelledBy="different-heading">
+        <SectionHeading
+          id="different-heading"
+          eyebrow="What is different"
+          title="The group forms by support, and the money is written down first."
+        />
+        <div className="mt-12 grid gap-6 md:grid-cols-3">
+          {homeDifferences(name).map((item, i) => (
+            <Reveal key={item.title} delay={i * 80} className="h-full">
+              <article className="h-full rounded-2xl border border-ink-100 bg-white p-6">
+                <h3 className="text-lg font-semibold text-ink-950">{item.title}</h3>
+                <p className="mt-2 leading-7 text-ink-600">{item.body}</p>
+              </article>
+            </Reveal>
+          ))}
+        </div>
+        <p className="mt-8 max-w-3xl text-sm leading-6 text-ink-600">
           This is not an employer, a recruitment agency, an investment or crowdfunding platform, or a job board. Income can only come from real products
           and services that customers pay for, and nobody earns anything from recruiting other people.
         </p>
-      </SplitSection>
+      </Section>
 
-      {/* 2. How it works: one journey */}
       <JourneySteps tone="white" />
 
+      <Section tone="gray" labelledBy="starters-heading">
+        <SectionHeading
+          id="starters-heading"
+          eyebrow="Starting points"
+          title="Ideas you can join on the first day."
+          intro="These are starting points from the founder. They are not finished businesses. Members narrow them."
+        />
+        <div className="mt-12 grid gap-6 md:grid-cols-2">
+          {STARTER_IDEAS.map((idea, i) => (
+            <Reveal key={idea.key} delay={i * 80} className="h-full">
+              <article className="flex h-full flex-col rounded-2xl border border-ink-100 bg-white p-6">
+                <p className="text-sm font-semibold uppercase tracking-wider text-accent-700">{IDEA_CATEGORIES[idea.category]}</p>
+                <h3 className="mt-3 text-lg font-semibold text-ink-950">{idea.title}</h3>
+                <p className="mt-2 flex-1 leading-7 text-ink-600">{idea.summary}</p>
+                <Link href="/join" className="mt-6 inline-flex items-center gap-1.5 font-semibold text-accent-700 hover:text-accent-800">
+                  Join to support this or narrow it <IconArrow className="h-4 w-4" />
+                </Link>
+              </article>
+            </Reveal>
+          ))}
+        </div>
+      </Section>
+
       {/* 3. Who can participate */}
-      <Section tone="gray" labelledBy="who-heading">
+      <Section labelledBy="who-heading">
         <div className="flex flex-col justify-between gap-6 md:flex-row md:items-end">
           <SectionHeading
             id="who-heading"
@@ -156,62 +174,32 @@ export default async function HomePage() {
         </div>
       </Section>
 
-      {/* 5. Fair contribution-based compensation */}
-      <Section labelledBy="principles-heading">
+      <Section tone="gray" labelledBy="principles-heading">
         <SectionHeading id="principles-heading" eyebrow="Pay & fairness" title="You contribute work, never money." />
-        <div className="mt-12 grid gap-6 lg:grid-cols-2">
-          <div className="rounded-3xl border border-ink-100 bg-ink-50 p-6 sm:p-8">
-            <h3 className="text-xl font-semibold text-ink-950">No financial entry requirements</h3>
-            <p className="mt-3 leading-7 text-ink-700">Participants are never required to pay:</p>
-            <ul className="mt-4 grid gap-2 text-ink-800 sm:grid-cols-2">
-              {["Membership fees", "Registration or joining fees", "Capital contributions", "Mandatory investments", "Deposits for project access", "Paid “starter kits” of any kind"].map((x) => (
-                <li key={x} className="flex gap-2">
-                  <span aria-hidden="true" className="font-semibold text-accent-700">
-                    ✕
-                  </span>
-                  {x}
-                </li>
-              ))}
-            </ul>
-          </div>
-          <div className="rounded-3xl border border-accent-100 bg-accent-50 p-6 sm:p-8">
-            <h3 className="text-xl font-semibold text-ink-950">Your group decides. {brand().name} takes nothing.</h3>
-            <p className="mt-3 leading-7 text-ink-700">
-              Income comes only from real customers. Before commercial work begins, the members of each project agree in writing how its money is shared,
-              and each of them accepts that agreement. {brand().name} takes no commission, no percentage and no ownership share of project revenue.
-            </p>
-            <p className="mt-4 font-medium leading-7 text-ink-800">We do not promise guaranteed income, guaranteed projects or guaranteed earnings.</p>
-            <Link href="/compensation" className="mt-6 inline-flex items-center gap-1.5 font-semibold text-accent-700 hover:text-accent-800">
-              How money works <IconArrow className="h-4 w-4" />
-            </Link>
-          </div>
+        <div className="mt-12 rounded-3xl border border-ink-100 bg-white p-6 sm:p-8">
+          <h3 className="text-xl font-semibold text-ink-950">Your group decides. {name} takes nothing.</h3>
+          <p className="mt-3 leading-7 text-ink-700">
+            Participants never pay membership fees, registration fees, capital contributions, mandatory investments, deposits, or starter kits. Income
+            comes only from real customers. Before commercial work begins, the members of each project agree in writing how its money is shared, and each
+            of them accepts that agreement. {name} takes no commission, no percentage and no ownership share of project revenue.
+          </p>
+          <Link href="/compensation" className="mt-6 inline-flex items-center gap-1.5 font-semibold text-accent-700 hover:text-accent-800">
+            How money works <IconArrow className="h-4 w-4" />
+          </Link>
         </div>
       </Section>
 
-      {/* 6. Founding contributor opportunities */}
-      <SplitSection
-        id="founding"
-        tone="gray"
-        eyebrow="Founding contributor opportunities"
-        title={founding.title}
-        media={
-          <Photo
-            id="home-founding"
-            sizes="(min-width: 1024px) 45vw, 100vw"
-            fallback={<FoundationVisual className="w-full max-w-xs" />}
-          />
-        }
-      >
-        <p>{founding.body}</p>
-        <div className="text-base">
-          <CheckList items={["An honest picture of where things stand today", "A say in how the community works", "Remote, voluntary participation"]} />
-        </div>
-        <div className="pt-2">
-          <ButtonLink href="/founding-contributors">
+      <section className="border-t border-ink-100 bg-white">
+        <Container className="flex flex-col items-start gap-4 py-10 sm:flex-row sm:items-center sm:justify-between">
+          <p className="max-w-3xl leading-7 text-ink-700">
+            <span className="font-semibold text-ink-950">{founding.title}. </span>
+            {founding.body}
+          </p>
+          <ButtonLink href="/founding-contributors" variant="secondary">
             About founding contributors <IconArrow className="h-4 w-4" />
           </ButtonLink>
-        </div>
-      </SplitSection>
+        </Container>
+      </section>
 
       {/* 7. Final recruitment call to action */}
       <CtaBand />

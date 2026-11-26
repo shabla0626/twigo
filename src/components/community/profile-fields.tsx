@@ -16,7 +16,7 @@ const TIME_ZONES = [
 export function ProfileFields({ p, fallbackName }: { p?: Partial<MemberProfile> | null; fallbackName?: string }) {
   return (
     <div className="space-y-5">
-      <Field id="displayName" label="Display name" hint="How other members see you.">
+      <Field id="displayName" label="Display name" hint="Shown to you, and to members of a project you share. Until then, other members see an anonymous account.">
         <Input id="displayName" name="displayName" defaultValue={p?.displayName ?? fallbackName} required minLength={2} maxLength={60} aria-describedby="displayName-hint" />
       </Field>
       <Field id="headline" label="Short headline" optional hint="For example “Bookkeeper, learning web design”.">

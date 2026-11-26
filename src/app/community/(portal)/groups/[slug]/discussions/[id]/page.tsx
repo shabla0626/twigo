@@ -5,17 +5,19 @@ import { CommentThread } from "@/components/community/comment-thread";
 import { ReportButton } from "@/components/community/report-button";
 import { MemberAvatar, Panel, TextBody, Time } from "@/components/community/ui";
 import { db } from "@/lib/db";
+import { anonymousLabel } from "@/lib/anonymous-label";
 import { commentTree } from "@/server/community/comments";
+import { teammateIds } from "@/server/community/identity";
 import { loadGroupPage } from "@/server/community/group-page";
 import { deleteDiscussionAction } from "../../../../../actions";
 
 export default async function DiscussionPage({ params }: { params: Promise<{ slug: string; id: string }> }) {
   const { slug, id } = await params;
-  const { user, group, isOpen } = await loadGroupPage(slug);
+  const { user, group, isOpen, isMember } = await loadGroupPage(slug);
   const d = await db.groupDiscussion.findUnique({ where: { id }, include: { author: { select: { id: true, profile: { select: { displayName: true } } } } } });
   if (!d || d.groupId !== group.id || d.deletedAt || d.removedAt) notFound();
-  const comments = await commentTree({ discussionId: d.id });
-  const name = d.author?.profile?.displayName ?? "Former member";
+  const [comments, teammates] = await Promise.all([commentTree({ discussionId: d.id }), teammateIds(user.id)]);
+  const name = !d.author ? "Former member" : isMember ? (d.author.profile?.displayName ?? "Member") : anonymousLabel(d.author.id);
   return (
     <div className="max-w-4xl space-y-6">
       <Link href={`/community/groups/${slug}/discussions`} className="text-sm text-accent-700 hover:underline">
@@ -36,7 +38,7 @@ export default async function DiscussionPage({ params }: { params: Promise<{ slu
         </div>
       </article>
       <Panel title={`Replies (${d.commentCount})`}>
-        <CommentThread comments={comments} viewerId={user.id} canPost={isOpen} target={{ discussionId: d.id, path: `/community/groups/${slug}/discussions/${d.id}` }} />
+        <CommentThread comments={comments} viewerId={user.id} canPost={isOpen} knownIds={isMember ? undefined : [...teammates]} target={{ discussionId: d.id, path: `/community/groups/${slug}/discussions/${d.id}` }} />
       </Panel>
     </div>
   );

@@ -5,6 +5,7 @@ import { db } from "../db";
 import { env } from "../env";
 import { logger } from "../logger";
 import { brand } from "@/config/brand";
+import { PREVIOUS_HERO_SUBHEADLINE } from "@/content/opening";
 import { defaultContent } from "./defaults";
 import { CONTENT_KEYS, contentSchemas, type ContentKey, type ContentValue, type SiteContentMap } from "./schema";
 
@@ -29,6 +30,8 @@ export const getSiteContent = cache(async (): Promise<SiteContentMap> => {
     // owner-controlled setting). A name saved earlier with the website content is ignored,
     // so the site, the sign-in pages and all emails always show the same name.
     (merged.company as SiteContentMap["company"]) = { ...(merged.company as SiteContentMap["company"]), name: base.company.name };
+    const hero = merged.hero as SiteContentMap["hero"];
+    if (hero.subheadline === PREVIOUS_HERO_SUBHEADLINE) hero.subheadline = base.hero.subheadline;
     return merged as SiteContentMap;
   } catch (err) {
     // The public site must render even if the database is unavailable.

@@ -15,7 +15,7 @@ import { lookupSession } from "@/lib/auth/session-core";
 import { activateAccount, sendInvitation, suspendUser } from "@/server/accounts";
 import { updateApplicationStatus } from "@/server/admin/applications";
 import { endorseIdea, createIdea, withdrawEndorsement } from "@/server/community/ideas";
-import { joinGroup, leaveGroup, removeMember } from "@/server/community/groups";
+import { admitMember, leaveGroup, removeMember } from "@/server/community/groups";
 import { addComment } from "@/server/community/comments";
 import { authorizeDownload, storeUpload } from "@/server/community/files";
 import { fileReport } from "@/server/community/reports";
@@ -150,10 +150,10 @@ describe("group membership", () => {
   it("join, leave and rejoin; coordinator succession; archive when empty", async () => {
     const { a, b, c, group } = await groupWithMembers();
     const d = await createMember("Dora");
-    expect((await joinGroup(d.id, group.id)).ok).toBe(true);
+    expect((await admitMember(d.id, group.id)).ok).toBe(true);
     await leaveGroup(d.id, group.id);
     expect((await db.groupMembership.findFirstOrThrow({ where: { userId: d.id } })).status).toBe("LEFT");
-    expect((await joinGroup(d.id, group.id)).ok).toBe(true);
+    expect((await admitMember(d.id, group.id)).ok).toBe(true);
     expect((await db.researchGroup.findUniqueOrThrow({ where: { id: group.id } })).memberCount).toBe(4);
     // Leaving the group never affects organization membership.
     await leaveGroup(d.id, group.id);
@@ -174,7 +174,7 @@ describe("group membership", () => {
   it("a removed member cannot rejoin by themselves", async () => {
     const { a, c, group } = await groupWithMembers();
     expect((await removeMember(a.id, group.id, c.id)).ok).toBe(true);
-    expect((await joinGroup(c.id, group.id)).ok).toBe(false);
+    expect((await admitMember(c.id, group.id)).ok).toBe(false);
   });
 });
 
@@ -184,7 +184,7 @@ describe("chat authorization and isolation", () => {
     const outsider = await createMember("Olive");
     expect(await channelAccess(db, a.id, channelId)).not.toBeNull();
     expect(await channelAccess(db, outsider.id, channelId)).toBeNull();
-    await joinGroup(outsider.id, group.id);
+    await admitMember(outsider.id, group.id);
     expect(await channelAccess(db, outsider.id, channelId)).not.toBeNull();
     await leaveGroup(outsider.id, group.id);
     expect(await channelAccess(db, outsider.id, channelId)).toBeNull();

@@ -21,7 +21,7 @@ import { authorizeGroupRead, decideGroupAccess, investigationData, requestGroupA
 import { expireGroupAccess } from "@/ops/housekeeping";
 import { groupAccess } from "@/server/community/access";
 import { authorizeDownload } from "@/server/community/files";
-import { joinGroup } from "@/server/community/groups";
+import { admitMember, joinGroup } from "@/server/community/groups";
 import { endorseIdea, createIdea } from "@/server/community/ideas";
 import { fileReport } from "@/server/community/reports";
 import { createGroupProject, openForAcceptance, saveAgreementDraft, acceptAgreement } from "@/server/community/group-projects";
@@ -71,7 +71,8 @@ describe("administrators have no standing access to a group's private informatio
   it("an administrator or owner cannot join a group or support an idea", async () => {
     const s = await setting();
     expect(await joinGroup(s.admin.id, s.g.id)).toMatchObject({ ok: false });
-    expect(await joinGroup(s.owner.id, s.g.id)).toMatchObject({ ok: false });
+    expect(await admitMember(s.admin.id, s.g.id)).toMatchObject({ ok: false });
+    expect(await admitMember(s.owner.id, s.g.id)).toMatchObject({ ok: false });
     const idea = await createIdea(s.a.id, { title: "Another useful idea", summary: "A second idea to check that staff cannot support it.", category: "OTHER", description: null, problem: null, proposal: null, customers: null, revenueModel: null, skillsNeeded: null, timeEstimate: null, links: [] });
     if (!idea.ok) throw new Error(idea.error);
     expect(await endorseIdea(s.admin.id, idea.id)).toMatchObject({ ok: false });
@@ -253,7 +254,7 @@ describe("deletion: review, plan, execution, retention and notice", () => {
     expect(by["Audit log entries"]!.action).toBe("keep");
     // No open choice for the person carrying it out: the member's own choice decides.
     expect(by["Chat messages"]!.action).toBe("remove");
-    expect(by["Comments and group discussions"]!.action).toBe("keep");
+    expect(by["Comments, group discussions, field notes, discussion pieces, project channels and cultural installments"]!.action).toBe("keep");
     expect(plan.every((p) => ["delete", "anonymize", "end", "remove", "keep", "keep-necessary", "backup-expiry"].includes(p.action))).toBe(true);
     expect(by["Backups"]!.action).toBe("backup-expiry");
     expect(by["Backups"]!.explanation).toContain(`The ${env().BACKUP_KEEP} most recent daily backups`);

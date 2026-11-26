@@ -113,6 +113,12 @@ export const IconCheck = (p: SVGProps<SVGSVGElement>) => (
     <path d="m5 12.5 4.5 4.5L19 7.5" />
   </svg>
 );
+export const IconBook = (p: SVGProps<SVGSVGElement>) => (
+  <svg {...base} {...p}>
+    <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20" />
+    <path d="M6.5 2H20v15H6.5A2.5 2.5 0 0 0 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z" />
+  </svg>
+);
 export const IconSearch = (p: SVGProps<SVGSVGElement>) => (
   <svg {...base} {...p}>
     <circle cx="11" cy="11" r="7" />

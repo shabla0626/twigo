@@ -186,6 +186,14 @@ model User {
   recoveryCodes          RecoveryCode[]
   profile                MemberProfile?
   ideas                  BusinessIdea[]
+  fieldPosts             FieldPost[]
+  articles               BoardArticle[]
+  articleRecognitions    ArticleRecognition[]
+  invitationsSent        GroupInvitation[]           @relation("GroupInviter")
+  invitationsReceived    GroupInvitation[]           @relation("GroupInvitee")
+  projectBroadcasts      ProjectBroadcast[]
+  broadcastComments      ProjectBroadcastComment[]
+  culturalWorks          CulturalWork[]
   ideaRevisions          IdeaRevision[]
   endorsements           IdeaEndorsement[]
   comments               Comment[]
@@ -710,6 +718,16 @@ enum ReportTarget {
   MESSAGE
   GROUP
   USER
+  FIELD_POST
+  ARTICLE
+  PROJECT_BROADCAST
+  CULTURAL_WORK
+}
+
+/// A note on the fields page: an experience or a piece of material, or a request for collaboration.
+enum FieldPostKind {
+  EXPERIENCE
+  COLLABORATION
 }
 
 enum ReportReason {
@@ -761,6 +779,8 @@ model BusinessIdea {
   objectives            String?
   collaborationApproach String?
   links                 String[]
+  /// Set when a discussion participant proposed this idea from a board piece.
+  sourceArticleId       String?
   category              IdeaCategory
   status                IdeaStatus   @default(OPEN)
   endorsementCount      Int          @default(0)
@@ -772,8 +792,9 @@ model BusinessIdea {
   createdAt             DateTime     @default(now())
   updatedAt             DateTime     @updatedAt
 
-  author       User?             @relation(fields: [authorId], references: [id], onDelete: SetNull)
-  endorsements IdeaEndorsement[]
+  author        User?             @relation(fields: [authorId], references: [id], onDelete: SetNull)
+  sourceArticle BoardArticle?     @relation(fields: [sourceArticleId], references: [id], onDelete: SetNull)
+  endorsements  IdeaEndorsement[]
   revisions    IdeaRevision[]
   comments     Comment[]
   group        ResearchGroup?
@@ -784,6 +805,7 @@ model BusinessIdea {
   @@index([endorsementCount])
   @@index([lastActivityAt])
   @@index([authorId])
+  @@index([sourceArticleId])
 }
 
 /// MINOR: wording, typos, clarity: existing support is kept (supporters are told and can withdraw).
@@ -824,12 +846,71 @@ model IdeaEndorsement {
   @@index([userId])
 }
 
-/// Threaded comment on an idea or on a group discussion (exactly one is set).
+/// Member post on the fields page. Visible to approved members. Not a project group.
+model FieldPost {
+  id            String        @id @default(cuid())
+  authorId      String?
+  category      IdeaCategory
+  kind          FieldPostKind
+  title         String
+  body          String
+  links         String[]      @default([])
+  removedAt     DateTime?
+  removedReason String?
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+
+  author User? @relation(fields: [authorId], references: [id], onDelete: SetNull)
+
+  @@index([category, createdAt])
+  @@index([authorId])
+}
+
+/// A piece on the site-wide discussion board. Visible to approved members. Not a project group.
+model BoardArticle {
+  id               String    @id @default(cuid())
+  authorId         String?
+  title            String
+  body             String
+  commentCount     Int       @default(0)
+  recognitionCount Int       @default(0)
+  lastActivityAt   DateTime  @default(now())
+  editedAt         DateTime?
+  removedAt        DateTime?
+  removedReason    String?
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+
+  author       User?                 @relation(fields: [authorId], references: [id], onDelete: SetNull)
+  recognitions ArticleRecognition[]
+  comments     Comment[]
+  ideas        BusinessIdea[]
+
+  @@index([lastActivityAt])
+  @@index([recognitionCount])
+  @@index([authorId])
+}
+
+/// One member's mark that a discussion piece is worth reading. The author cannot mark their own piece.
+model ArticleRecognition {
+  articleId String
+  userId    String
+  createdAt DateTime @default(now())
+
+  article BoardArticle @relation(fields: [articleId], references: [id], onDelete: Cascade)
+  user    User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([articleId, userId])
+  @@index([userId])
+}
+
+/// Threaded comment on an idea, a group discussion, or a board piece (exactly one is set).
 model Comment {
   id           String    @id @default(cuid())
   authorId     String?
   ideaId       String?
   discussionId String?
+  articleId    String?
   parentId     String?
   depth        Int       @default(0)
   body         String
@@ -842,11 +923,13 @@ model Comment {
   author     User?            @relation(fields: [authorId], references: [id], onDelete: SetNull)
   idea       BusinessIdea?    @relation(fields: [ideaId], references: [id], onDelete: Cascade)
   discussion GroupDiscussion? @relation(fields: [discussionId], references: [id], onDelete: Cascade)
+  article    BoardArticle?    @relation(fields: [articleId], references: [id], onDelete: Cascade)
   parent     Comment?         @relation("CommentReplies", fields: [parentId], references: [id], onDelete: Cascade)
   replies    Comment[]        @relation("CommentReplies")
 
   @@index([ideaId, createdAt])
   @@index([discussionId, createdAt])
+  @@index([articleId, createdAt])
   @@index([parentId])
 }
 
@@ -885,6 +968,8 @@ model ResearchGroup {
   project        Project?
   groupProjects  GroupProject[]
   accessRequests GroupAccessRequest[]
+  invitations    GroupInvitation[]
+  broadcasts     ProjectBroadcast[]
 
   @@index([status, lastActivityAt])
   @@index([category])
@@ -906,6 +991,92 @@ model GroupMembership {
   @@unique([groupId, userId])
   @@index([userId, status])
   @@index([groupId, status, joinedAt])
+}
+
+enum GroupInviteStatus {
+  PENDING
+  ACCEPTED
+  DECLINED
+  REVOKED
+}
+
+/// An invitation into a project group. Accepting it makes an approved member a group member.
+model GroupInvitation {
+  id          String            @id @default(cuid())
+  groupId     String
+  inviterId   String?
+  inviteeId   String
+  status      GroupInviteStatus @default(PENDING)
+  createdAt   DateTime          @default(now())
+  respondedAt DateTime?
+
+  group   ResearchGroup @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  inviter User?         @relation("GroupInviter", fields: [inviterId], references: [id], onDelete: SetNull)
+  invitee User          @relation("GroupInvitee", fields: [inviteeId], references: [id], onDelete: Cascade)
+
+  @@index([inviteeId, status])
+  @@index([groupId, status])
+}
+
+/// A project team's public channel. Members of the team write it. Any member of the site can read it and comment.
+model ProjectBroadcast {
+  id            String    @id @default(cuid())
+  groupId       String
+  authorId      String?
+  title         String
+  body          String
+  commentCount  Int       @default(0)
+  removedAt     DateTime?
+  removedReason String?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  group    ResearchGroup             @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  author   User?                     @relation(fields: [authorId], references: [id], onDelete: SetNull)
+  comments ProjectBroadcastComment[]
+
+  @@index([groupId, createdAt])
+  @@index([authorId])
+}
+
+model ProjectBroadcastComment {
+  id        String    @id @default(cuid())
+  postId    String
+  authorId  String?
+  body      String
+  removedAt DateTime?
+  createdAt DateTime  @default(now())
+
+  post   ProjectBroadcast @relation(fields: [postId], references: [id], onDelete: Cascade)
+  author User?            @relation(fields: [authorId], references: [id], onDelete: SetNull)
+
+  @@index([postId, createdAt])
+}
+
+/// Works shared on the operators' cultural channel: social pieces, literature, and other creative work.
+enum CulturalKind {
+  SOCIAL
+  LITERATURE
+  CREATIVE
+}
+
+model CulturalWork {
+  id            String       @id @default(cuid())
+  authorId      String?
+  kind          CulturalKind
+  seriesTitle   String?
+  title         String
+  body          String
+  removedAt     DateTime?
+  removedReason String?
+  createdAt     DateTime     @default(now())
+  updatedAt     DateTime     @updatedAt
+
+  author User? @relation(fields: [authorId], references: [id], onDelete: SetNull)
+
+  @@index([kind, createdAt])
+  @@index([seriesTitle])
+  @@index([authorId])
 }
 
 model GroupAnnouncement {

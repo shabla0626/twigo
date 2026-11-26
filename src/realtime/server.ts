@@ -167,6 +167,14 @@ export async function attachRealtime(httpServer: HttpServer, db: PrismaClient, o
     }, SESSION_RECHECK_MS);
     socket.on("disconnect", () => clearInterval(recheck));
 
+    socket.on("board:watch", (raw: unknown) => {
+      const parsed = z.object({ articleId: z.string().min(1).max(40).nullable() }).safeParse(raw);
+      if (!parsed.success) return;
+      for (const room of [...socket.rooms]) if (room === "board" || room.startsWith("board:")) socket.leave(room);
+      if (parsed.data.articleId) socket.join(`board:${parsed.data.articleId}`);
+      else socket.join("board");
+    });
+
     socket.on("channel:join", async (raw: unknown, ackRaw: unknown) => {
       const ack = safeAck(ackRaw);
       const p = idSchema.safeParse(raw);
@@ -306,6 +314,10 @@ export async function attachRealtime(httpServer: HttpServer, db: PrismaClient, o
       }
       case "group.updated":
         io.to(`group:${ev.groupId}`).emit("group:updated", { groupId: ev.groupId, what: ev.what });
+        break;
+      case "board.updated":
+        io.to("board").emit("board:updated", { articleId: ev.articleId });
+        io.to(`board:${ev.articleId}`).emit("board:updated", { articleId: ev.articleId });
         break;
       case "legal.reacceptance_required": {
         // Open chats are checked again: members who have not accepted the new version yet leave them

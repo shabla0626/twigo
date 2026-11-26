@@ -1,3 +1,4 @@
+import { heroSubheadline } from "@/content/opening";
 import type { SiteContentMap } from "./schema";
 
 /**
@@ -16,8 +17,7 @@ export function defaultContent(org: { name: string; contactEmail: string; taglin
       eyebrow: "An Online Collaborative Community",
       // The founder's approved slogan, word for word.
       headline: org.tagline || "Together We Innovate, Grow & Opportunity",
-      subheadline:
-        "Bring your ideas, skills, experience, and determination. Connect with other people, build project groups, explore opportunities, and create value through cooperation.",
+      subheadline: heroSubheadline(org.name),
     },
     announcement: {
       enabled: true,

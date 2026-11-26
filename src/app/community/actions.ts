@@ -9,11 +9,16 @@ import { withFlash } from "@/lib/flash";
 import { recordAcceptance } from "@/server/legal";
 import { requireMember, requireUser } from "@/lib/auth/guard";
 import {
+  IDEA_CATEGORIES,
   announcementSchema,
+  articleSchema,
+  broadcastSchema,
+  culturalWorkSchema,
   commentSchema,
   decisionSchema,
   discussionSchema,
   groupInfoSchema,
+  fieldPostSchema,
   ideaSchema,
   linkSchema,
   meetingSchema,
@@ -34,6 +39,11 @@ import {
   transferCoordinator,
   updateGroupInfo,
 } from "@/server/community/groups";
+import { createArticle, createIdeaFromDiscussion, recognizeArticle, removeArticle } from "@/server/community/board";
+import { createFieldPost, removeFieldPost } from "@/server/community/fields";
+import { acceptInvitation, declineInvitation, inviteToGroup } from "@/server/community/invitations";
+import { commentOnBroadcast, createBroadcast, removeBroadcast } from "@/server/community/broadcast";
+import { createCulturalWork, removeCulturalWork } from "@/server/community/culture";
 import { closeIdea, createIdea, endorseIdea, updateIdea, withdrawEndorsement } from "@/server/community/ideas";
 import { endMeeting, joinMeeting, startMeeting } from "@/server/community/meetings";
 import { markRead } from "@/server/community/notifications";
@@ -116,6 +126,60 @@ export async function removeProfilePhotoAction() {
   revalidatePath("/community/profile");
 }
 
+// ---------------------------------------------------------------- fields
+
+const FIELD_POST_KEYS = ["title", "body", "category", "kind", "links"];
+
+export async function createFieldPostAction(_p: FormState, fd: FormData): Promise<FormState> {
+  const user = await requireMember();
+  if (fd.get("visibilityAck") !== "on") return { error: "Please confirm that members can read this note and that you will not ask anyone for fees or investment." };
+  const parsed = fieldPostSchema.safeParse(fields(fd, FIELD_POST_KEYS));
+  if (!parsed.success) return { fieldErrors: parsed.error.flatten().fieldErrors };
+  const res = await createFieldPost(user.id, parsed.data);
+  if (!res.ok) return { error: res.error };
+  redirect(`/community/fields?field=${parsed.data.category}&posted=1#yard`);
+}
+
+const ARTICLE_KEYS = ["title", "body"];
+
+export async function createArticleAction(_p: FormState, fd: FormData): Promise<FormState> {
+  const user = await requireMember();
+  if (fd.get("visibilityAck") !== "on") return { error: "Please confirm that members can read this piece and that you will not ask anyone for fees or investment." };
+  const parsed = articleSchema.safeParse(fields(fd, ARTICLE_KEYS));
+  if (!parsed.success) return { fieldErrors: parsed.error.flatten().fieldErrors };
+  const res = await createArticle(user.id, parsed.data);
+  if (!res.ok) return { error: res.error };
+  redirect(`/community/discuss/${res.id}`);
+}
+
+export async function removeArticleAction(_p: FormState, fd: FormData): Promise<FormState> {
+  const user = await requireMember();
+  const res = await removeArticle(user.id, str(fd, "id"));
+  if (!res.ok) return { error: res.error };
+  revalidatePath("/community/discuss");
+  redirect("/community/discuss");
+}
+
+export async function recognizeArticleAction(fd: FormData) {
+  const user = await requireMember();
+  const id = str(fd, "id");
+  const res = await recognizeArticle(user.id, id);
+  redirect(res.ok ? `/community/discuss/${id}` : withFlash(`/community/discuss/${encodeURIComponent(id)}`, { error: res.error }));
+}
+
+export async function removeFieldPostAction(_p: FormState, fd: FormData): Promise<FormState> {
+  const user = await requireMember();
+  const id = str(fd, "id");
+  const field = str(fd, "field");
+  const safeField = field in IDEA_CATEGORIES ? field : "";
+  return quick(async () => {
+    const res = await removeFieldPost(user.id, id);
+    if (!res.ok) return res;
+    revalidatePath("/community/fields");
+    redirect(safeField ? `/community/fields?field=${safeField}#yard` : "/community/fields#yard");
+  });
+}
+
 // ---------------------------------------------------------------- ideas
 
 const IDEA_KEYS = ["title", "summary", "category", "description", "problem", "proposal", "customers", "revenueModel", "skillsNeeded", "timeEstimate", "expectedActivities", "objectives", "collaborationApproach", "links"];
@@ -126,7 +190,8 @@ export async function createIdeaAction(_p: FormState, fd: FormData): Promise<For
   if (fd.get("visibilityAck") !== "on") return { error: "Please confirm that you understand who can see your idea and that it is not confidential." };
   const parsed = ideaSchema.safeParse(fields(fd, IDEA_KEYS));
   if (!parsed.success) return { fieldErrors: parsed.error.flatten().fieldErrors };
-  const res = await createIdea(user.id, parsed.data);
+  const sourceArticleId = str(fd, "sourceArticleId");
+  const res = sourceArticleId ? await createIdeaFromDiscussion(user.id, sourceArticleId, parsed.data) : await createIdea(user.id, parsed.data);
   if (!res.ok) return { error: res.error };
   redirect(`/community/ideas/${res.id}?published=1`);
 }
@@ -177,7 +242,10 @@ export async function addCommentAction(_p: FormState, fd: FormData): Promise<For
   if (!parsed.success) return { error: parsed.error.issues[0]?.message };
   const ideaId = str(fd, "ideaId");
   const discussionId = str(fd, "discussionId");
-  const res = await addComment(user.id, ideaId ? { ideaId } : { discussionId }, parsed.data);
+  const articleId = str(fd, "articleId");
+  const target = ideaId ? { ideaId } : discussionId ? { discussionId } : articleId ? { articleId } : null;
+  if (!target) return { error: "This conversation is not available." };
+  const res = await addComment(user.id, target, parsed.data);
   if (!res.ok) return { error: res.error };
   revalidatePath(str(fd, "path") || "/community");
   return { ok: "Posted." };
@@ -222,6 +290,77 @@ export async function joinGroupAction(fd: FormData) {
   const res = await joinGroup(user.id, groupId);
   if (res.ok) await recordAcceptance({ userId: user.id, key: "group-participation", kind: "ACCEPTED", method: "group-join", context: groupId });
   redirect(res.ok ? `${path}?joined=1` : withFlash(path, { error: res.error }));
+}
+
+export async function inviteToGroupAction(fd: FormData) {
+  const user = await requireMember();
+  const inviteeId = str(fd, "inviteeId");
+  const back = `/community/members/${encodeURIComponent(inviteeId)}`;
+  const res = await inviteToGroup(user.id, str(fd, "groupId"), inviteeId);
+  redirect(withFlash(back, res.ok ? { ok: "Invitation sent. They become a member of the project when they accept it." } : { error: res.error }));
+}
+
+export async function acceptInvitationAction(fd: FormData) {
+  const user = await requireMember();
+  const id = str(fd, "id");
+  const invite = await db.groupInvitation.findUnique({ where: { id }, select: { groupId: true, group: { select: { slug: true } } } });
+  const path = invite ? `/community/groups/${invite.group.slug}` : "/community/groups";
+  const res = await acceptInvitation(user.id, id);
+  if (res.ok && invite) await recordAcceptance({ userId: user.id, key: "group-participation", kind: "ACCEPTED", method: "group-invite", context: invite.groupId });
+  redirect(res.ok ? `${path}?joined=1` : withFlash(path, { error: res.error }));
+}
+
+export async function declineInvitationAction(fd: FormData) {
+  const user = await requireMember();
+  const id = str(fd, "id");
+  const res = await declineInvitation(user.id, id);
+  const path = res.ok ? `/community/groups/${res.slug}` : "/community/groups";
+  redirect(res.ok ? path : withFlash(path, { error: res.error }));
+}
+
+export async function createBroadcastAction(_p: FormState, fd: FormData): Promise<FormState> {
+  const user = await requireMember();
+  const parsed = broadcastSchema.safeParse(fields(fd, ["title", "body"]));
+  if (!parsed.success) return { fieldErrors: parsed.error.flatten().fieldErrors };
+  const groupId = str(fd, "groupId");
+  const res = await createBroadcast(user.id, groupId, parsed.data);
+  if (!res.ok) return { error: res.error };
+  redirect(`/community/groups/${await groupSlug(groupId)}/broadcast/${res.id}`);
+}
+
+export async function removeBroadcastAction(_p: FormState, fd: FormData): Promise<FormState> {
+  const user = await requireMember();
+  const res = await removeBroadcast(user.id, str(fd, "id"));
+  if (!res.ok) return { error: res.error };
+  redirect(`/community/groups/${res.slug}/broadcast`);
+}
+
+export async function broadcastCommentAction(_p: FormState, fd: FormData): Promise<FormState> {
+  const user = await requireMember();
+  const body = str(fd, "body").trim();
+  if (body.length < 2 || body.length > 5000) return { error: "Write a comment of at least a few words." };
+  const res = await commentOnBroadcast(user.id, str(fd, "postId"), body);
+  if (!res.ok) return { error: res.error };
+  revalidatePath(`/community/groups/${res.slug}/broadcast/${str(fd, "postId")}`);
+  return { ok: "Comment posted." };
+}
+
+export async function createCulturalWorkAction(_p: FormState, fd: FormData): Promise<FormState> {
+  const user = await requireMember();
+  const parsed = culturalWorkSchema.safeParse(fields(fd, ["kind", "seriesTitle", "title", "body"]));
+  if (!parsed.success) return { fieldErrors: parsed.error.flatten().fieldErrors };
+  const res = await createCulturalWork(user.id, parsed.data);
+  if (!res.ok) return { error: res.error };
+  revalidatePath("/community/culture");
+  redirect("/community/culture?published=1");
+}
+
+export async function removeCulturalWorkAction(_p: FormState, fd: FormData): Promise<FormState> {
+  const user = await requireMember();
+  const res = await removeCulturalWork(user.id, str(fd, "id"));
+  if (!res.ok) return { error: res.error };
+  revalidatePath("/community/culture");
+  redirect("/community/culture");
 }
 
 export async function leaveGroupAction(fd: FormData) {

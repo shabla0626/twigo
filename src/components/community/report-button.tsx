@@ -10,7 +10,7 @@ export function ReportButton({
   label = "Report",
   align = "right",
 }: {
-  targetType: "IDEA" | "COMMENT" | "DISCUSSION" | "MESSAGE" | "GROUP" | "USER";
+  targetType: "IDEA" | "COMMENT" | "DISCUSSION" | "MESSAGE" | "GROUP" | "USER" | "FIELD_POST" | "ARTICLE" | "PROJECT_BROADCAST" | "CULTURAL_WORK";
   targetId: string;
   label?: string;
   /** Which edge of the button the panel lines up with ("left" where there is no room to the left, as in the chat). */

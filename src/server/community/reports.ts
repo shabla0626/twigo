@@ -66,6 +66,22 @@ async function snapshot(viewerId: string, type: ReportTarget, id: string): Promi
       const p = await db.memberProfile.findUnique({ where: { userId: id } });
       return p ? { text: `${p.displayName}\n${p.headline ?? ""}\n\n${p.intro ?? ""}`, groupId: null } : null;
     }
+    case "FIELD_POST": {
+      const post = await db.fieldPost.findUnique({ where: { id } });
+      return post && !post.removedAt ? { text: `${post.title}\n\n${post.body}\n\n${post.links.join("\n")}`, groupId: null } : null;
+    }
+    case "ARTICLE": {
+      const article = await db.boardArticle.findUnique({ where: { id } });
+      return article && !article.removedAt ? { text: `${article.title}\n\n${article.body}`, groupId: null } : null;
+    }
+    case "PROJECT_BROADCAST": {
+      const post = await db.projectBroadcast.findUnique({ where: { id } });
+      return post && !post.removedAt ? { text: `${post.title}\n\n${post.body}`, groupId: post.groupId } : null;
+    }
+    case "CULTURAL_WORK": {
+      const work = await db.culturalWork.findUnique({ where: { id } });
+      return work && !work.removedAt ? { text: `${work.title}\n\n${work.body}`, groupId: null } : null;
+    }
   }
 }
 
@@ -105,13 +121,16 @@ export async function moderate(adminId: string, reportId: string, action: "remov
       case "IDEA":
         authorId = (await db.businessIdea.update({ where: { id: r.targetId }, data: { status: "REMOVED", removedAt: now, removedReason: note.slice(0, 300) } })).authorId;
         break;
-      case "COMMENT":
-        authorId = await db.$transaction(async (tx) => {
+      case "COMMENT": {
+        const updated = await db.$transaction(async (tx) => {
           const c = await tx.comment.update({ where: { id: r.targetId }, data: { removedAt: now } });
           await recountComments(tx, c);
-          return c.authorId;
+          return c;
         });
+        authorId = updated.authorId;
+        if (updated.articleId) await publishRealtime(db, { t: "board.updated", articleId: updated.articleId });
         break;
+      }
       case "DISCUSSION":
         authorId = (await db.groupDiscussion.update({ where: { id: r.targetId }, data: { removedAt: now } })).authorId;
         break;
@@ -126,6 +145,19 @@ export async function moderate(adminId: string, reportId: string, action: "remov
         break;
       case "USER":
         authorId = r.targetId;
+        break;
+      case "FIELD_POST":
+        authorId = (await db.fieldPost.update({ where: { id: r.targetId }, data: { removedAt: now, removedReason: note.slice(0, 300) } })).authorId;
+        break;
+      case "ARTICLE":
+        authorId = (await db.boardArticle.update({ where: { id: r.targetId }, data: { removedAt: now, removedReason: note.slice(0, 300) } })).authorId;
+        await publishRealtime(db, { t: "board.updated", articleId: r.targetId });
+        break;
+      case "PROJECT_BROADCAST":
+        authorId = (await db.projectBroadcast.update({ where: { id: r.targetId }, data: { removedAt: now, removedReason: note.slice(0, 300) } })).authorId;
+        break;
+      case "CULTURAL_WORK":
+        authorId = (await db.culturalWork.update({ where: { id: r.targetId }, data: { removedAt: now, removedReason: note.slice(0, 300) } })).authorId;
         break;
     }
   }
